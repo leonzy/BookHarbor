@@ -1,4 +1,6 @@
 #!/bin/sh
+set -eu
+umask 022
 
 PUID=${PUID:-0}
 PGID=${PGID:-0}
@@ -15,7 +17,7 @@ if [ ! -d "/data/books" ]; then
   cp -rf /prebuilt/books /data/
 fi
 
-if [ ! -s "/data/books/calibre-webserver.db" ]; then
+if [ ! -s "/data/books/calibre-webserver.db" ] && [ -s "/prebuilt/books/calibre-webserver.db" ]; then
   cp /prebuilt/books/calibre-webserver.db /data/books/
 fi
 
@@ -55,10 +57,7 @@ chown -R talebook:talebook \
   /var/log/nginx \
   /root/.config/calibre \
   /root/.npm \
-  /var/www/talebook/app/.env \
   /var/www/talebook/app/dist \
-  /var/www/talebook/webserver \
-  /var/www/talebook/server.py \
   /var/www/talebook/status
 
 if [ -f /data/books/ssl/ssl.crt ]; then
@@ -69,7 +68,7 @@ if [ -f /data/books/ssl/ssl.key ]; then
 fi
 
 # /data/books 的权限校验、nginx 配置检查、数据库初始化/迁移/配置写入这些"可能失败"的
-# 步骤，交给 supervisor 的 bootstrap program（webserver/self_check.py）在 nginx 启动
+# 步骤，交给 supervisor 的 bootstrap program（docker/self_check.py）在 nginx 启动
 # 之后逐项自检并写入 status.json；任一步失败都不会导致容器整体重启，nginx 与诊断页
 # 始终可访问，用户不需要进入容器查看日志即可知道卡在哪一步、该怎么处理。
 export PYTHONDONTWRITEBYTECODE=1

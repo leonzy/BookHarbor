@@ -16,8 +16,8 @@ def database_fingerprint(root):
         b"".join(
             (root / p).read_bytes()
             for p in (
-                "webserver/models.py",
-                "webserver/migrate_db.py",
+                "schema/user.sql",
+                "schema/bootstrap.go",
             )
         )
     ).hexdigest()
@@ -43,7 +43,7 @@ def main():
                 "docker/start.sh",
                 "conf/supervisor/talebook.conf",
                 "conf/nginx/talebook.conf",
-                "webserver/self_check.py",
+                "docker/self_check.py",
             )
         },
     }

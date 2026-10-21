@@ -11,15 +11,16 @@ import (
 // BrowseQuery keeps filtering, visibility and paging in SQLite. Candidates is
 // optional; a non-nil empty slice deliberately matches no books.
 type BrowseQuery struct {
-	Filters      map[string]string
-	Category     string
-	Names        []string
-	Format       string
-	FormatFilter bool // true for literal category names, including empty or 全部
-	Excluded     map[int64]bool
-	Candidates   []int64
-	RatingSort   bool
-	Start, Size  int
+	Filters       map[string]string
+	Category      string
+	Names         []string
+	Format        string
+	FormatFilter  bool // true for literal category names, including empty or 全部
+	Excluded      map[int64]bool
+	Candidates    []int64
+	TimestampSort bool
+	RatingSort    bool
+	Start, Size   int
 }
 
 func jsonIDs(ids []int64) string {
@@ -151,6 +152,9 @@ func BrowseBooks(ctx context.Context, db *sql.DB, q BrowseQuery) ([]int64, int, 
 	}
 
 	order := "b.id DESC"
+	if q.TimestampSort {
+		order = "b.timestamp DESC,b.id DESC"
+	}
 	if q.RatingSort {
 		var scored int
 		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM ratings WHERE COALESCE(rating,0)<>0)`).Scan(&scored); err != nil {

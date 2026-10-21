@@ -98,7 +98,26 @@
                 </div>
             </v-alert>
         </v-card-text>
+        <v-alert
+            v-if="watch_status.paused"
+            type="info"
+            variant="tonal"
+            class="ma-4"
+            role="status"
+        >
+            {{ t(backgroundTask ? 'admin.imports.task.stopping' : 'admin.imports.task.stopped') }}
+        </v-alert>
         <v-card-actions class="imports-actions">
+            <v-btn
+                v-if="backgroundTask"
+                :disabled="Boolean(watch_status.paused)"
+                :loading="cancellingTask"
+                variant="outlined"
+                color="warning"
+                @click="cancelTask"
+            >
+                {{ t(watch_status.paused ? 'admin.imports.task.stopPending' : 'admin.imports.task.stop') }}
+            </v-btn>
             <v-btn
                 :disabled="loading"
                 variant="outlined"
@@ -661,6 +680,15 @@ const importRecordReason = (item) => item.status === 'exist'
 const import_mode = ref(DEFAULT_IMPORT_MODE);
 const auto_watch_enabled = ref(false);
 const directory_check = ref(null);
+const cancellingTask = ref(false);
+const cancelTask = async () => {
+    cancellingTask.value = true;
+    try { const rsp = await $backend('/admin/import/task', { method: 'DELETE' });
+        if (rsp.err === 'ok') watch_status.value = rsp.watch_status;
+        else if ($alert) $alert('error', rsp.msg || t('admin.imports.task.stopFailed'));
+    } catch { if ($alert) $alert('error', t('admin.imports.task.stopFailed')); }
+    finally { cancellingTask.value = false; }
+};
 const watch_status = ref({ state: 'off', queued: 0, running: 0, failed: 0, last_scan_at: null });
 const backgroundTask = computed(() => activeImportTask(watch_status.value));
 const opdsImportDialogVisible = ref(false);
@@ -728,6 +756,7 @@ const importModeOptions = computed(() => Object.entries(importModeDefinitions.va
 
 const watchStatusText = computed(() => {
     const status = watch_status.value || {};
+    if (status.paused) return t('admin.imports.task.paused');
     if (!auto_watch_enabled.value && status.state === 'off') return t('admin.imports.watch.off');
     if (status.state === 'scanning') return t('admin.imports.watch.scanning');
     if (status.state === 'queued') return t('admin.imports.watch.queued', [status.queued || 0]);
@@ -859,7 +888,7 @@ const loop_check_status = (url, callback) => {
             } else {
                 observedTask = null;
                 getDataFromApi();
-                if ($alert) $alert('info', '处理完毕！');
+                if ($alert && !watch_status.value.paused) $alert('info', '处理完毕！');
             }
         } catch (error) {
             observedTask = null;
@@ -1097,7 +1126,7 @@ const scan_books = () => {
             return;
         }
 
-        watch_status.value = { ...watch_status.value, manual_scan_running: true };
+        watch_status.value = { ...watch_status.value, manual_scan_running: true, paused: false };
         loading.value = false;
         observeTask('scan');
     }).catch((error) => {
@@ -1126,8 +1155,8 @@ const import_books = (hashlist = 'all') => {
         }
 
         watch_status.value = rsp.watch_status || (hashlist === 'all'
-            ? { ...watch_status.value, manual_library_import_running: true, manual_library_import_phase: 'queued' }
-            : { ...watch_status.value, manual_import_running: true });
+            ? { ...watch_status.value, manual_library_import_running: true, manual_library_import_phase: 'queued', paused: false }
+            : { ...watch_status.value, manual_import_running: true, paused: false });
         loading.value = false;
         observeTask('import');
     }).catch((error) => {

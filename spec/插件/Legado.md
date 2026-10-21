@@ -165,17 +165,17 @@ Legado 除了书源能力，还声明了元数据检索能力，用于给网文�
 
 | 行为 | 文件与函数 |
 |---|---|
-| 插件定义 | `webserver/plugins/source/legado.py` |
-| 抓取工作流 | `webserver/services/booksource/engine.py` |
+| 插件定义 | `booksvr/internal/httpapi/serve.go` |
+| 抓取工作流 | `booksvr/internal/httpapi/serve.go` |
 | 规则解析 | 同目录 `analyze_rule.py`、`rule_dispatch.py` |
 | 地址处理 | 同目录 `analyze_url.py` |
 | 受限脚本沙箱 | 同目录 `js_runtime.py` |
 | 正文清理 | 同目录 `cleaner.py` |
 | 书源模型与同步 | 同目录 `book_source.py`；`BookSourceModel.apply_raw()` |
 | 内置示例 | 同目录 `seeds/` |
-| 治理接口 | `webserver/handlers/booksource_admin.py` |
+| 治理接口 | `booksvr/internal/httpapi/booksource_admin.go` |
 | 元数据能力 | 同目录 `metadata.py`、`metadata_sources.json` |
-| 引擎测试 | `tests/test_booksource_engine.py` |
+| 引擎测试 | `booksvr/internal/booksource` |
 
 ### 7.5 界面文案
 

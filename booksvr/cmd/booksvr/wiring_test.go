@@ -9,6 +9,19 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func TestNativeSeedDiscoveryNeverTreatsSeedJSONAsVersion(t *testing.T) {
+	opts := &serveOptions{}
+	seeds := seedFileCandidates(opts)
+	if len(seeds) == 0 || seeds[0] != "resources/booksources.seed.json" {
+		t.Fatal(seeds)
+	}
+	for _, path := range versionFileCandidates(opts) {
+		if filepath.Ext(path) == ".json" {
+			t.Fatal("JSON seed leaked into version discovery", path)
+		}
+	}
+}
+
 // newWiringDB 建一个内存库用于构造服务实例。
 func newWiringDB(t *testing.T) *sql.DB {
 	t.Helper()

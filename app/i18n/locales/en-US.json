@@ -630,7 +630,9 @@
   },
   "index": {
     "newReleases": "New Releases",
-    "browseByCategory": "Browse by Category"
+    "browseByCategory": "Browse by Category",
+    "noUnreadRecommendations": "No unread recommendations available",
+    "noUnreadRecommendationsHint": "Browse the library or update your reading status on a book's details page"
   },
   "counts": {
     "books": "{count} books",
@@ -948,7 +950,19 @@
         "missing_source_books": "Books with missing sources",
         "explanation": "Library books are distinct titles, including books with confirmed missing sources. Available books exclude those missing books. One book can have several processed files. Duplicates are skipped, never pending or successful files. Browsing also applies access permissions."
       },
-      "duplicateSkippedReason": "Identical content or the corresponding format already exists in the library. Skipped; no further import is needed."
+      "duplicateSkippedReason": "Identical content or the corresponding format already exists in the library. Skipped; no further import is needed.",
+      "task": {
+        "stop": "Stop current task",
+        "stopping": "Stopping after the current book finishes.",
+        "stopped": "Task stopped. Completed results are kept. Scan or import again to continue and resume automatic monitoring.",
+        "progress": "{count} processed, {failed} failed",
+        "completed": "Task completed: {count} processed, {failed} failed. Review the scan records below.",
+        "stopFailed": "Unable to stop the task. Please retry.",
+        "startFailed": "Unable to start the task. Please retry.",
+        "failed": "The task failed. Check the failed records before retrying.",
+        "stopPending": "Stopping",
+        "paused": "Paused"
+      }
     },
     "settings": {
       "title": "System Settings",
@@ -1053,7 +1067,7 @@
         "trashCalibreSize": "Calibre Trash Size",
         "trashUploadSize": "Upload Temp Directory Size",
         "trashUnknown": "Unknown",
-        "mainPageRandomCount": "Random Books Count (0 to hide)",
+        "mainPageRandomCount": "Recommended Books Count (0 to hide)",
         "mainPageRecentCount": "New Books Count",
         "defaultPageSize": "Book List Page Size",
         "currentVersion": "Current Version",

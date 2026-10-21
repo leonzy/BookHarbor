@@ -113,6 +113,10 @@ def collect_routes(repo_root):
         if source.name.endswith("_test.go"):
             continue
         body = source.read_text(encoding="utf-8")
+        for raw in re.findall(r'Pattern:\s*("(?:[^"\\]|\\.)*")', body):
+            value = json.loads(raw)
+            try: patterns.append(re.compile(rf"\A{value.rstrip('$')}\Z"))
+            except re.error: pass
         registered = set(re.findall(r"Pattern:\s*(\w+)", body))
         for name, literal in re.findall(r'(\w+)\s*=\s*("(?:[^"\\]|\\.)*")', body):
             if name not in registered:
@@ -173,28 +177,16 @@ def check_plugin_coverage(spec_root, repo_root, errors):
     是否已注册以 register.py 实际 import 的模块为准；只声明 manifest 但没有被
     装配的插件不是可用插件，按「不写未实现」的规则不进入规格。
     """
-    plugins_root = repo_root / "webserver" / "plugins"
-    register = plugins_root / "register.py"
-    if not register.is_file():
+    inventory = repo_root / "booksvr/internal/pluginbuiltin/builtin_ids.json"
+    if not inventory.is_file():
+        errors.append("Missing native plugin inventory")
         return
+    plugins = json.loads(inventory.read_text(encoding="utf-8"))
     plugin_dir = spec_root / "插件"
-    if not plugin_dir.is_dir():
-        errors.append("缺少 spec/插件/ 目录")
-        return
-
-    imported = set(re.findall(r"^from ([\w.]+) import PROVIDER", register.read_text(encoding="utf-8"), re.M))
     corpus = "\n".join(f.read_text(encoding="utf-8") for f in plugin_dir.rglob("*.md"))
-
-    for source in sorted(plugins_root.rglob("*.py")):
-        if source.name == "register.py":
-            continue
-        module = source.relative_to(repo_root).with_suffix("").as_posix().replace("/", ".")
-        if module not in imported:
-            continue
-        body = source.read_text(encoding="utf-8", errors="ignore")
-        for plugin_id in sorted(set(re.findall(r'"(talebook\.[a-z]+\.[a-z0-9-]+)"', body))):
-            if plugin_id not in corpus:
-                errors.append(f"插件 {plugin_id} 已注册但在 spec/插件/ 下没有归属")
+    for plugin_id in plugins:
+        if plugin_id not in corpus:
+            errors.append(f"Native plugin {plugin_id} is missing from spec/插件")
 
 
 def check_inbound_links(spec_root, repo_root, errors):

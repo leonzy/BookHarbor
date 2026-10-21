@@ -562,6 +562,9 @@ func bookPageDelta(ctx *Context, maxSize int) int {
 // 因此这里的键名是接口契约的一部分。
 func BookIndexHandler(cfg BookConfig) HandlerFunc {
 	return func(ctx *Context) (map[string]any, error) {
+		if cfg.BrowsePage != nil {
+			return personalizedIndex(cfg, ctx)
+		}
 		ids, err := bookAllVisibleIDs(cfg, ctx)
 		if err != nil {
 			return nil, err

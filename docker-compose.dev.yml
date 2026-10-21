@@ -17,8 +17,7 @@ services:
       - /tmp/talebook-dev:/data
       # 挂载本地 app/ 目录，修改代码后 nuxt dev 自动热更新
       - ./app:/var/www/talebook/app
-      # 挂载本地 webserver/ 目录，修改后端代码后 tornado 自动重启
-      - ./webserver:/var/www/talebook/webserver
+      # Go 后端源码修改后重新构建镜像；前端继续在宿主启动 Nuxt。
     ports:
       - "8080:80"
       - "8443:443"

@@ -38,6 +38,10 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 		log.Printf("scan: 创建导入查询索引失败，保留导入任务并继续运行: %v", err)
 	}
 	var workMu, statusMu sync.Mutex
+	var activeCancel context.CancelFunc
+	var generation uint64
+	var paused bool
+	db.QueryRow(`SELECT paused FROM import_control WHERE id=1`).Scan(&paused)
 	status := map[string]any{"state": "off", "queued": 0, "running": 0, "failed": 0, "last_scan_at": nil, "message": ""}
 	// Existing scan rows survive restarts, so do not claim an already populated
 	// library has never been scanned merely because the worker was restarted.
@@ -57,7 +61,7 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 	opts.ImportWatchStatus = func() map[string]any {
 		statusMu.Lock()
 		defer statusMu.Unlock()
-		copy := map[string]any{}
+		copy := map[string]any{"paused": paused}
 		for k, v := range status {
 			copy[k] = v
 		}
@@ -76,16 +80,18 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 		startScan = func(path string, batchSize int) error { return opts.StartScanContext(ctx, path, batchSize) }
 	}
 	type job struct {
-		kind string
-		run  func() error
+		kind       string
+		run        func(context.Context) error
+		generation uint64
 	}
 	jobs := make(chan job, 32)
 	manualDone := make(chan struct{})
 	pending := map[string]int{"scan": 0, "import": 0}
-	enqueue := func(kind string, run func() error) error {
+	pendingGeneration := map[string]uint64{}
+	enqueue := func(kind string, run func(context.Context) error) error {
 		statusMu.Lock()
 		defer statusMu.Unlock()
-		if kind == "library_import" && pending[kind] > 0 {
+		if kind == "library_import" && pending[kind] > 0 && pendingGeneration[kind] == generation {
 			return nil
 		}
 		select {
@@ -94,8 +100,9 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 		default:
 		}
 		select {
-		case jobs <- job{kind, run}:
+		case jobs <- job{kind, run, generation}:
 			pending[kind]++
+			pendingGeneration[kind] = generation
 			status["manual_"+kind+"_running"] = true
 			status["manual_"+kind+"_error"] = ""
 			if kind == "library_import" {
@@ -118,9 +125,25 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 					workMu.Unlock()
 					return
 				}
-				err := task.run()
-				if task.kind == "library_import" && ctx.Err() == nil {
-					if err == nil {
+				statusMu.Lock()
+				taskCtx, taskCancel := context.WithCancel(ctx)
+				if task.generation != generation {
+					taskCancel()
+				}
+				activeCancel = taskCancel
+				statusMu.Unlock()
+				err := task.run(taskCtx)
+				taskCancel()
+				statusMu.Lock()
+				activeCancel = nil
+				statusMu.Unlock()
+				statusMu.Lock()
+				sameGeneration := task.generation == generation
+				statusMu.Unlock()
+				if task.kind == "library_import" && ctx.Err() == nil && sameGeneration {
+					if errors.Is(err, context.Canceled) {
+						_, _ = db.Exec(`UPDATE import_resume_job SET state='cancelled',error='' WHERE id=1 AND state='active'`)
+					} else if err == nil {
 						_, err = db.Exec(`DELETE FROM import_resume_job WHERE id=1`)
 					} else {
 						db.Exec(`UPDATE import_resume_job SET state='failed',error=? WHERE id=1`, err.Error())
@@ -133,33 +156,93 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 				}
 				pending[task.kind]--
 				status["manual_"+task.kind+"_running"] = pending[task.kind] > 0
-				if err != nil {
+				if err != nil && !errors.Is(err, context.Canceled) {
 					status["manual_"+task.kind+"_error"] = err.Error()
 				}
 				statusMu.Unlock()
 			}
 		}
 	}()
-	opts.StartScan = func(path string, limit int) error {
-		return enqueue("scan", func() error { return startScan(path, limit) })
+	// Explicit manual work resumes automatic monitoring; only the stop action persists a pause.
+	resume := func() error {
+		statusMu.Lock()
+		defer statusMu.Unlock()
+		if _, err := db.Exec(`UPDATE import_control SET paused=0 WHERE id=1`); err != nil {
+			return err
+		}
+		paused = false
+		return nil
 	}
-	opts.StartImport = func(hashes []string, id int64, deleteAfter bool, mode string) error {
-		selected := append([]string(nil), hashes...)
-		return enqueue("import", func() error { return startImport(selected, id, deleteAfter, mode) })
+	opts.CancelImportTask = func() error {
+		statusMu.Lock()
+		defer statusMu.Unlock()
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if _, err = tx.Exec(`UPDATE import_control SET paused=1 WHERE id=1`); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(`UPDATE import_resume_job SET state='cancelled',error='' WHERE id=1`); err != nil {
+			return err
+		}
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		paused = true
+		generation++
+		if activeCancel != nil {
+			activeCancel()
+		}
+		return nil
+	}
+	scanWith := func(c context.Context, path string, n int) error {
+		if err := c.Err(); err != nil {
+			return err
+		}
+		if opts.StartScanContext != nil {
+			return opts.StartScanContext(c, path, n)
+		}
+		return startScan(path, n)
+	}
+	importWith := func(c context.Context, h []string, id int64, remove bool, mode string) error {
+		if err := c.Err(); err != nil {
+			return err
+		}
+		if opts.StartImportContext != nil {
+			return opts.StartImportContext(c, h, id, remove, mode)
+		}
+		return startImport(h, id, remove, mode)
+	}
+	opts.StartScan = func(path string, n int) error {
+		if err := resume(); err != nil {
+			return err
+		}
+		return enqueue("scan", func(c context.Context) error { return scanWith(c, path, n) })
+	}
+	opts.StartImport = func(h []string, id int64, remove bool, mode string) error {
+		if err := resume(); err != nil {
+			return err
+		}
+		selected := append([]string(nil), h...)
+		return enqueue("import", func(c context.Context) error { return importWith(c, selected, id, remove, mode) })
 	}
 	opts.StartLibraryImport = func(id int64, mode string) error {
+		if err := resume(); err != nil {
+			return err
+		}
 		if err := rememberImportTask(db, id, mode); err != nil {
 			return err
 		}
-		return enqueue("library_import", func() error {
-			phase := func(value string) { statusMu.Lock(); status["manual_library_import_phase"] = value; statusMu.Unlock() }
-			settings := LoadSettings(opts.SettingsPath)
-			return runLibraryImport(ctx, opts, db, settings, id, mode, startScan, startImport, phase)
+		return enqueue("library_import", func(c context.Context) error {
+			phase := func(v string) { statusMu.Lock(); status["manual_library_import_phase"] = v; statusMu.Unlock() }
+			return runLibraryImport(c, opts, db, LoadSettings(opts.SettingsPath), id, mode, func(p string, n int) error { return scanWith(c, p, n) }, func(h []string, id int64, b bool, m string) error { return importWith(c, h, id, b, m) }, phase)
 		})
 	}
 	var resumeID int64
 	var resumeMode string
-	if db.QueryRow(`SELECT user_id,mode FROM import_resume_job WHERE id=1 AND state='active'`).Scan(&resumeID, &resumeMode) == nil {
+	if !paused && db.QueryRow(`SELECT user_id,mode FROM import_resume_job WHERE id=1 AND state='active'`).Scan(&resumeID, &resumeMode) == nil {
 		opts.StartLibraryImport(resumeID, resumeMode)
 	}
 	done := make(chan struct{})
@@ -175,6 +258,13 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 				return
 			case <-ticker.C:
 			}
+			statusMu.Lock()
+			isPaused := paused
+			statusMu.Unlock()
+			if isPaused {
+				update("paused", "已停止，点击扫描或全部导入可继续", 0, 0)
+				continue
+			}
 			settings := LoadSettings(opts.SettingsPath)
 			if !settingBool(settings, "import_auto_watch_enabled", false) {
 				update("off", "", 0, 0)
@@ -189,13 +279,26 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 			interval, _ := scan.WatchInterval(toIntSetting(settings, "import_watch_interval_seconds", 30), 500, 30, 500)
 			update("scanning", "", 1, 0)
 			workMu.Lock()
-			err := runAutoImport(ctx, opts, db, settings, startScan, func(hashes []string, id int64, remove bool, mode string) error {
+			statusMu.Lock()
+			autoCtx, autoCancel := context.WithCancel(ctx)
+			if paused {
+				autoCancel()
+			}
+			activeCancel = autoCancel
+			statusMu.Unlock()
+			err := runAutoImport(autoCtx, opts, db, settings, func(p string, n int) error { return scanWith(autoCtx, p, n) }, func(hashes []string, id int64, remove bool, mode string) error {
 				update("importing", "", 1, 0)
-				return startImport(hashes, id, remove, mode)
+				return importWith(autoCtx, hashes, id, remove, mode)
 			}, func(phase string) { update(phase, "", 1, 0) })
+			autoCancel()
+			statusMu.Lock()
+			activeCancel = nil
+			statusMu.Unlock()
 			workMu.Unlock()
 			next = time.Now().Add(time.Duration(interval) * time.Second)
-			if err != nil {
+			if errors.Is(err, context.Canceled) {
+				update("paused", "已停止，已完成结果保留", 0, 0)
+			} else if err != nil {
 				update("failed", err.Error(), 0, 1)
 			} else {
 				update("watching", "等待下一次扫描", 0, 0)

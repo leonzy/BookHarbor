@@ -27,6 +27,7 @@
 </template>
 
 <script setup>
+import { useI18n } from 'vue-i18n';
 defineProps({ summary: { type: Object, default: null } });
 const { t, n } = useI18n();
 const fields = ['library_books', 'available_books', 'done', 'missing_source_books'];

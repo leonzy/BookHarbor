@@ -26,51 +26,21 @@ jobs:
 
   test-server:
     runs-on: ubuntu-latest
-    container:
-      image: talebook/talebook-base:latest
-      options: --user root
-
     steps:
-      - name: Install git (required for submodule checkout in container)
-        run: |
-          if ! command -v git >/dev/null 2>&1 || [ "$(git --version | awk '{print $3}' | cut -d. -f1,2)" \< "2.18" ]; then
-            apt-get update
-            apt-get install -y --no-install-recommends git ca-certificates
-            rm -rf /var/lib/apt/lists/*
-          fi
-
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          submodules: recursive
-
-      - name: Install ffmpeg for audiobook integration test
+          go-version-file: booksvr/go.mod
+          cache-dependency-path: booksvr/go.sum
+      - name: Go backend tests and vet
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends ffmpeg
-          rm -rf /var/lib/apt/lists/*
-          command -v ffmpeg
-          command -v ffprobe
-
-      - name: Inspect environment
+          cd booksvr
+          go test ./...
+          go vet ./...
+      - name: Image management tests
         run: |
-          command -v ebook-convert
-          ebook-convert --version
-          command -v calibredb
-          calibredb --version
-          command -v make
-          make --version
-          python3 --version
-          pip3 --version
-
-      - name: Install Python dependencies
-        run: make init
-
-      - name: Lint with ruff
-        run: make lint-py
-
-      - name: Run tests with pytest
-        run: make pytest
+          python3 -m pip install pytest cryptography
+          python3 -m pytest tests -q
 
   test-ui:
     runs-on: ubuntu-latest

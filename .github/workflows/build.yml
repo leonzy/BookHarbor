@@ -45,14 +45,14 @@ jobs:
           filters: |
             docker:
               - 'app/**'
-              - 'webserver/**'
+              - 'booksvr/**'
+              - 'resources/**'
               - 'conf/nginx/**'
               - 'conf/supervisor/**'
               - 'docker/**'
               - 'Dockerfile'
               - '.dockerignore'
               - 'Makefile'
-              - 'server.py'
               - 'requirements.txt'
               - 'requirements-test.txt'
               - 'docker-compose.yml'

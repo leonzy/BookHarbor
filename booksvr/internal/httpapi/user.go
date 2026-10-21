@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"talebook/booksvr/internal/library"
 	"talebook/booksvr/internal/pluginiface"
 	"talebook/booksvr/internal/pluginruntime"
 	"talebook/booksvr/internal/userdb"
@@ -21,7 +22,8 @@ type UserConfig struct {
 	// Auth 复用登录/演示模式/访问码配置。
 	Auth AuthConfig
 	// DB 是 Talebook 自有库（readers / devices / messages）。
-	DB *sql.DB
+	DB        *sql.DB
+	LibraryDB *sql.DB
 	// Settings 是站点配置（启动快照）。
 	Settings map[string]any
 	// SettingsPath 是配置文件路径；非空时每次请求都从磁盘重读，
@@ -52,7 +54,8 @@ type UserConfig struct {
 	CountFormats    func() (int64, error)
 	LastModified    func() (string, error)
 	// BookExists 判定书是否存在，用于历史记录过滤。
-	BookExists func(id int64) bool
+	BookExists      func(id int64) bool
+	HistoryMetadata func([]int64) (map[int64]library.BookData, error)
 }
 
 // PushProvider 描述一个可用的推送设备类型。
@@ -94,6 +97,26 @@ func UserInfoHandler(cfg UserConfig) HandlerFunc {
 		}
 
 		detail := ctx.Query("detail") != ""
+		if detail && cfg.LibraryDB != nil {
+			// Scope history book lookup to this request, including privacy and missing-source visibility.
+			private, err := userdb.PrivateBookIDsFor(cfg.DB, ctx.Identity.UserID, ctx.Identity.IsAdmin)
+			if err != nil {
+				return nil, err
+			}
+			missing, err := library.UnavailableSourceBooks(cfg.LibraryDB)
+			if err != nil {
+				return nil, err
+			}
+			cfg.BookExists = func(id int64) bool { return !private[id] && !missing[id] }
+			cfg.HistoryMetadata = func(ids []int64) (map[int64]library.BookData, error) {
+				books, err := library.GetBooksData(cfg.LibraryDB, ids)
+				out := map[int64]library.BookData{}
+				for _, book := range books {
+					out[book.ID] = book
+				}
+				return out, err
+			}
+		}
 		sys := map[string]any{}
 		if !detail {
 			info, err := userSysInfo(cfg)
@@ -285,6 +308,23 @@ func filterHistory(cfg UserConfig, value any) any {
 	if !ok {
 		return value
 	}
+	metadata := map[int64]library.BookData{}
+	if cfg.HistoryMetadata != nil {
+		ids := []int64{}
+		for _, raw := range items {
+			if b, ok := raw.(map[string]any); ok {
+				ids = append(ids, int64Of(b["id"]))
+			}
+			if len(ids) >= 24 {
+				break
+			}
+		}
+		var err error
+		metadata, err = cfg.HistoryMetadata(ids)
+		if err != nil {
+			return []any{}
+		}
+	}
 	kept := make([]any, 0, len(items))
 	for _, raw := range items {
 		b, ok := raw.(map[string]any)
@@ -292,8 +332,17 @@ func filterHistory(cfg UserConfig, value any) any {
 			continue
 		}
 		id := int64Of(b["id"])
+		if cfg.HistoryMetadata != nil {
+			if _, ok := metadata[id]; !ok {
+				continue
+			}
+		}
 		if cfg.BookExists != nil && !cfg.BookExists(id) {
 			continue
+		}
+		if book, ok := metadata[id]; ok {
+			b["comments"] = book.Comments
+			b["format_sizes"] = book.FormatSizes
 		}
 		b["img"] = fmt.Sprintf("%s/get/cover/%d.jpg?t=%s", cfg.CDNURL, id, stringOf(b["timestamp"]))
 		b["href"] = fmt.Sprintf("/book/%d", id)

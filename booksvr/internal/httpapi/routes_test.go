@@ -24,15 +24,15 @@ func TestLegacyRouteCountIs215(t *testing.T) {
 	}
 }
 
-func TestNewRouteCountIs4(t *testing.T) {
-	if got := len(NewRoutes()); got != 4 {
-		t.Fatalf("NewRoutes() 数 = %d, want 4", got)
+func TestNewRouteCountIs5(t *testing.T) {
+	if got := len(NewRoutes()); got != 5 {
+		t.Fatalf("NewRoutes() 数 = %d, want 5", got)
 	}
 }
 
-func TestTotalRouteCountIs219(t *testing.T) {
-	if got := RouteCount(); got != 219 {
-		t.Fatalf("RouteCount() = %d, want 219（215 既有 + 4 新增）", got)
+func TestTotalRouteCountIs220(t *testing.T) {
+	if got := RouteCount(); got != 220 {
+		t.Fatalf("RouteCount() = %d, want 220（215 既有 + 5 新增）", got)
 	}
 }
 
@@ -107,26 +107,19 @@ func TestSourceFilesExist(t *testing.T) {
 	}
 }
 
-// TestPatternsExistInPythonSource 断言每条既有 pattern 逐字出现在其 Source 文件里。
-//
-// 这是「与 Python 版一致」的硬证据：不是靠人工抄写，而是回到源码比对。
-// 新增的 4 条路由不属于 Python 版，因此只对 LegacyRoutes 做此断言。
-func TestPatternsExistInPythonSource(t *testing.T) {
-	root := repoRoot(t)
-	cache := map[string]string{}
-	for _, r := range LegacyRoutes() {
-		src, ok := cache[r.Source]
-		if !ok {
-			data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(r.Source)))
-			if err != nil {
-				t.Fatalf("read %s: %v", r.Source, err)
-			}
-			src = string(data)
-			cache[r.Source] = src
+// The historical static catch-all is served by Nginx. Every application route
+// must have a native handler; no retired Python source is needed for validation.
+func TestCatalogPatternsHaveNativeHandlers(t *testing.T) {
+	have := map[string]bool{}
+	for _, pattern := range ImplementedPatterns() {
+		have[pattern] = true
+	}
+	for _, route := range Routes() {
+		if route.Pattern == "/(.*)" {
+			continue
 		}
-		// Python 源码里 pattern 写作 r"/api/..."，去掉 r" 前缀与结尾引号比对。
-		if !strings.Contains(src, r.Pattern) {
-			t.Errorf("pattern %q 未在 %s 中找到", r.Pattern, r.Source)
+		if !have[route.Pattern] {
+			t.Errorf("missing native implementation: %s", route.Pattern)
 		}
 	}
 }
@@ -202,26 +195,26 @@ func TestKnownRoutesPresent(t *testing.T) {
 // TestRouteSourcesCoverAllModules 断言既有路由来源覆盖盘点表列出的全部模块。
 func TestRouteSourcesCoverAllModules(t *testing.T) {
 	want := []string{
-		"webserver/handlers/book.py",
-		"webserver/handlers/plugins.py",
-		"webserver/handlers/audiobook.py",
-		"webserver/handlers/admin.py",
-		"webserver/handlers/network_library.py",
-		"webserver/handlers/user.py",
-		"webserver/handlers/scan.py",
-		"webserver/handlers/booksource_admin.py",
-		"webserver/handlers/files.py",
-		"webserver/handlers/meta.py",
-		"webserver/handlers/opds.py",
-		"webserver/handlers/annotations.py",
-		"webserver/handlers/comic.py",
-		"webserver/handlers/captcha.py",
-		"webserver/handlers/network_comic.py",
-		"webserver/handlers/theme.py",
-		"webserver/handlers/upgrade.py",
-		"webserver/webdav/handler.py",
-		"webserver/main.py",
-		"webserver/social_routes.py",
+		"booksvr/internal/httpapi/book.go",
+		"booksvr/internal/httpapi/plugins.go",
+		"booksvr/internal/httpapi/audiobook.go",
+		"booksvr/internal/httpapi/admin.go",
+		"booksvr/internal/httpapi/serve.go",
+		"booksvr/internal/httpapi/user.go",
+		"booksvr/internal/httpapi/scan.go",
+		"booksvr/internal/httpapi/booksource_admin.go",
+		"booksvr/internal/httpapi/files.go",
+		"booksvr/internal/httpapi/meta.go",
+		"booksvr/internal/httpapi/opds.go",
+		"booksvr/internal/httpapi/annotations.go",
+		"booksvr/internal/httpapi/comic.go",
+		"booksvr/internal/httpapi/captcha.go",
+		"booksvr/internal/httpapi/serve.go",
+		"booksvr/internal/httpapi/theme.go",
+		"booksvr/internal/httpapi/upgrade.go",
+		"booksvr/internal/httpapi/webdav.go",
+		"booksvr/internal/httpapi/serve.go",
+		"booksvr/internal/httpapi/social.go",
 	}
 	have := map[string]bool{}
 	for _, r := range LegacyRoutes() {

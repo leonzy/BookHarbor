@@ -20,12 +20,11 @@ def build(root, image, output, key_id, private_key, notes):
     if database_fingerprint(root) != image["database"]:
         raise ValueError("Exported source does not match image schema")
     # Set the backend version explicitly, without executable release-controlled interpolation.
-    (root / "webserver/version.py").write_text(f"VERSION = {image['version']!r}\nARCH = {image['arch']!r}\n")
     stamp_frontend(root / "app/dist", image["version"])
     output.mkdir(parents=True, exist_ok=True)
     archive = output / f"package-{image['arch']}.tar.gz"
-    files = [root / "server.py"]
-    for directory in (root / "webserver", root / "app/dist"):
+    files = [root / "booksvr"]
+    for directory in (root / "resources", root / "app/dist"):
         for path in directory.rglob("*"):
             relative = path.relative_to(root)
             if any(part.startswith(".") or part == "__pycache__" for part in relative.parts):
@@ -45,7 +44,7 @@ def build(root, image, output, key_id, private_key, notes):
                 raise ValueError("Expanded size limit exceeded")
             info = tarfile.TarInfo(str(path.relative_to(root)))
             info.size = len(content)
-            info.mode = 0o644
+            info.mode = 0o755 if path.name == "booksvr" and path.parent == root else 0o644
             tar.addfile(info, io.BytesIO(content))
     if archive.stat().st_size > MAX_PACKAGE:
         raise ValueError("Package size limit exceeded")

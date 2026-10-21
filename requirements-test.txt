@@ -1,5 +1,1 @@
-ruff
-pytest==7.4.4
-pytest-cov
-flake8
-PyYAML
+pytest>=8

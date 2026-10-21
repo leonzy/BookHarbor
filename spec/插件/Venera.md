@@ -91,10 +91,10 @@ Venera 漫画源插件让读者在 Talebook 在线书库中浏览并阅读受支
 
 | 行为 | 文件 |
 |---|---|
-| 源适配与网络策略 | `webserver/plugins/source/venera.py` |
-| JS 宿主与隔离进程 | `webserver/plugins/source/venera_host.js` / `webserver/plugins/source/venera_worker.py` |
-| 漫画页面与图片接口 | `webserver/handlers/network_comic.py` |
-| 阅读器宿主 | `webserver/resources/book/online-comic-reader.html` |
+| 源适配与网络策略 | `booksvr/internal/httpapi/serve.go` |
+| JS 宿主与隔离进程 | `booksvr/internal/httpapi/serve.go` / `booksvr/internal/httpapi/serve.go` |
+| 漫画页面与图片接口 | `booksvr/internal/httpapi/network_comic.go` |
+| 阅读器宿主 | `booksvr/internal/httpapi/serve.go` |
 | 生产与开发阅读入口代理 | `conf/nginx/talebook.conf` / `conf/nginx/server-side-render.conf` / `conf/nginx/dev.conf` |
 | 在线书库与详情 | `app/pages/library/network.vue` / `app/pages/network/book.vue` |
 

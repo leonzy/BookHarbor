@@ -425,7 +425,7 @@ func TestImportRunHandler(t *testing.T) {
 		t.Errorf("import_mode = %q, want index", gotMode)
 	}
 	if gotUser != 7 {
-		t.Errorf("user_id = %d, want 7", gotUser)
+		t.Errorf("user_id = %d, want 8", gotUser)
 	}
 }
 
@@ -545,8 +545,8 @@ func TestImportStatusHandlerUnavailable(t *testing.T) {
 // TestScanRouteSpecs 路由注册与权限标志。
 func TestScanRouteSpecs(t *testing.T) {
 	specs := ScanRouteSpecs(ScanConfig{})
-	if len(specs) != 7 {
-		t.Fatalf("路由数 = %d, want 7", len(specs))
+	if len(specs) != 8 {
+		t.Fatalf("路由数 = %d, want 8", len(specs))
 	}
 	want := map[string]string{
 		rScanList:     http.MethodGet,
@@ -558,6 +558,12 @@ func TestScanRouteSpecs(t *testing.T) {
 		rImportStatus: http.MethodGet,
 	}
 	for _, spec := range specs {
+		if spec.Pattern == rImportTask {
+			if len(spec.Methods) != 2 || !spec.Auth || !spec.Admin {
+				t.Fatal("task route must require administrator")
+			}
+			continue
+		}
 		method, ok := want[spec.Pattern]
 		if !ok {
 			t.Errorf("意外路由 %q", spec.Pattern)

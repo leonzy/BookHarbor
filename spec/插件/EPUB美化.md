@@ -109,10 +109,10 @@ EPUB美化是**调整书库中 EPUB 的目录、章节标题与正文排版，�
 
 | 行为 | 文件与函数 |
 |---|---|
-| 插件实现与参数校验 | `webserver/plugins/tool/epub_beautify/provider.py` 的 `EpubBeautifyTransformPlugin` |
-| EPUB 分析与生成 | `webserver/plugins/tool/epub_beautify/beautify_lib.py` 的 `analyze_epub()` / `beautify()` |
-| 排版预设与纹理 | `webserver/plugins/tool/epub_beautify/styles/` |
-| 接口与新书入库 | `webserver/handlers/plugin_booktools.py` 的 `UserEpubBeautifyPresets` / `UserEpubBeautifyPreview` / `UserEpubBeautifyRun` |
+| 插件实现与参数校验 | `booksvr/internal/httpapi/serve.go` 的 `EpubBeautifyTransformPlugin` |
+| EPUB 分析与生成 | `booksvr/internal/httpapi/serve.go` 的 `analyze_epub()` / `beautify()` |
+| 排版预设与纹理 | `booksvr/internal/httpapi/serve.go` |
+| 接口与新书入库 | `booksvr/internal/httpapi/plugin_booktools.go` 的 `UserEpubBeautifyPresets` / `UserEpubBeautifyPreview` / `UserEpubBeautifyRun` |
 | 前端页面 | `app/pages/plugins/epub-beautify.vue` |
 
 ### 7.5 界面文案

@@ -64,6 +64,8 @@ func Run(args []string) error {
 	case "--version", "-v":
 		fmt.Fprintln(os.Stdout, "booksvr "+version)
 		return nil
+	case "bootstrap":
+		return runBootstrap(args[2:], os.Stdout)
 	case "serve":
 		return runServe(args[2:], os.Stdout)
 	case "import-calibre":

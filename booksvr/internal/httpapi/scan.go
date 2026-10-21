@@ -21,6 +21,7 @@ const (
 	rScanDelete   = "/api/admin/scan/delete"
 	rScanMark     = "/api/admin/scan/mark"
 	rImportRun    = "/api/admin/import/run"
+	rImportTask   = "/api/admin/import/task"
 	rImportStatus = "/api/admin/import/status"
 )
 
@@ -38,6 +39,7 @@ type ScanConfig struct {
 	// StartImport 启动一次异步导入；为 nil 时返回服务不可用。
 	StartImport        func(hashlist []string, userID int64, deleteAfter bool, importMode string) error
 	StartLibraryImport func(int64, string) error
+	CancelImportTask   func() error
 	// UserID 从请求上下文取当前用户 ID。
 	UserID func(ctx *Context) int64
 }
@@ -337,6 +339,32 @@ func taskStatusResponse(cfg ScanConfig, kind string, status, summary any) map[st
 // ScanRouteSpecs 返回扫描/导入流水线模块接管的 7 条路由。
 func ScanRouteSpecs(cfg ScanConfig) []RouteSpec {
 	return []RouteSpec{
+		{Pattern: rImportTask, Methods: []string{http.MethodGet, http.MethodDelete}, Auth: true, Admin: true, Handler: func(ctx *Context) (map[string]any, error) {
+			if ctx.Request.Method == http.MethodDelete {
+				if cfg.CancelImportTask == nil {
+					return map[string]any{"err": "service.unavailable"}, nil
+				}
+				if err := cfg.CancelImportTask(); err != nil {
+					return nil, err
+				}
+			}
+			watch := cfg.watchStatus()
+			processed, failed := 0, 0
+			if svc := cfg.scanService(); svc != nil {
+				p := svc.Progress()
+				processed, failed = p.Processed, p.Failed
+			}
+			active := false
+			for _, key := range []string{"manual_scan_running", "manual_import_running", "manual_library_import_running"} {
+				if v, _ := watch[key].(bool); v {
+					active = true
+				}
+			}
+			if v, _ := watch["running"].(int); v > 0 {
+				active = true
+			}
+			return map[string]any{"err": "ok", "task": map[string]any{"active": active, "cancelled": watch["paused"], "kind": watch["manual_library_import_phase"], "processed": processed, "failed": failed}, "watch_status": watch}, nil
+		}},
 		{Pattern: rScanList, Methods: []string{http.MethodGet}, Auth: true, Admin: true, Handler: ScanListHandler(cfg)},
 		{Pattern: rScanRun, Methods: []string{http.MethodPost}, Auth: true, Admin: true, Handler: ScanRunHandler(cfg)},
 		{Pattern: rScanStatus, Methods: []string{http.MethodGet}, Auth: true, Admin: true, Handler: ScanStatusHandler(cfg)},

@@ -6,10 +6,10 @@
 
 Talebook 是基于 [Calibre](https://calibre-ebook.com/) 的个人电子书管理系统：
 
-- **`webserver/`** — Python 后端（Tornado + Calibre），详见 `webserver/CLAUDE.md`
+- **`booksvr/`** — 唯一 Go HTTP 后端；内嵌用户表 schema 并执行幂等初始化，Calibre 只作为外部格式工具。旧 Python HTTP 服务已删除。
 - **`app/`** — 前端（Nuxt 4 + Vue 3 + Vuetify），详见 `app/CLAUDE.md`
 
-生产环境由 Nginx 托管静态前端，并将 `/api/` 、`/get/` 、`/read/` 、`/auth/` 、`/opds/` 反向代理到 8080 端口的 Tornado 后端。
+生产环境由 Nginx 托管静态前端，并将 `/api/` 、`/get/` 、`/read/` 、`/auth/` 、`/opds/` 反向代理到 8000 端口的 booksvr 后端。
 
 ## 常用命令
 
@@ -18,14 +18,14 @@ Talebook 是基于 [Calibre](https://calibre-ebook.com/) 的个人电子书管�
 make init
 
 # 后端测试与检查
-make pytest
-make lint-py
+make test-go
+make lint-go
 
 # Docker 全栈
-make test    # Docker 内运行 pytest
+make test    # Docker 内运行 Go 测试
 make build   # 测试通过后构建生产镜像
 make up      # docker compose up
-make dev     # 挂载 webserver/ 进容器，用于后端开发调试
+make dev     # 挂载 booksvr/ 进容器，用于 Go 后端开发调试
 ```
 
 前端命令见 `app/CLAUDE.md` 。
@@ -129,7 +129,7 @@ cp design/TEMPLATE.html design/<module>/yyyymmdd-<feature>.wip.html
 ### 测试
 
 - **每次新增或修改功能，必须附带对应的测试用例**，不允许只改业务代码不写测试。
-- 后端改动在 `tests/` 中添加用例，前端改动在 `app/test/` 中添加用例。
+- Go 后端改动在 `booksvr/` 对应包中添加 `_test.go` 用例；`tests/` 只测试镜像管理脚本。前端改动在 `app/test/` 中添加用例。
 - 具体写法见各子目录的 CLAUDE.md。
 
 ### 前端验收
@@ -159,9 +159,9 @@ cp design/TEMPLATE.html design/<module>/yyyymmdd-<feature>.wip.html
 ### 提交前检查
 
 ```bash
-make lint-py-fix   # 后端：用 black + isort 自动修复格式，开发完代码后必须执行
-make lint-py       # 后端：flake8 必须通过，不允许提交有 lint 错误的代码
-make pytest        # 后端：所有测试必须通过
+make lint-go       # 后端：go vet 检查
+python3 -m pytest tests # 容器管理脚本测试（Linux）
+make test-go       # Go 后端：所有测试必须通过
 make check-design  # 内部方案：路径、状态、HTML 与资源约束必须通过
 make check-spec    # 领域规格：结构、术语表、互链、实现对照与插件覆盖度必须通过
 cd app && npm run lint   # 前端：eslint 必须通过

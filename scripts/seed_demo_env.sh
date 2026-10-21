@@ -18,7 +18,7 @@ if [ ! -f docker/seed/calibre-webserver.db ] || [ ! -f docker/seed/auto.py ]; th
     exit 1
 fi
 
-echo ">> 启动 dev 后端容器（dev.yml，挂载本地 webserver/）..."
+echo ">> 启动 dev 后端容器（dev.yml，挂载本地 booksvr/）..."
 docker compose -f dev.yml up -d
 
 echo ">> 等待 /data 初始化..."

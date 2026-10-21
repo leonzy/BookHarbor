@@ -60,6 +60,7 @@
                     </v-card-actions>
                 </v-card>
             </v-dialog>
+            <LoginPrompt />
         </v-main>
         <Upload v-if="store.nav" />
         <AudiobookPlayer />
@@ -74,6 +75,7 @@ import { useMainStore } from '@/stores/main';
 import { useDisplay } from 'vuetify';
 import Loading from '@/components/Loading.vue';
 import AudiobookPlayer from '@/components/AudiobookPlayer.vue';
+import LoginPrompt from '@/components/LoginPrompt.vue';
 
 const store = useMainStore();
 const display = useDisplay();

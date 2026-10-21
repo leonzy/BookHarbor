@@ -25,6 +25,7 @@ import (
 //  3. book_formats — the format layer (absolute paths, no copying)
 func Migrate(db *sql.DB) error {
 	stmts := []string{
+		`CREATE INDEX IF NOT EXISTS booksvr_books_timestamp ON books(timestamp DESC,id DESC)`,
 		// --- Layer 1: works -------------------------------------------------
 		`CREATE TABLE IF NOT EXISTS works (
 			id             INTEGER PRIMARY KEY,

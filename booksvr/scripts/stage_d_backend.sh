@@ -39,7 +39,7 @@ fi
 
 # 3. 初始化 Talebook 自有库
 cd /var/www/talebook
-python3 server.py --syncdb >/dev/null 2>&1 || true
+booksvr bootstrap -user-db=/data/books/calibre-webserver.db -settings-file=/data/books/settings/auto.py >/dev/null 2>&1 || true
 
 # 4. 启动 booksvr（前台，容器主进程）
 echo "starting booksvr on 0.0.0.0:8080 ..."

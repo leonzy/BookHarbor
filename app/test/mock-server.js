@@ -18,6 +18,10 @@ let isInvited = true;
 let demoMode = false;
 let showNetworkLibrary = true;
 let networkSourceState = 'ready';
+let indexOverride = null;
+let readingBooksOverride = null;
+let finishedBooksOverride = null;
+let historyOverride = null;
 let users = [];
 let saveStarted = false;
 let saveStatusPolls = 0;
@@ -174,6 +178,10 @@ router.post('/_test/reset', eventHandler(async (event) => {
   demoMode = !!(body && body.demoMode);
   showNetworkLibrary = body?.showNetworkLibrary !== false;
   networkSourceState = body?.networkSourceState || 'ready';
+  indexOverride = body?.indexData || null;
+  readingBooksOverride = body?.readingBooks ?? null;
+  finishedBooksOverride = body?.finishedBooks ?? null;
+  historyOverride = body?.history ?? null;
   console.log('[Mock] isInstalled set to:', isInstalled);
   users = [];
   saveStarted = false;
@@ -892,9 +900,19 @@ router.get('/api/user/info', eventHandler(() => accessControlEnvelope() || ({
     is_admin: isLoggedIn,
     nickname: isLoggedIn ? 'Admin' : '',
     avatar: '',
+    extra: historyOverride || {},
     kindle_email: isLoggedIn ? 'test@kindle.com' : ''
   }
 })));
+
+router.post('/api/user/sign_in', eventHandler(async (event) => {
+  const body = new URLSearchParams(await readBody(event) || '');
+  if (body.get('username') !== 'admin' || body.get('password') !== 'admin') {
+    return { err: 'params.invalid', msg: '用户名或密码错误' };
+  }
+  isLoggedIn = true;
+  return { err: 'ok', msg: 'ok' };
+}));
 
 router.get('/api/user/sign_out', eventHandler(() => {
   isLoggedIn = false;
@@ -930,7 +948,7 @@ router.get('/api/index', eventHandler(() => {
   console.log('[Mock] GET /api/index, isInstalled:', isInstalled);
   const accessError = accessControlEnvelope();
   if (accessError) return accessError;
-  return readJson('api_index.json') || { err: 'error', msg: 'mock not found' };
+  return indexOverride || readJson('api_index.json') || { err: 'error', msg: 'mock not found' };
 }));
 
 router.get('/api/welcome', eventHandler(() => {
@@ -1357,6 +1375,7 @@ router.get('/api/hot', eventHandler(() => {
 }));
 
 const getFinishedBooks = () => {
+  if (finishedBooksOverride) return finishedBooksOverride;
   const books = readJson('books.json') || [];
   return books.slice(0, 1).map(book => ({
     ...book,
@@ -1371,8 +1390,8 @@ router.get('/api/read-done', eventHandler(() => {
 
 router.get('/api/reading', eventHandler(() => ({
   err: 'ok',
-  total: 0,
-  books: [],
+  total: readingBooksOverride?.length || 0,
+  books: readingBooksOverride || [],
 })));
 
 // Search
@@ -1412,6 +1431,7 @@ const getShelfBooks = () => {
 };
 
 router.get('/api/shelf', eventHandler(() => {
+  if (!isLoggedIn) return { err: 'user.need_login', msg: '请先登录' };
   const shelfBooks = getShelfBooks();
   return {
     err: 'ok',

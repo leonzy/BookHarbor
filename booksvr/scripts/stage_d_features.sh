@@ -16,7 +16,7 @@ echo ""
 
 echo ""
 echo "=== 1. 主题功能（此前报 FileThemeStore 需要 Path） ==="
-# 真实路径是 /api/themes*（见 webserver/handlers/theme.py），不是 /api/admin/themes*。
+# 真实路径是 /api/themes*（见 booksvr/internal/httpapi/theme.go），不是 /api/admin/themes*。
 echo "--- GET /api/themes ---"
 curl -sS -b $JAR "$BASE/api/themes" | head -c 400
 echo ""

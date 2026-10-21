@@ -627,7 +627,9 @@
   },
   "index": {
     "newReleases": "Новинки",
-    "browseByCategory": "Обзор по категориям"
+    "browseByCategory": "Обзор по категориям",
+    "noUnreadRecommendations": "No unread recommendations available",
+    "noUnreadRecommendationsHint": "Browse the library or update your reading status on a book's details page"
   },
   "counts": {
     "books": "Книг: {count}",
@@ -938,7 +940,19 @@
         "missing_source_books": "Книг без исходных файлов",
         "explanation": "Число книг учитывает уникальные записи, включая книги с подтверждённо отсутствующими источниками. Доступное число исключает эти книги. Одной книге могут соответствовать несколько файлов. Дубликаты пропускаются, а не ожидают обработки. При просмотре также учитываются права доступа."
       },
-      "duplicateSkippedReason": "Такое содержимое или соответствующий формат уже есть в библиотеке. Повторный импорт не требуется."
+      "duplicateSkippedReason": "Такое содержимое или соответствующий формат уже есть в библиотеке. Повторный импорт не требуется.",
+      "task": {
+        "stop": "Stop current task",
+        "stopping": "Stopping after the current book finishes.",
+        "stopped": "Задача остановлена. Готовые результаты сохранены. Запустите сканирование или импорт, чтобы продолжить и возобновить наблюдение.",
+        "progress": "{count} processed, {failed} failed",
+        "completed": "Task completed: {count} processed, {failed} failed. Review the scan records below.",
+        "stopFailed": "Unable to stop the task. Please retry.",
+        "startFailed": "Unable to start the task. Please retry.",
+        "failed": "The task failed. Check the failed records before retrying.",
+        "stopPending": "Остановка",
+        "paused": "Приостановлено"
+      }
     },
     "settings": {
       "title": "Системные настройки",

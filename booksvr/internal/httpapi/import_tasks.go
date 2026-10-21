@@ -4,6 +4,10 @@ import "database/sql"
 
 func ensureImportTasks(db *sql.DB) error {
 	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS import_resume_job(id INTEGER PRIMARY KEY CHECK(id=1),user_id INTEGER NOT NULL,mode TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'active',error TEXT NOT NULL DEFAULT '')`)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS import_control(id INTEGER PRIMARY KEY CHECK(id=1),paused INTEGER NOT NULL DEFAULT 0); INSERT OR IGNORE INTO import_control(id,paused) VALUES(1,0)`)
 	return err
 }
 func rememberImportTask(db *sql.DB, id int64, mode string) error {

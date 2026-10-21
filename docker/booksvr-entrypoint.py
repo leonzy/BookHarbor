@@ -23,6 +23,9 @@ def main():
         print("booksvr-entrypoint: cookie_secret is missing from Talebook settings", file=sys.stderr)
         return 1
 
+    selected = "/run/talebook-release/current/booksvr"
+    if command[0] == "/usr/local/bin/booksvr" and os.path.isfile(selected):
+        command[0] = selected
     env = os.environ.copy()
     env["BOOKSVR_COOKIE_SECRET"] = secret
     os.execvpe(command[0], command, env)

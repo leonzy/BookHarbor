@@ -130,11 +130,11 @@ BRS 插件同时做两件事：
 
 | 行为 | 文件与函数 |
 |---|---|
-| 插件实现 | `webserver/plugins/annotation/brs.py` |
-| 注册 | `webserver/plugins/register.py` 的 `ANNOTATION_PROVIDERS` |
-| 能力接口 | `webserver/plugins/runtime/interfaces.py` 的 `AnnotationProvider`、`ReviewProvider` |
-| 异步扇出 | `webserver/services/annotation_sync.py` |
-| 写入器 | `webserver/services/annotation_writer.py` |
+| 插件实现 | `booksvr/internal/httpapi/serve.go` |
+| 注册 | `booksvr/internal/pluginbuiltin/register.go` 的 `ANNOTATION_PROVIDERS` |
+| 能力接口 | `booksvr/internal/httpapi/serve.go` 的 `AnnotationProvider`、`ReviewProvider` |
+| 异步扇出 | `booksvr/internal/httpapi/annotation_sync.go` |
+| 写入器 | `booksvr/internal/httpapi/serve.go` |
 | 前端页面 | `app/pages/plugins/brs.vue` |
 
 ### 7.5 界面文案

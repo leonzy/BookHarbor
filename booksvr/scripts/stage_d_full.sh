@@ -39,10 +39,10 @@ PY
 calibredb --library-path="$LIB" add /tmp/src/demo.epub 2>&1 | tail -1
 
 echo ""
-echo "=== 4. Python syncdb 初始化自有库 ==="
+echo "=== 4. Go bootstrap 初始化自有库 ==="
 mkdir -p /data/books
 cd /var/www/talebook
-python3 server.py --syncdb 2>&1 | tail -2
+booksvr bootstrap -user-db=/data/books/calibre-webserver.db -settings-file=/data/books/settings/auto.py 2>&1 | tail -2
 
 echo ""
 echo "=== 5. 启动 booksvr serve（双库） ==="

@@ -110,8 +110,9 @@ jobs:
           docker buildx build --load --platform "$PLATFORM" --target production --build-arg "GIT_VERSION=$RELEASE_VERSION" --build-arg "GIT_COMMIT=$RELEASE_COMMIT" --build-arg "UPGRADE_SEQUENCE=$SEQUENCE" -t upgrade-candidate .
           container=$(docker create --platform "$PLATFORM" upgrade-candidate)
           mkdir -p export/app output
-          docker cp "$container:/var/www/talebook/server.py" export/
-          docker cp "$container:/var/www/talebook/webserver" export/
+          docker cp "$container:/var/www/talebook/booksvr" export/
+          docker cp "$container:/var/www/talebook/resources" export/
+          docker cp "$container:/var/www/talebook/schema" export/
           docker cp "$container:/var/www/talebook/app/dist" export/app/
           docker cp "$container:/opt/talebook-upgrade/image.json" image.json
           docker rm -v "$container"

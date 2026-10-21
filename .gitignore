@@ -117,3 +117,6 @@ mod
 
 # Go 后端交叉编译产物
 booksvr-linux-amd64
+app/test-results/
+app/playwright-report/
+booksvr/coverage.out

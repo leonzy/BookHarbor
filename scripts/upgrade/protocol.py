@@ -224,7 +224,7 @@ def extract(archive, target, expanded_size):
                 or len(seen) >= 50000
             ):
                 raise UpgradeError("archive")
-            if not (name == "server.py" or name.startswith("webserver/") or name.startswith("app/dist/")):
+            if not (name == "booksvr" or name.startswith("resources/") or name.startswith("app/dist/")):
                 raise UpgradeError("archive")
             if any(p.startswith(".") or p == "__pycache__" for p in path.parts):
                 raise UpgradeError("archive")
@@ -240,8 +240,8 @@ def extract(archive, target, expanded_size):
                     out.write(block)
                 out.flush()
                 os.fsync(out.fileno())
-            destination.chmod(0o755 if name == "server.py" else 0o644)
-    if total != expanded_size or not {"server.py", "webserver/main.py", "app/dist/index.html"}.issubset(seen):
+            destination.chmod(0o755 if name == "booksvr" else 0o644)
+    if total != expanded_size or not {"booksvr", "app/dist/index.html"}.issubset(seen):
         raise UpgradeError("archive")
     for directory, _, _ in os.walk(target, topdown=False):
         fsync_dir(directory)

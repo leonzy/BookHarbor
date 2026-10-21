@@ -156,7 +156,7 @@ var builtinSettingsDefaults = map[string]any{
 	"progress_path":                            "/data/books/progress/",
 	"push_content":                             "为您奉上一本《%(title)s》, 欢迎常来访问%(site_title)s！%(site_url)s",
 	"push_title":                               "%(site_title)s：推送给您一本书《%(title)s》",
-	"resource_path":                            "/var/www/talebook/webserver/resources",
+	"resource_path":                            "/var/www/talebook/resources",
 	"scan_upload_path":                         "/data/books/imports/",
 	"settings_path":                            "/data/books/settings/",
 	"site_title":                               "奇异书屋",

@@ -124,9 +124,9 @@ def make_archive(path, entries):
     [
         ("../escape", tarfile.REGTYPE),
         ("/etc/passwd", tarfile.REGTYPE),
-        ("webserver/x", tarfile.SYMTYPE),
-        ("webserver/x", tarfile.LNKTYPE),
-        ("webserver/x", tarfile.FIFOTYPE),
+        ("resources/x", tarfile.SYMTYPE),
+        ("resources/x", tarfile.LNKTYPE),
+        ("resources/x", tarfile.FIFOTYPE),
         ("docker/start.sh", tarfile.REGTYPE),
         ("webserver/../evil", tarfile.REGTYPE),
         ("webserver//x", tarfile.REGTYPE),
@@ -141,17 +141,17 @@ def test_hostile_archive(tmp_path, name, kind):
 
 def test_archive_bomb_and_duplicate(tmp_path):
     archive = tmp_path / "archive.tgz"
-    make_archive(archive, [("webserver/x", tarfile.REGTYPE, b"x" * 100)])
+    make_archive(archive, [("resources/x", tarfile.REGTYPE, b"x" * 100)])
     with pytest.raises(p.UpgradeError, match="size"):
         p.extract(archive, tmp_path / "result", 10)
-    make_archive(archive, [("webserver/x", tarfile.REGTYPE, b"")] * 2)
+    make_archive(archive, [("resources/x", tarfile.REGTYPE, b"")] * 2)
     with pytest.raises(p.UpgradeError, match="archive"):
         p.extract(archive, tmp_path / "result", 100)
 
 
 def test_valid_extract(tmp_path):
     archive = tmp_path / "archive.tgz"
-    names = ["server.py", "webserver/main.py", "app/dist/index.html"]
+    names = ["booksvr", "resources/contract.txt", "app/dist/index.html"]
     make_archive(archive, [(n, tarfile.REGTYPE, b"ok") for n in names])
     p.extract(archive, tmp_path / "result", 6)
     assert all((tmp_path / "result" / n).read_bytes() == b"ok" for n in names)
@@ -267,7 +267,7 @@ def test_interrupted_upgrade_recovers_previous(engine, signed, phase):
     manifest, _, _ = signed
     target = ex.ROOT / "releases" / manifest["commit"]
     target.mkdir()
-    (target / "server.py").write_text("pass")
+    (target / "booksvr").write_text("pass")
     p.atomic_json(ex.ROOT / "active.json", manifest)
     p.atomic_json(ex.ROOT / "state.json", {"phase": phase, "previous": None})
     ex.prepare()
@@ -280,7 +280,7 @@ def test_newer_image_and_incompatible_rebuild_win(engine, signed):
     manifest, _, _ = signed
     target = ex.ROOT / "releases" / manifest["commit"]
     target.mkdir()
-    (target / "server.py").write_text("pass")
+    (target / "booksvr").write_text("pass")
     p.atomic_json(ex.ROOT / "active.json", manifest)
     ex.prepare()
     assert (ex.RUN / "current").resolve() == target
@@ -351,7 +351,7 @@ def test_real_files_install_and_failed_start_restore_application_only(engine, si
     manifest, _, sign = signed
     archive = tmp_path / "app.tgz"
     make_archive(
-        archive, [(name, tarfile.REGTYPE, b"app") for name in ["server.py", "webserver/main.py", "app/dist/index.html"]]
+        archive, [(name, tarfile.REGTYPE, b"app") for name in ["booksvr", "resources/contract.txt", "app/dist/index.html"]]
     )
     manifest.update(expanded_size=9, size=archive.stat().st_size, sha256=p.digest(archive))
     p.atomic_json(ex.ROOT / "candidate.json", json.loads(sign(manifest)))
@@ -407,7 +407,7 @@ def local_release(manifest, number):
     value = dict(manifest, commit=f"{number:040x}", sequence=number, version=f"v{number}")
     path = ex.ROOT / "releases" / value["commit"]
     path.mkdir()
-    (path / "server.py").write_text("pass")
+    (path / "booksvr").write_text("pass")
     p.atomic_json(path / "release.json", {"manifest": value, "installed_at": number})
     return value, path
 
@@ -589,3 +589,42 @@ def test_retention_disk_error_is_reported_without_changing_application(engine, m
     assert result["status"]["cleanup_error"] == "disk"
     assert (ex.RUN / "current").resolve() == ex.BUILTIN
     assert not engine.lock.locked()
+
+
+import os
+import shutil
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_group_writable_umask_does_not_block_startup(engine, existing):
+    # Some NAS Docker engines start containers with umask 0002 (issue #1086).
+    shutil.rmtree(ex.RUN)
+    if existing:
+        ex.RUN.mkdir(mode=0o775)
+        ex.RUN.chmod(0o775)
+    previous = os.umask(0o002)
+    try:
+        ex.prepare()
+    finally:
+        os.umask(previous)
+    assert not ex.RUN.stat().st_mode & 0o022
+    assert (ex.RUN / "current").resolve() == ex.BUILTIN
+    assert not (ex.RUN / "disabled.json").exists()
+
+
+def test_executor_resets_umask_before_creating_files(engine, monkeypatch):
+    monkeypatch.setattr(ex.sys, "argv", ["executor.py", "prepare"])
+    previous = os.umask(0o002)
+    try:
+        ex.main()
+        current = os.umask(previous)
+    finally:
+        os.umask(previous)
+    assert current == 0o022
+
+
+def test_group_writable_runtime_with_entries_is_still_rejected(engine):
+    # Entries inside a writable runtime directory could be planted, so only an empty one is repaired.
+    ex.RUN.chmod(0o775)
+    with pytest.raises(p.UpgradeError, match="storage"):
+        ex.prepare()
+    ex.RUN.chmod(0o755)

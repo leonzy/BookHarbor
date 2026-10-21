@@ -330,6 +330,12 @@ func TestNewRoutesHaveCorrectMethods(t *testing.T) {
 		"/api/book/([0-9]+)/merge":    "POST",
 	}
 	for _, r := range NewRoutes() {
+		if r.Pattern == rImportTask {
+			if len(r.Methods) != 2 || r.Methods[0] != "GET" || r.Methods[1] != "DELETE" {
+				t.Fatal(r.Methods)
+			}
+			continue
+		}
 		expected, ok := want[r.Pattern]
 		if !ok {
 			t.Errorf("未预期的路由 %q", r.Pattern)

@@ -121,10 +121,10 @@ TXT编码修复是**检测 TXT 电子书的字符编码并把它修复为 UTF-8 
 
 | 行为 | 文件与函数 |
 |---|---|
-| 插件实现 | `webserver/plugins/tool/txt_fixer/` |
+| 插件实现 | `booksvr/internal/httpapi/serve.go` |
 | 检测与修复算法 | 同目录 `transform.py`：字节序标记、候选编码打分、统计检测投票、乱码反转链 |
 | Provider 与触发配置 | 同目录 `provider.py` |
-| 接口 | `webserver/handlers/plugin_booktools.py` 的 `UserTxtFixerAnalyze`、`UserTxtFixerRun` |
+| 接口 | `booksvr/internal/httpapi/plugin_booktools.go` 的 `UserTxtFixerAnalyze`、`UserTxtFixerRun` |
 | 前端页面 | `app/pages/plugins/txt-fixer.vue` |
 
 ### 7.5 界面文案

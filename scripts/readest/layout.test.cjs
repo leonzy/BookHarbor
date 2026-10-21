@@ -7,7 +7,7 @@ const { chromium } = require('../../app/node_modules/@playwright/test');
 test('launcher and recovery actions reflow at 320px and 200% text size', async () => {
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
   try {
-    for (const file of ['app/public/readest/talebook-launch.html', 'webserver/resources/book/readest_error.html']) {
+    for (const file of ['app/public/readest/talebook-launch.html', 'resources/book/readest_error.html']) {
       const html = readFileSync(path.resolve(__dirname, '../..', file), 'utf8')
         .replace('{{ message }}', '本书正在转换为 EPUB，请稍后重试')
         .replace('{{ error }}', 'reader.conversion_pending');

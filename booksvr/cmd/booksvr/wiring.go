@@ -178,6 +178,7 @@ func resolveSeedFile(opts *serveOptions) string {
 // seedFileCandidates 列出可能的种子书源文件路径。
 func seedFileCandidates(opts *serveOptions) []string {
 	var out []string
+	out = append(out, "resources/booksources.seed.json")
 	if opts.LibraryRoot != "" {
 		base := filepath.Dir(opts.LibraryRoot)
 		out = append(out,

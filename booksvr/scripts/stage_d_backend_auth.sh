@@ -18,7 +18,7 @@ mkdir -p "$LIB" "$IMPORTS" /data/books/settings
 calibredb --library-path="$LIB" list >/dev/null 2>&1 || true
 
 cd /var/www/talebook
-python3 server.py --syncdb 2>&1 | tail -1
+booksvr bootstrap -user-db=/data/books/calibre-webserver.db -settings-file=/data/books/settings/auto.py 2>&1 | tail -1
 python3 /tmp/e2e_mkusers.py
 
 echo "--- 导入目录 ---"

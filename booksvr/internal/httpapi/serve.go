@@ -71,6 +71,7 @@ type ServeOptions struct {
 	ImportDir importdir.Config
 	// StartLibraryImport queues a complete scan-and-import task.
 	StartLibraryImport func(int64, string) error
+	CancelImportTask   func() error
 	// ImportWatchStatus 返回自动监控状态；为 nil 时返回「关闭」。
 	ImportWatchStatus func() map[string]any
 	// ScanService 返回扫描服务；为 nil 时扫描/导入接口返回服务不可用。
@@ -465,11 +466,13 @@ func loadDefaultCover(htmlPath string) []byte {
 		// /var/www/talebook/app/dist -> /var/www/talebook/webserver/resources
 		base := filepath.Dir(filepath.Dir(htmlPath))
 		candidates = append(candidates,
+			filepath.Join(base, "resources", "calibre", "default_cover.jpg"),
 			filepath.Join(base, "webserver", "resources", "calibre", "default_cover.jpg"),
 			filepath.Join(base, "resources", "calibre", "default_cover.jpg"),
 		)
 	}
 	candidates = append(candidates,
+		"/var/www/talebook/resources/calibre/default_cover.jpg",
 		"/var/www/talebook/webserver/resources/calibre/default_cover.jpg",
 		"webserver/resources/calibre/default_cover.jpg",
 	)
@@ -615,6 +618,7 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 		StartScan:          opts.StartScan,
 		StartImport:        opts.StartImport,
 		StartLibraryImport: opts.StartLibraryImport,
+		CancelImportTask:   opts.CancelImportTask,
 		UserID:             func(ctx *Context) int64 { return ctx.Identity.UserID },
 	})...)
 	// FilesConfig.DB 是 Calibre 元数据库（data / book_formats 等表）。
@@ -632,6 +636,7 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 		},
 	})...)
 	specs = append(specs, UserRouteSpecs(UserConfig{
+		LibraryDB:    db,
 		Registry:     opts.PluginRegistry,
 		Auth:         authCfg,
 		DB:           userDB,

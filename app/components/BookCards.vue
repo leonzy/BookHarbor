@@ -191,12 +191,13 @@ const render_books = computed(() => {
     flex: 0 0 110px;
     width: 110px;
     max-width: 32%;
-    height: 150px;
+    height: auto;
+    align-self: flex-end;
     padding: 0;
     aspect-ratio: 11 / 15;
 }
 .book-cover {
-    height: 100%;
+    height: auto;
 }
 .col-book-info {
     flex: 1 1 0;

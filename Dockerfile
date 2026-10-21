@@ -105,306 +105,71 @@ fi && \
     getcap /usr/sbin/nginx | grep -Fq 'cap_net_bind_service=ep'
 
 
-# ----------------------------------------
-# Python wheel 构建阶段
-# ARMv7 上 psutil、cffi、pillow 等依赖没有可用的预编译 wheel；
-# 工具链只保留在本阶段。
-FROM application-base AS python-wheel-build
-ARG TARGETARCH
-ARG TARGETVARIANT
-
-USER root
-RUN if [ "$TARGETARCH" = "arm" ] && [ "$TARGETVARIANT" = "v7" ]; then \
-        apt-get update && \
-        apt-get install -y --no-install-recommends \
-            build-essential \
-            libffi-dev \
-            libjpeg-dev \
-            libpng-dev \
-            libtiff-dev \
-            libfreetype-dev \
-            liblcms2-dev \
-            libwebp-dev \
-            libopenjp2-7-dev \
-            zlib1g-dev \
-            python3-dev \
-            python3-wheel; \
-    fi && \
-    rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt /tmp/
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python3 -m pip wheel --wheel-dir /opt/wheels \
-        psutil "cffi>=2.0.0" "pillow>=10.4.0"
-
-
-# ----------------------------------------
-# 第三阶段，应用服务运行环境
-# 只挂载 wheel 构建产物，编译器和 Python headers 不进入本阶段及其后代镜像。
+# Native Go backend; Python remains only for Calibre tools and image-owned management.
 FROM application-base AS server
-ARG TARGETARCH
-
 COPY requirements.txt /tmp/
-RUN --mount=from=python-wheel-build,source=/opt/wheels,target=/tmp/talebook-wheels,ro \
-    --mount=type=cache,target=/root/.cache/pip \
-    python3 -m pip install \
-        --no-index \
-        --find-links=/tmp/talebook-wheels \
-        psutil cffi "pillow>=10.4.0" && \
-    python3 -m pip install -r /tmp/requirements.txt
-
-# Bundle the exact audited downloader on its supported Linux architectures.
-# No downloads or executable installation happen when a user opens a plugin.
+RUN --mount=type=cache,target=/root/.cache/pip python3 -m pip install -r /tmp/requirements.txt
 COPY scripts/install_tomato_downloader.py /tmp/talebook-runtime-installer/scripts/
 COPY document/licenses/tomato-novel-downloader-MIT.txt document/licenses/tomato-novel-downloader-NOTICE.md /tmp/talebook-runtime-installer/document/licenses/
-RUN case "$TARGETARCH" in \
-        amd64|arm64) python3 /tmp/talebook-runtime-installer/scripts/install_tomato_downloader.py --directory /opt/tomato --arch "$TARGETARCH" ;; \
-        *) echo "Tomato downloader is unavailable on $TARGETARCH" ;; \
-    esac && rm -rf /tmp/talebook-runtime-installer
+ARG TARGETARCH
+RUN case "$TARGETARCH" in amd64|arm64) python3 /tmp/talebook-runtime-installer/scripts/install_tomato_downloader.py --directory /opt/tomato --arch "$TARGETARCH" ;; esac && rm -rf /tmp/talebook-runtime-installer
 
+FROM go-builder AS test
+RUN adduser -D -u 911 talebooktest
+ENV HOME=/tmp GOCACHE=/tmp/talebook-go-cache
+USER 911:911
+CMD ["go", "test", "./..."]
 
-# ----------------------------------------
-# 测试阶段；dev 在此基础上扩展，production/SSR 不继承本阶段。
-FROM server AS test
-COPY requirements-test.txt /tmp/
-RUN --mount=type=cache,target=/root/.cache/pip pip install -r /tmp/requirements-test.txt
-COPY webserver/ /var/www/talebook/webserver/
-COPY tests/ /var/www/talebook/tests/
-CMD ["pytest", "/var/www/talebook/tests"]
-
-
-# ----------------------------------------
-# 生产环境
 FROM server AS production
 ARG TALEBOOK_BASE_PATH=""
-ENV TALEBOOK_BASE_PATH=${TALEBOOK_BASE_PATH}
 ARG GIT_VERSION=""
+ARG GIT_COMMIT=""
+ARG UPGRADE_SEQUENCE="0"
 ARG TARGETARCH
 ARG TARGETVARIANT
-
-LABEL Author="Rex <talebook@foxmail.com>"
-LABEL Thanks="oldiy <oldiy2018@gmail.com>"
-
-# set default language
-ENV TZ=Asia/Shanghai
-ENV LANG=C.UTF-8
-ENV PUID=1000
-ENV PGID=1000
-
+ENV TALEBOOK_BASE_PATH=${TALEBOOK_BASE_PATH} TZ=Asia/Shanghai LANG=C.UTF-8 PUID=1000 PGID=1000 TALEBOOK_UPGRADE_MODE=spa
 WORKDIR /var/www/talebook
-
-# 架构信息（用于调试）
-RUN echo "Target architecture: $TARGETARCH$TARGETVARIANT" > /arch-info.txt
-
-# prepare dirs
-RUN mkdir -p /data/log/nginx/ && \
-    mkdir -p /data/books/library  && \
-    mkdir -p /data/books/extract  && \
-    mkdir -p /data/books/upload  && \
-    mkdir -p /data/books/imports  && \
-    mkdir -p /data/books/convert  && \
-    mkdir -p /data/books/progress  && \
-    mkdir -p /data/books/settings && \
-    mkdir -p /data/books/logo && \
-    mkdir -p /data/books/ssl && \
-    mkdir -p /var/www/talebook/ && \
-    mkdir -p /var/www/talebook/status && \
-    chmod a+w -R /data/log /data/books /var/www
-
-COPY server.py /var/www/talebook/
-COPY docker/ /var/www/talebook/docker/
-COPY webserver/ /var/www/talebook/webserver/
+RUN printf "%s\n" "$GIT_VERSION" > candle-reader-version.txt
+RUN mkdir -p /data/log/nginx /data/books/library /data/books/settings /data/books/ssl /data/books/logo /data/books/upload /data/books/convert /var/www/talebook/status /prebuilt
+COPY docker/ docker/
+COPY resources/ resources/
 COPY conf/nginx/ssl.* /data/books/ssl/
-COPY conf/nginx/talebook.conf /etc/nginx/conf.d/
+COPY conf/nginx/talebook.conf /etc/nginx/conf.d/talebook.conf
+COPY conf/supervisor/talebook.conf /etc/supervisor/conf.d/talebook.conf
 RUN python3 -m docker.configure_base_path /etc/nginx/conf.d/talebook.conf
-COPY conf/supervisor/talebook.conf /etc/supervisor/conf.d/
-COPY docker/status_page.html /var/www/talebook/status/status_page.html
-COPY --from=builder /app-static/ /var/www/talebook/app/
-# Go 存储层二进制（作品 / 版本 / 格式三层模型）
+COPY docker/status_page.html status/status_page.html
+COPY --from=builder /app-static/ app/
 COPY --from=go-builder /out/booksvr /usr/local/bin/booksvr
-RUN chmod +x /usr/local/bin/booksvr && /usr/local/bin/booksvr --version
-COPY --from=builder /app-static/dist/logo/ /data/books/logo/
-
-RUN rm -f /etc/nginx/sites-enabled/default /var/www/html -rf && \
-    cd /var/www/talebook/ && \
-    echo "VERSION = \"$GIT_VERSION\"" > webserver/version.py && \
-    echo "ARCH = \"$TARGETARCH$TARGETVARIANT\"" >> webserver/version.py && \
-    echo 'settings = {}' > /data/books/settings/auto.py && \
-    chmod a+w /data/books/settings/auto.py && \
-    calibredb add --library-path=/data/books/library/ -r docker/book/ && \
-    python3 server.py --syncdb  && \
-    python3 server.py --update-config  && \
-    rm -f webserver/*.pyc && \
-    rm -rf app/src && \
-    rm -rf app/dist/logo && \
-    ln -s /data/books/logo app/dist/logo && \
-    mkdir -p /prebuilt/ && \
-    mv /data/* /prebuilt/ && \
-    chmod +x /var/www/talebook/docker/start.sh && \
-    chmod +x /var/www/talebook/server.py && \
-    chmod +x /var/www/talebook/webserver/migrate_db.py
-
-# Immutable upgrade executor and actual runtime attestation. No application package can replace it.
-ARG UPGRADE_SEQUENCE="0"
-ARG GIT_COMMIT=""
-ENV TALEBOOK_UPGRADE_MODE=spa
+RUN cp /usr/local/bin/booksvr /var/www/talebook/booksvr && chmod 0755 /usr/local/bin/booksvr booksvr docker/start.sh && \
+    calibredb list --library-path=/data/books/library --limit=0 && \
+    /usr/local/bin/booksvr bootstrap && echo "settings = {}" > /data/books/settings/auto.py && \
+    cp -r app/dist/logo/. /data/books/logo/ && rm -rf app/dist/logo && ln -s /data/books/logo app/dist/logo && \
+    mv /data/* /prebuilt/ && rm -f /etc/nginx/sites-enabled/default
 COPY scripts/upgrade/protocol.py scripts/upgrade/executor.py scripts/upgrade/fingerprint.py /opt/talebook-upgrade/
-COPY webserver/self_check.py /opt/talebook-upgrade/self_check.py
+COPY docker/self_check.py /opt/talebook-upgrade/self_check.py
 COPY docker/booksvr-entrypoint.py /opt/talebook-upgrade/booksvr-entrypoint.py
 COPY Dockerfile requirements.txt /opt/talebook-contract/
 COPY conf/ /opt/talebook-contract/conf/
-COPY docker/start.sh /opt/talebook-contract/docker/start.sh
-COPY docker/booksvr-entrypoint.py /opt/talebook-contract/docker/booksvr-entrypoint.py
-COPY webserver/models.py webserver/migrate_db.py webserver/self_check.py /opt/talebook-contract/webserver/
-RUN python3 /opt/talebook-upgrade/fingerprint.py /opt/talebook-contract /opt/talebook-upgrade/image.json \
-    "$TARGETARCH$TARGETVARIANT" "$GIT_VERSION" "$UPGRADE_SEQUENCE" "$GIT_COMMIT"
-
+COPY docker/ /opt/talebook-contract/docker/
+COPY booksvr/internal/httpapi/bootstrap.go /opt/talebook-contract/schema/bootstrap.go
+COPY booksvr/internal/httpapi/bootstrap.go /var/www/talebook/schema/bootstrap.go
+COPY booksvr/internal/httpapi/testdata/user_schema.sql /opt/talebook-contract/schema/user.sql
+COPY booksvr/internal/httpapi/testdata/user_schema.sql /var/www/talebook/schema/user.sql
+RUN python3 /opt/talebook-upgrade/fingerprint.py /opt/talebook-contract /opt/talebook-upgrade/image.json "$TARGETARCH$TARGETVARIANT" "$GIT_VERSION" "$UPGRADE_SEQUENCE" "$GIT_COMMIT"
 EXPOSE 80 443
-
 VOLUME ["/data"]
-
 CMD ["/var/www/talebook/docker/start.sh"]
 
-
-# ----------------------------------------
-# 生产环境（server side render版)
 FROM production AS production-ssr
 ENV TALEBOOK_UPGRADE_MODE=ssr
-
-USER root
-RUN mkdir -p /var/lib/apt/lists/partial && \
-    chmod -R 0755 /var/lib/apt/lists/ && \
-    if [ "x${BUILD_COUNTRY}" = "xCN" ]; then \
-        echo "deb http://mirrors.aliyun.com/debian trixie main contrib non-free" > /etc/apt/sources.list; \
-        echo "deb http://mirrors.aliyun.com/debian trixie-updates main contrib non-free" >> /etc/apt/sources.list; \
-        echo "deb http://mirrors.aliyun.com/debian-security trixie-security main contrib non-free" >> /etc/apt/sources.list; \
-    fi; \
-    apt-get update -y && \
-    if [ "$TARGETARCH" = "amd64" ]; then \
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; \
-    elif [ "$TARGETARCH" = "arm64" ]; then \
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; \
-    #elif [ "$TARGETARCH" = "arm" ] && [ "$TARGETVARIANT" = "v7" ]; then \
-        #curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; \
-    fi && \
-    apt-get install -y nodejs && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# copy ssr config
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs && rm -rf /var/lib/apt/lists/*
 COPY conf/nginx/server-side-render.conf /etc/nginx/conf.d/talebook.conf
-RUN python3 -m docker.configure_base_path /etc/nginx/conf.d/talebook.conf
 COPY conf/supervisor/server-side-render.conf /etc/supervisor/conf.d/talebook.conf
 COPY --from=builder /app-ssr/ /var/www/talebook/app/
-
-# fix: symlink logo dir so user can override /data/books/logo/link.png
-RUN rm -rf /var/www/talebook/app/.output/public/logo && \
-    ln -s /data/books/logo /var/www/talebook/app/.output/public/logo
-
-
-# ----------------------------------------
-# 开发环境（前端使用 npm run dev，可将本地 app/ 目录挂载进来实时开发）
-# 构建：docker build --target dev -t talebook/talebook:dev .
-# 使用：docker-compose -f dev.yml up
-FROM test AS dev
-ENV TALEBOOK_UPGRADE_MODE=dev
-ARG TALEBOOK_BASE_PATH=""
-ENV TALEBOOK_BASE_PATH=${TALEBOOK_BASE_PATH}
-ARG BUILD_COUNTRY=""
-ARG GIT_VERSION=""
-ARG TARGETARCH
-ARG TARGETVARIANT
-ARG CODEX_VERSION="0.144.6"
-
-USER root
-
-# Install the common development and agent toolchain.
-RUN apt-get update -y && \
-    apt-get install -y --no-install-recommends \
-        bubblewrap \
-        ca-certificates \
-        curl \
-        git \
-        jq \
-        unzip \
-        uidmap && \
-    if [ "$TARGETARCH" = "amd64" ] || [ "$TARGETARCH" = "arm64" ]; then \
-        curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
-        apt-get install -y nodejs; \
-    fi && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN --mount=type=cache,target=/root/.npm \
-    npm install -g "@openai/codex@${CODEX_VERSION}" && \
-    node --version && \
-    npm --version && \
-    codex --version && \
-    python3 -m pytest --version && \
-    ruff --version && \
-    bwrap --version && \
-    unzip -v
-
-ENV TZ=Asia/Shanghai
-ENV LANG=C.UTF-8
-ENV PUID=1000
-ENV PGID=1000
-
-WORKDIR /var/www/talebook
-
-# prepare dirs
-RUN mkdir -p /data/log/nginx/ && \
-    mkdir -p /data/books/library  && \
-    mkdir -p /data/books/extract  && \
-    mkdir -p /data/books/upload  && \
-    mkdir -p /data/books/imports  && \
-    mkdir -p /data/books/convert  && \
-    mkdir -p /data/books/progress  && \
-    mkdir -p /data/books/settings && \
-    mkdir -p /data/books/logo && \
-    mkdir -p /data/books/ssl && \
-    mkdir -p /var/www/talebook/ && \
-    chmod a+w -R /data/log /data/books /var/www
-
-COPY server.py /var/www/talebook/
-COPY docker/ /var/www/talebook/docker/
-COPY webserver/ /var/www/talebook/webserver/
-COPY conf/nginx/ssl.* /data/books/ssl/
-COPY conf/nginx/dev.conf /etc/nginx/conf.d/talebook.conf
 RUN python3 -m docker.configure_base_path /etc/nginx/conf.d/talebook.conf
-COPY conf/supervisor/dev.conf /etc/supervisor/conf.d/talebook.conf
 
-# 预先安装 npm 依赖（当 app/ 目录未被外部挂载时作为回退）
-COPY app/package.json app/package-lock.json* /var/www/talebook/app/
-RUN cd /var/www/talebook/app && npm ci
-
-# 复制完整 app/ 源码（node_modules 已由上一步安装，.dockerignore 排除本地 node_modules）
-COPY app/ /var/www/talebook/app/
-
-RUN rm -f /etc/nginx/sites-enabled/default /var/www/html -rf && \
-    cd /var/www/talebook/ && \
-    echo "VERSION = \"$GIT_VERSION\"" > webserver/version.py && \
-    echo "ARCH = \"$TARGETARCH$TARGETVARIANT\"" >> webserver/version.py && \
-    echo 'settings = {}' > /data/books/settings/auto.py && \
-    chmod a+w /data/books/settings/auto.py && \
-    calibredb add --library-path=/data/books/library/ -r docker/book/ && \
-    python3 server.py --syncdb  && \
-    python3 server.py --update-config  && \
-    rm -f webserver/*.pyc && \
-    mkdir -p /prebuilt/ && \
-    mv /data/* /prebuilt/ && \
-    chmod +x /var/www/talebook/docker/start-dev.sh && \
-    chmod +x /var/www/talebook/server.py && \
-    chmod +x /var/www/talebook/webserver/migrate_db.py
-
-EXPOSE 80 443
-
-VOLUME ["/data"]
-
-CMD ["/var/www/talebook/docker/start-dev.sh"]
-
-
-# ----------------------------------------
-# 生产环境（spa版，作为默认 docker build 结果）
 FROM production AS production-spa
-# no more actions
+
+FROM production AS dev
+ENV TALEBOOK_UPGRADE_MODE=dev
+COPY conf/supervisor/dev.conf /etc/supervisor/conf.d/talebook.conf

@@ -74,7 +74,7 @@ func TestSimpleFormatFieldSetMatchesPython(t *testing.T) {
 // 断言我们的常量表没有漏抄或抄错。
 func TestSimpleFormatFieldSetMatchesPythonSource(t *testing.T) {
 	root := repoRoot(t)
-	data, err := os.ReadFile(filepath.Join(root, "webserver", "utils.py"))
+	data, err := os.ReadFile(filepath.Join(root, "booksvr", "internal", "httpapi", "testdata", "legacy-format-contract.txt"))
 	if err != nil {
 		t.Fatalf("read utils.py: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestOnlineReadableFormats(t *testing.T) {
 // ONLINE_READ_FORMATS，再与 Go 侧常量表逐项比对。
 func TestOnlineReadableFormatsMatchPythonSource(t *testing.T) {
 	root := repoRoot(t)
-	data, err := os.ReadFile(filepath.Join(root, "webserver", "services", "media_analysis.py"))
+	data, err := os.ReadFile(filepath.Join(root, "booksvr", "internal", "httpapi", "testdata", "legacy-media-contract.txt"))
 	if err != nil {
 		t.Fatalf("read media_analysis.py: %v", err)
 	}

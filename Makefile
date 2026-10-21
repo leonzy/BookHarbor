@@ -9,10 +9,10 @@ GHCR_DEV := ghcr.io/talebook/talebook:dev
 TAG1 := talebook/talebook:server-side-render
 TAG2 = talebook/talebook:server-side-render-$(VER)
 
-all: lint-py-fix build up
+all: build up
 
 init:
-	pip3 install -r requirements.txt -r requirements-test.txt
+	pip3 install -r requirements.txt pytest
 	#python3 -m pip install --upgrade pip
 	#uv sync
 
@@ -33,19 +33,19 @@ build-dev:
 test:
 	rm -f unittest.log
 	docker build --build-arg BUILD_COUNTRY=CN -t talebook/test --target test -f Dockerfile .
-	docker run --rm --name=talebook-docker-test -v "$$PWD":"$$PWD" -w "$$PWD" talebook/test pytest --log-file=unittest.log --log-level=INFO tests
+	docker run --rm --name=talebook-docker-test -v "$$PWD":"$$PWD" -w "$$PWD/booksvr" talebook/test go test ./...
 
 lint-ui:
 	npm ci
 	cd app && npm run lint
 
 lint-py:
-	ruff check ./webserver --no-cache
-	ruff format --diff ./webserver --output-format concise --no-cache
+	ruff check ./docker ./scripts/upgrade --no-cache
+	ruff format --diff ./docker ./scripts/upgrade --output-format concise --no-cache
 
 lint-py-fix:
-	ruff check ./webserver --fix
-	ruff format ./webserver
+	ruff check ./docker ./scripts/upgrade --fix
+	ruff format ./docker ./scripts/upgrade
 
 check-i18n:
 	uv run check_i18n_translation_missing.py
@@ -67,15 +67,13 @@ lint-go:
 	cd booksvr && go vet ./...
 
 pytest:
-	pytest tests -v --cov=webserver --cov-report=term-missing
+	cd booksvr && go test ./...
 
 testv:
-	coverage run -m unittest
-	coverage report --include "webserver/*"
+	cd booksvr && go test -coverprofile=coverage.out ./...
 
 testvv: testv
-	coverage html -d ".htmlcov" --include "webserver/*"
-	cd ".htmlcov" && python3 -m http.server 7777
+	cd booksvr && go tool cover -html=coverage.out
 
 up:
 	docker compose up

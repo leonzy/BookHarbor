@@ -3,7 +3,6 @@
 !Dockerfile
 !requirements.txt
 !requirements-test.txt
-!server.py
 !scripts/
 !scripts/upgrade/
 !scripts/upgrade/**
@@ -13,8 +12,8 @@
 !conf/**
 !docker/
 !docker/**
-!webserver/
-!webserver/**
+!resources/
+!resources/**
 !tests/
 !tests/**
 !booksvr/

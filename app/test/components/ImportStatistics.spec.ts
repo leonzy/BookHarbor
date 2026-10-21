@@ -1,22 +1,25 @@
 import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createI18n } from 'vue-i18n';
 import ImportStatistics from '@/components/ImportStatistics.vue';
 
-vi.stubGlobal('useI18n', () => ({ t: (key: string) => key.split('.').at(-1), n: (value: number) => value.toLocaleString('en-US') }));
+const mountStatistics = (props = {}) => mount(ImportStatistics, {
+    props,
+    global: { plugins: [createI18n({ legacy: false, locale: 'en-US', messages: { 'en-US': {} } })] },
+});
 const summary = { library_books: 380783, available_books: 351165, done: 410140, missing_source_books: 29618 };
 describe('Import statistics', () => {
     it('separates books, successful files and confirmed missing sources while idle', () => {
-        const wrapper = mount(ImportStatistics, { props: { summary } });
+        const wrapper = mountStatistics({ summary });
         for (const [key, value] of Object.entries(summary)) {
             expect(wrapper.get(`[data-testid="import-stat-${key}"]`).text()).toBe(value.toLocaleString('en-US'));
         }
         expect(wrapper.findAll('dt')).toHaveLength(4);
     });
     it('does not claim zero books before the response or for missing API fields', async () => {
-        const wrapper = mount(ImportStatistics);
+        const wrapper = mountStatistics();
         expect(wrapper.findAll('dd').map(item => item.text())).toEqual(['—', '—', '—', '—']);
         await wrapper.setProps({ summary: { ...summary, missing_source_books: 0 } });
         expect(wrapper.get('[data-testid="import-stat-missing_source_books"]').text()).toBe('0');

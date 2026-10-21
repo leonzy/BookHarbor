@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from webserver import self_check
+from docker import self_check
 
 
 class TestSelfCheckSteps(unittest.TestCase):
@@ -45,7 +45,7 @@ class TestSelfCheckSteps(unittest.TestCase):
         self.assertIn("updated_at", doc)
         self.assertEqual(doc["steps"], [{"name": "permission", "status": "ok", "code": None}])
 
-    @mock.patch("webserver.self_check.run")
+    @mock.patch("docker.self_check.run")
     def test_check_permission_chowns_when_puid_changed(self, m_run):
         m_run.return_value = True
         ok, code = self_check.check_permission()
@@ -60,7 +60,7 @@ class TestSelfCheckSteps(unittest.TestCase):
         self.assertEqual(settings_probe.args[0][0], "gosu")
         self.assertEqual(settings_probe.args[0][-1], os.path.join(self.data_dir, "books", "settings"))
 
-    @mock.patch("webserver.self_check.run")
+    @mock.patch("docker.self_check.run")
     def test_check_permission_repairs_settings_when_identity_unchanged(self, m_run):
         with open(os.path.join(self.data_dir, ".permission"), "w") as f:
             f.write("1000:1000")
@@ -78,7 +78,7 @@ class TestSelfCheckSteps(unittest.TestCase):
         self.assertEqual(library_probe.args[0][-1], os.path.join(self.data_dir, "books", "library"))
         self.assertEqual(settings_probe.args[0][-1], os.path.join(self.data_dir, "books", "settings"))
 
-    @mock.patch("webserver.self_check.run")
+    @mock.patch("docker.self_check.run")
     def test_check_permission_chown_failure(self, m_run):
         m_run.return_value = False
         ok, code = self_check.check_permission()
@@ -86,14 +86,14 @@ class TestSelfCheckSteps(unittest.TestCase):
         self.assertEqual(code, "permission_denied")
         self.assertFalse(os.path.exists(os.path.join(self.data_dir, ".permission")))
 
-    @mock.patch("webserver.self_check.run")
+    @mock.patch("docker.self_check.run")
     def test_check_permission_library_atomic_write_failure(self, m_run):
         m_run.side_effect = [True, False]
         ok, code = self_check.check_permission()
         self.assertFalse(ok)
         self.assertEqual(code, "permission_denied")
 
-    @mock.patch("webserver.self_check.run")
+    @mock.patch("docker.self_check.run")
     def test_check_permission_settings_chown_failure_when_identity_unchanged(self, m_run):
         with open(os.path.join(self.data_dir, ".permission"), "w") as f:
             f.write("1000:1000")
@@ -105,7 +105,7 @@ class TestSelfCheckSteps(unittest.TestCase):
         self.assertEqual(code, "permission_denied")
         m_run.assert_called_once_with(["chown", "-R", "talebook:talebook", os.path.join(self.data_dir, "books", "settings")])
 
-    @mock.patch("webserver.self_check.run")
+    @mock.patch("docker.self_check.run")
     def test_check_permission_settings_atomic_write_failure(self, m_run):
         m_run.side_effect = [True, True, False]
 
@@ -114,7 +114,7 @@ class TestSelfCheckSteps(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(code, "permission_denied")
 
-    @mock.patch("webserver.self_check.run")
+    @mock.patch("docker.self_check.run")
     def test_check_atomic_write_uses_application_identity_and_rename(self, m_run):
         m_run.return_value = True
         directory = os.path.join(self.data_dir, "books", "settings")
@@ -137,7 +137,7 @@ class TestSelfCheckSteps(unittest.TestCase):
 
         self.assertEqual(os.listdir(directory), [])
 
-    @mock.patch("webserver.self_check.run")
+    @mock.patch("docker.self_check.run")
     def test_check_nginx_config(self, m_run):
         m_run.return_value = True
         self.assertEqual(self_check.check_nginx_config(), (True, None))
@@ -148,26 +148,13 @@ class TestSelfCheckSteps(unittest.TestCase):
         self.assertEqual(self_check.check_nginx_config(), (False, "nginx_config_invalid"))
         m_run.assert_called_once_with(["gosu", "talebook:talebook", "nginx", "-t"])
 
-    @mock.patch("webserver.self_check.run")
+    @mock.patch("docker.self_check.run")
     def test_check_syncdb(self, m_run):
         m_run.return_value = True
         self.assertEqual(self_check.check_syncdb(), (True, None))
+        self.assertIn("bootstrap", str(m_run.call_args))
         m_run.return_value = False
         self.assertEqual(self_check.check_syncdb(), (False, "syncdb_failed"))
-
-    @mock.patch("webserver.self_check.run")
-    def test_check_migrate(self, m_run):
-        m_run.return_value = True
-        self.assertEqual(self_check.check_migrate(), (True, None))
-        m_run.return_value = False
-        self.assertEqual(self_check.check_migrate(), (False, "migrate_failed"))
-
-    @mock.patch("webserver.self_check.run")
-    def test_check_update_config(self, m_run):
-        m_run.return_value = True
-        self.assertEqual(self_check.check_update_config(), (True, None))
-        m_run.return_value = False
-        self.assertEqual(self_check.check_update_config(), (False, "update_config_failed"))
 
 
 class TestRunBootstrap(unittest.TestCase):
