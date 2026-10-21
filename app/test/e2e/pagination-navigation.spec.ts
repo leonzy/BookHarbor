@@ -5,6 +5,43 @@ test.beforeEach(async ({ request }) => {
     await request.post(`${mockApi}/_test/reset`, { data: { installed: true, showNetworkLibrary: true } });
 });
 
+test.describe('Russian page jump layout', () => {
+    test.use({ locale: 'ru-RU', extraHTTPHeaders: { 'Accept-Language': 'ru-RU' } });
+    test('keeps translated controls on one line at 320px', async ({ page }) => {
+        await page.route('**/api/library?*', route => route.fulfill({ contentType: 'application/x-ndjson', body: [
+            { err: 'ok', total: 351180 }, { id: 1, title: 'Layout test', img: '/get/cover/1', format_sizes: { EPUB: 1024 } },
+        ].map(row => JSON.stringify(row)).join('\n') + '\n' }));
+        await page.setViewportSize({ width: 320, height: 900 });
+        await page.goto('/library/local');
+        const jump = page.getByTestId('page-jump').last();
+        await expect(jump.locator('input')).toHaveAccessibleName('Номер страницы');
+        await jump.scrollIntoViewIfNeeded();
+        await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+        await page.screenshot({ path: test.info().outputPath('pagination-inline-russian.png') });
+    });
+});
+
+test('keeps the page field, total and submit button on one compact line', async ({ page }) => {
+    await page.route('**/api/library?*', route => route.fulfill({ contentType: 'application/x-ndjson', body: [
+        { err: 'ok', total: 351180 }, { id: 1, title: '紧凑分页测试', img: '/get/cover/1', format_sizes: { EPUB: 1024 } },
+    ].map(row => JSON.stringify(row)).join('\n') + '\n' }));
+    await page.goto('/library/local');
+    const jump = page.getByTestId('page-jump').last();
+    await expect(jump).toContainText('共 5853 页');
+    for (const width of [1440, 938, 600, 320]) {
+        await page.setViewportSize({ width, height: 900 });
+        await jump.scrollIntoViewIfNeeded();
+        await expect.poll(async () => jump.evaluate(el => {
+            const field = el.querySelector('.v-field')!.getBoundingClientRect();
+            const total = el.querySelector(':scope > span')!.getBoundingClientRect();
+            const button = el.querySelector('button')!.getBoundingClientRect();
+            return Math.max(field.top, total.top, button.top) - Math.min(field.top, total.top, button.top);
+        })).toBeLessThan(2);
+        await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+        if (width === 938) await page.screenshot({ path: test.info().outputPath('pagination-inline-938.png') });
+    }
+});
+
 test('library jump preserves filters and opens book details in a new tab', async ({ page }) => {
     const starts: string[] = [];
     await page.route('**/api/library?*', route => {

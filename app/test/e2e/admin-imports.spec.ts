@@ -2,6 +2,77 @@ import { test, expect } from '@playwright/test';
 
 const mockApi = process.env.MOCK_API_URL || 'http://127.0.0.1:8080';
 
+test('keeps the list loading while background progress polls complete', async ({ request, page }) => {
+    await request.post(`${mockApi}/_test/reset`, { data: { installed: true } });
+    let release!: () => void;
+    const waiting = new Promise<void>(resolve => { release = resolve; });
+    const watch = { state: 'scanning', manual_library_import_running: false };
+    const summary = { total: 1, todo: 0, done: 0, failed: 0, skipped: 1, library_books: 0, available_books: 0, missing_source_books: 0 };
+    let polls = 0;
+    await page.route('**/api/admin/import/settings', route => route.fulfill({ json: { err: 'ok', settings: { watch_status: watch } } }));
+    await page.route('**/api/admin/scan/status', route => {
+        polls++;
+        return route.fulfill({ json: { err: 'ok', running: true, watch_status: watch, status: {}, summary } });
+    });
+    await page.route('**/api/admin/scan/list?*', async route => {
+        const skipped = new URL(route.request().url()).searchParams.get('filter') === 'skipped';
+        if (skipped) await waiting;
+        await route.fulfill({ json: {
+            err: 'ok', scan_dir: '/books', import_mode: 'index', watch_status: watch, summary,
+            total: skipped ? 1 : 0, items: skipped ? [{ id: 1, hash: 'dup', status: 'exist', path: '/books/dup.epub', data: {} }] : [],
+        } });
+    });
+    await page.goto('/admin/imports');
+    await expect(page.getByRole('button', { name: '刷新', exact: true })).toBeEnabled();
+    const previousPolls = polls;
+    await page.getByTestId('import-skipped-tab').click();
+    await expect.poll(() => polls).toBeGreaterThan(previousPolls);
+    await expect(page.getByRole('button', { name: '刷新', exact: true })).toBeDisabled();
+    release();
+    await expect(page.getByTestId('import-skip-reason')).toContainText('无需再次导入');
+    await expect(page.getByRole('button', { name: '刷新', exact: true })).toBeEnabled();
+});
+
+test('distinguishes automatic monitoring from a completed manual import and updates all statistics', async ({ request, page }) => {
+    await request.post(`${mockApi}/_test/reset`, { data: { installed: true } });
+    const watch = { state: 'scanning', manual_library_import_running: false, source_sync: { state: 'scanning' } };
+    const summary = { total: 3, todo: 0, done: 3, failed: 0, skipped: 0, library_books: 2, available_books: 1, missing_source_books: 1 };
+    await page.route('**/api/admin/scan/list?*', route => route.fulfill({ json: {
+        err: 'ok', scan_dir: '/books', import_mode: 'index', watch_status: watch, summary, total: 0, items: [],
+    } }));
+    await page.route('**/api/admin/import/settings', route => route.fulfill({ json: { err: 'ok', settings: { watch_status: watch } } }));
+    await page.route('**/api/admin/scan/status', route => route.fulfill({ json: {
+        err: 'ok', running: true, watch_status: watch, status: {}, summary: { ...summary, total: 4, done: 4, library_books: 3, available_books: 2 },
+    } }));
+    await page.goto('/admin/imports');
+    await expect(page.getByRole('status')).toContainText('自动监控正在检查');
+    await expect(page.getByTestId('import-stat-done')).toHaveText('4');
+    await expect(page.getByTestId('import-stat-library_books')).toHaveText('3');
+    await expect(page.getByTestId('import-stat-available_books')).toHaveText('2');
+    await expect(page.getByTestId('import-stat-missing_source_books')).toHaveText('1');
+});
+
+test('separates books from files and shows duplicate records only in skipped', async ({ request, page }) => {
+    await request.post(`${mockApi}/_test/reset`, { data: { installed: true } });
+    await page.route('**/api/admin/scan/list?*', route => {
+        const skipped = new URL(route.request().url()).searchParams.get('filter') === 'skipped';
+        return route.fulfill({ json: {
+            err: 'ok', scan_dir: '/books', import_mode: 'index', watch_status: { state: 'off' },
+            summary: { total: 4, todo: 0, done: 3, failed: 0, skipped: 1, library_books: 2, available_books: 1, missing_source_books: 1 },
+            total: skipped ? 1 : 0,
+            items: skipped ? [{ id: 4, hash: 'dup', status: 'exist', title: 'Duplicate', path: '/books/duplicate.epub', data: {} }] : [],
+        } });
+    });
+    await page.goto('/admin/imports');
+    await expect(page.getByTestId('import-stat-library_books')).toHaveText('2');
+    await expect(page.getByTestId('import-stat-done')).toHaveText('3');
+    await expect(page.getByTestId('import-stat-missing_source_books')).toHaveText('1');
+    await expect(page.getByRole('tab', { name: '成功文件 (3)' })).toBeVisible();
+    await page.getByTestId('import-skipped-tab').click();
+    await expect(page.getByTestId('import-skip-reason')).toContainText('无需再次导入');
+    await expect(page.getByText('Duplicate', { exact: true })).toBeVisible();
+});
+
 test('keeps the selected filter when an older list response arrives late', async ({ request, page }) => {
     await request.post(`${mockApi}/_test/reset`, { data: { installed: true } });
     let releaseTodo!: () => void;

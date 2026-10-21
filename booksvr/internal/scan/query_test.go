@@ -40,7 +40,7 @@ func TestSummaryCounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("失败: %v", err)
 	}
-	want := Summary{Total: 8, Done: 3, Failed: 2, Todo: 2, Skipped: 1}
+	want := Summary{Total: 8, Done: 2, Failed: 2, Todo: 2, Skipped: 2}
 	if got != want {
 		t.Errorf("summary = %+v, want %+v", got, want)
 	}
@@ -357,9 +357,9 @@ func TestListFilters(t *testing.T) {
 	}{
 		{FilterAll, 7},
 		{FilterTodo, 1},
-		{FilterDone, 3},
+		{FilterDone, 2},
 		{FilterFailed, 2},
-		{FilterSkipped, 1},
+		{FilterSkipped, 2},
 	}
 	for _, c := range cases {
 		_, total, err := svc.List(ListOptions{Num: 20, Sort: "id", Desc: false, Filter: c.filter})

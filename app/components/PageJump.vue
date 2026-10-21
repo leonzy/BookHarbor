@@ -67,19 +67,37 @@ function jump() {
 
 <style scoped>
 .page-jump {
-    display: flex;
+    display: inline-flex;
     align-items: flex-start;
     justify-content: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    flex: 0 0 auto;
     gap: 0.5rem;
+    width: max-content;
     max-width: 100%;
     padding-block: 0.5rem;
 }
 .page-jump__input {
-    flex: 0 1 8rem;
-    min-width: 6rem;
+    flex: 0 0 5rem;
+    width: 5rem;
+    min-width: 0;
 }
 .page-jump > span {
-    padding-block: 0.65rem;
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    white-space: nowrap;
+}
+.page-jump > .v-btn {
+    flex: 0 0 auto;
+    height: 40px;
+    min-width: 0;
+    padding-inline: 12px;
+}
+@media (max-width: 599px) {
+    .page-jump { gap: 6px; }
+    .page-jump__input { flex-basis: 3.75rem; width: 3.75rem; }
+    .page-jump > span { font-size: 12px !important; }
+    .page-jump > .v-btn { padding-inline: 8px; font-size: 12px; }
 }
 </style>

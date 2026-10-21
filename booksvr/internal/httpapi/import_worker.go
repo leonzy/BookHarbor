@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -32,6 +33,9 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 	if err := ensureImportTasks(db); err != nil {
 		cancel()
 		return opts, func() {}
+	}
+	if err := scan.EnsureQueryIndexes(db); err != nil {
+		log.Printf("scan: 创建导入查询索引失败，保留导入任务并继续运行: %v", err)
 	}
 	var workMu, statusMu sync.Mutex
 	status := map[string]any{"state": "off", "queued": 0, "running": 0, "failed": 0, "last_scan_at": nil, "message": ""}

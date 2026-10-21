@@ -9,18 +9,20 @@ import (
 	"talebook/booksvr/internal/userdb"
 )
 
-// Summary 复刻 Scanner.summary()。
+// Summary separates cumulative processed files from current library books.
 type Summary struct {
-	Total   int64 `json:"total"`
-	Done    int64 `json:"done"`
-	Todo    int64 `json:"todo"`
-	Failed  int64 `json:"failed"`
-	Skipped int64 `json:"skipped"`
+	Total              int64 `json:"total"`
+	Done               int64 `json:"done"`
+	Todo               int64 `json:"todo"`
+	Failed             int64 `json:"failed"`
+	Skipped            int64 `json:"skipped"`
+	LibraryBooks       int64 `json:"library_books"`
+	AvailableBooks     int64 `json:"available_books"`
+	MissingSourceBooks int64 `json:"missing_source_books"`
 }
 
-// doneStatuses 与 Python 的 done_status 一致。
+// Successful files exclude duplicates, which belong to skipped history.
 var doneStatuses = []string{
-	userdb.ScanStatusExist,
 	userdb.ScanStatusImported,
 	userdb.ScanStatusIndexed,
 }
@@ -32,7 +34,7 @@ var failedStatuses = []string{
 }
 
 // Dropped records have already been skipped and need no import action.
-var skippedStatuses = []string{userdb.ScanStatusDrop}
+var skippedStatuses = []string{userdb.ScanStatusDrop, userdb.ScanStatusExist}
 
 // countStatuses 复刻 Scanner.count() 的初始键集合与顺序。
 //
@@ -54,23 +56,70 @@ var countStatuses = []string{
 // Summary 复刻 Scanner.summary()。
 func (s *Service) Summary() (Summary, error) {
 	var out Summary
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM scanfiles WHERE status != 'expanded'`).Scan(&out.Total); err != nil {
-		return out, fmt.Errorf("scan: 统计总数失败: %w", err)
+	rows, err := s.DB.Query(`SELECT status,COUNT(*) FROM scanfiles WHERE status != 'expanded' GROUP BY status`)
+	if err != nil {
+		return out, fmt.Errorf("scan: 统计文件失败: %w", err)
 	}
-	doneQ := `SELECT COUNT(*) FROM scanfiles WHERE status IN (` + placeholders(len(doneStatuses)) + `)`
-	if err := s.DB.QueryRow(doneQ, toArgs(doneStatuses)...).Scan(&out.Done); err != nil {
-		return out, fmt.Errorf("scan: 统计完成数失败: %w", err)
+	for rows.Next() {
+		var st string
+		var n int64
+		if err := rows.Scan(&st, &n); err != nil {
+			rows.Close()
+			return out, err
+		}
+		out.Total += n
+		switch st {
+		case userdb.ScanStatusImported, userdb.ScanStatusIndexed:
+			out.Done += n
+		case userdb.ScanStatusFailed, userdb.ScanStatusDeleteFailed:
+			out.Failed += n
+		case userdb.ScanStatusExist, userdb.ScanStatusDrop:
+			out.Skipped += n
+		}
 	}
-	failQ := `SELECT COUNT(*) FROM scanfiles WHERE status IN (` + placeholders(len(failedStatuses)) + `)`
-	if err := s.DB.QueryRow(failQ, toArgs(failedStatuses)...).Scan(&out.Failed); err != nil {
-		return out, fmt.Errorf("scan: 统计失败数失败: %w", err)
-	}
-	skipQ := `SELECT COUNT(*) FROM scanfiles WHERE status IN (` + placeholders(len(skippedStatuses)) + `)`
-	if err := s.DB.QueryRow(skipQ, toArgs(skippedStatuses)...).Scan(&out.Skipped); err != nil {
-		return out, fmt.Errorf("scan: 统计跳过数失败: %w", err)
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return out, err
 	}
 	out.Todo = out.Total - out.Done - out.Failed - out.Skipped
+	if s.LibraryDB != nil {
+		tx, err := s.LibraryDB.Begin()
+		if err != nil {
+			return out, err
+		}
+		defer tx.Rollback()
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM books`).Scan(&out.LibraryBooks); err != nil {
+			return out, err
+		}
+		// Older/minimal libraries may not yet have the derived availability table.
+		var has int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='book_unavailable_sources'`).Scan(&has); err != nil {
+			return out, err
+		}
+		if has > 0 {
+			if err := tx.QueryRow(`SELECT COUNT(*) FROM book_unavailable_sources u JOIN books b ON b.id=u.book_id`).Scan(&out.MissingSourceBooks); err != nil {
+				return out, err
+			}
+		}
+		out.AvailableBooks = out.LibraryBooks - out.MissingSourceBooks
+	}
 	return out, nil
+}
+
+// EnsureQueryIndexes runs at worker startup, never during status polling.
+func EnsureQueryIndexes(db *sql.DB) error {
+	for _, q := range []string{
+		`CREATE INDEX IF NOT EXISTS scanfiles_scan_status_idx ON scanfiles(scan_id,status)`,
+		`CREATE INDEX IF NOT EXISTS scanfiles_import_status_idx ON scanfiles(import_id,status)`,
+		`CREATE INDEX IF NOT EXISTS scanfiles_created_idx ON scanfiles(create_time)`,
+		`CREATE INDEX IF NOT EXISTS scanfiles_status_created_idx ON scanfiles(status,create_time,id)`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // CountByStatus 复刻 Scanner.count(query)：按状态计数，未知状态动态追加。
@@ -85,18 +134,19 @@ func (s *Service) CountByStatus(scanID, importID int64, byImport bool) (map[stri
 	if byImport {
 		col = "import_id"
 	}
-	rows, err := s.DB.Query(`SELECT status FROM scanfiles WHERE status != 'expanded' AND `+col+` = ?`, scanID)
+	rows, err := s.DB.Query(`SELECT status,COUNT(*) FROM scanfiles WHERE status != 'expanded' AND `+col+` = ? GROUP BY status`, scanID)
 	if err != nil {
 		return nil, fmt.Errorf("scan: 查询状态失败: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var st string
-		if err := rows.Scan(&st); err != nil {
+		var n int64
+		if err := rows.Scan(&st, &n); err != nil {
 			return nil, fmt.Errorf("scan: 读取状态失败: %w", err)
 		}
-		count[st]++
-		count["total"]++
+		count[st] += n
+		count["total"] += n
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("scan: 遍历状态失败: %w", err)
@@ -297,13 +347,33 @@ func (s *Service) List(opts ListOptions) ([]*userdb.ScanFile, int64, error) {
 	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM scanfiles`+where, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("scan: 统计列表失败: %w", err)
 	}
+	// An empty queue needs no sorted row query over the wide metadata table.
+	if total == 0 {
+		return []*userdb.ScanFile{}, 0, nil
+	}
 
-	q := `SELECT id, scan_id, import_id, name, path, hash, status, title, author,
+	columns := `id, scan_id, import_id, name, path, hash, status, title, author,
 		publisher, tags, create_time, update_time, book_id, data
-		FROM scanfiles` + where + ` ORDER BY ` + col + ` ` + order
+		`
+	q := `SELECT ` + columns + ` FROM scanfiles` + where + ` ORDER BY ` + col + ` ` + order
 	qargs := append([]any{}, args...)
 	if opts.Num > 0 {
-		q += ` LIMIT ? OFFSET ?`
+		// Select page keys from a covering index before fetching any wide JSON
+		// rows. Otherwise SQLite can choose status/id and sort every full row.
+		hint := map[string]string{"create_time": "scanfiles_status_created_idx", "id": "scanfiles_status_id_idx", "path": "idx_source_scan_path"}[col]
+		if hint != "" {
+			var exists int
+			if err := s.DB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name=?`, hint).Scan(&exists); err != nil {
+				return nil, 0, err
+			}
+			if exists > 0 {
+				q = pagedListQuery(columns, where, col, order, hint)
+			} else {
+				q += ` LIMIT ? OFFSET ?`
+			}
+		} else {
+			q += ` LIMIT ? OFFSET ?`
+		}
 		qargs = append(qargs, opts.Num, opts.Page*opts.Num)
 	}
 
@@ -325,6 +395,11 @@ func (s *Service) List(opts ListOptions) ([]*userdb.ScanFile, int64, error) {
 		return nil, 0, fmt.Errorf("scan: 遍历列表失败: %w", err)
 	}
 	return out, total, nil
+}
+
+func pagedListQuery(columns, where, col, order, index string) string {
+	ordering := col + " " + order + ", id " + order
+	return `SELECT ` + columns + ` FROM scanfiles WHERE id IN (SELECT id FROM scanfiles INDEXED BY ` + index + where + ` ORDER BY ` + ordering + ` LIMIT ? OFFSET ?) ORDER BY ` + ordering
 }
 
 // placeholders 生成 "?,?,?" 形式的占位符串。

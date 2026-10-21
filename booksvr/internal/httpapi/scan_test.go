@@ -164,7 +164,7 @@ func TestScanListHandlerFilters(t *testing.T) {
 	seedScanRow(t, db, "h2", userdb.ScanStatusExist, 1, 0)
 	seedScanRow(t, db, "h3", userdb.ScanStatusFailed, 1, 0)
 
-	cases := map[string]int64{"all": 3, "todo": 1, "done": 1, "failed": 1}
+	cases := map[string]int64{"all": 3, "todo": 1, "done": 0, "failed": 1, "skipped": 1}
 	for filter, want := range cases {
 		ctx, _ := scanCtx(t, http.MethodGet, "/api/admin/scan/list?filter="+filter, "", true)
 		got, err := ScanListHandler(scanTestConfig(t, db, root))(ctx)
@@ -173,6 +173,10 @@ func TestScanListHandlerFilters(t *testing.T) {
 		}
 		if got["total"] != want {
 			t.Errorf("filter=%s total = %v, want %d", filter, got["total"], want)
+		}
+		summary := got["summary"].(scan.Summary)
+		if summary.Done != 0 || summary.Skipped != 1 || summary.Todo != 1 {
+			t.Fatalf("duplicate classified as successful or pending: %+v", summary)
 		}
 	}
 

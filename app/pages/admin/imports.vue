@@ -60,6 +60,7 @@
                     {{ t('admin.imports.settings.lastScan') }}：{{ watch_status.last_scan_at || t('admin.imports.settings.neverScanned') }}
                 </v-chip>
             </div>
+            <ImportStatistics :summary="statistics" />
             <v-alert
                 v-if="directoryAlert"
                 class="mt-3"
@@ -81,7 +82,7 @@
                 aria-live="polite"
             >
                 <div class="text-high-emphasis">
-                    {{ t(watch_status.manual_library_import_phase === 'queued' && watch_status.manual_library_import_running ? 'admin.imports.message.fullImportQueued' : backgroundTask === 'scan' ? 'admin.imports.message.fullScanRunning' : 'admin.imports.message.importRunning') }}
+                    {{ t(!watch_status.manual_library_import_running && !watch_status.manual_scan_running && !watch_status.manual_import_running ? 'admin.imports.message.autoWatchRunning' : watch_status.manual_library_import_phase === 'queued' && watch_status.manual_library_import_running ? 'admin.imports.message.fullImportQueued' : backgroundTask === 'scan' ? 'admin.imports.message.fullScanRunning' : 'admin.imports.message.importRunning') }}
                 </div>
                 <div
                     v-if="watch_status.scan_progress?.directory"
@@ -93,7 +94,7 @@
                     </div>
                 </div>
                 <div class="text-high-emphasis imports-progress">
-                    {{ t('admin.imports.message.importProgress', [count_done, count_todo, count_failed]) }}
+                    {{ t('admin.imports.message.importProgress', [count_done, count_todo, count_failed, count_skipped]) }}
                 </div>
             </v-alert>
         </v-card-text>
@@ -321,9 +322,9 @@
             <template #item.path="{ item }">
                 <span class="directory-path">{{ item.data?.archive_source || item.data?.source_path || item.path }}</span>
                 <div
-                    v-if="['failed', 'drop', 'delete_failed'].includes(item.status)"
+                    v-if="['failed', 'drop', 'exist', 'delete_failed'].includes(item.status)"
                     class="import-failure-reason text-body-2 text-high-emphasis mt-1"
-                    :data-testid="item.status === 'drop' ? 'import-skip-reason' : 'import-failure-reason'"
+                    :data-testid="['drop', 'exist'].includes(item.status) ? 'import-skip-reason' : 'import-failure-reason'"
                 >
                     <strong>{{ t('admin.imports.reasonLabel') }}</strong>
                     <span>{{ importRecordReason(item) }}</span>
@@ -651,9 +652,12 @@ const count_todo = ref(0);
 const count_done = ref(0);
 const count_failed = ref(0);
 const count_skipped = ref(0);
-const importRecordReason = (item) => item.status === 'drop'
-    ? (item.data?.skip_reason || t('admin.imports.legacySkippedReason'))
-    : (item.data?.import_error || item.data?.index_error || item.data?.analysis_error || item.data?.delete_error || t('admin.imports.legacyFailedReason'));
+const statistics = ref(null);
+const importRecordReason = (item) => item.status === 'exist'
+    ? t('admin.imports.duplicateSkippedReason')
+    : item.status === 'drop'
+        ? (item.data?.skip_reason || t('admin.imports.legacySkippedReason'))
+        : (item.data?.import_error || item.data?.index_error || item.data?.analysis_error || item.data?.delete_error || t('admin.imports.legacyFailedReason'));
 const import_mode = ref(DEFAULT_IMPORT_MODE);
 const auto_watch_enabled = ref(false);
 const directory_check = ref(null);
@@ -814,6 +818,7 @@ const getDataFromApi = (resume = true) => {
             import_mode.value = rsp.import_mode || import_mode.value;
             auto_watch_enabled.value = Boolean(rsp.auto_watch_enabled);
             watch_status.value = rsp.watch_status || watch_status.value;
+            statistics.value = rsp.summary;
             count_done.value = rsp.summary.done;
             count_todo.value = rsp.summary.todo;
             count_failed.value = rsp.summary.failed || 0;
@@ -844,7 +849,6 @@ const loop_check_status = (url, callback) => {
             const rsp = await $backend(url);
             if (pageDisposed) return;
             if (rsp.err !== 'ok') {
-                loading.value = false;
                 observedTask = null;
                 if ($alert) $alert('error', rsp.msg);
                 getDataFromApi(false);
@@ -859,7 +863,6 @@ const loop_check_status = (url, callback) => {
             }
         } catch (error) {
             observedTask = null;
-            loading.value = false;
             if (!pageDisposed && $alert) $alert('error', error.message || '状态查询失败');
         }
     }, 2000);
@@ -869,13 +872,13 @@ const observeTask = (kind) => {
     observedTask = kind;
     loop_check_status(`/admin/${kind}/status`, (rsp) => {
         watch_status.value = rsp.watch_status || watch_status.value;
+        statistics.value = rsp.summary;
         count_done.value = rsp.summary.done;
         count_todo.value = rsp.summary.todo;
         count_failed.value = rsp.summary.failed || 0;
         count_skipped.value = rsp.summary.skipped || 0;
         if (kind === 'scan') scan_status.value = rsp.status;
         else import_status.value = rsp.status;
-        loading.value = false;
         return Boolean(rsp.running);
     });
 };
@@ -1095,6 +1098,7 @@ const scan_books = () => {
         }
 
         watch_status.value = { ...watch_status.value, manual_scan_running: true };
+        loading.value = false;
         observeTask('scan');
     }).catch((error) => {
         loading.value = false;
@@ -1121,7 +1125,10 @@ const import_books = (hashlist = 'all') => {
             return;
         }
 
-        watch_status.value = rsp.watch_status || { ...watch_status.value, manual_import_running: true };
+        watch_status.value = rsp.watch_status || (hashlist === 'all'
+            ? { ...watch_status.value, manual_library_import_running: true, manual_library_import_phase: 'queued' }
+            : { ...watch_status.value, manual_import_running: true });
+        loading.value = false;
         observeTask('import');
     }).catch((error) => {
         loading.value = false;
@@ -1140,8 +1147,8 @@ const delete_record = () => {
         if (rsp.err !== 'ok') {
             if ($alert) $alert('error', rsp.msg);
         }
-        getDataFromApi();
         selected.value = [];
+        return getDataFromApi();
     }).finally(() => {
         loading.value = false;
     });

@@ -1,6 +1,7 @@
 <template>
     <div class="app-pagination">
         <v-pagination
+            density="comfortable"
             v-bind="$attrs"
             :model-value="modelValue"
             :length="length"

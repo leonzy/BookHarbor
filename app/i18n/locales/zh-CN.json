@@ -809,7 +809,6 @@
       "reasonLabel": "原因：",
       "legacySkippedReason": "历史记录未保存具体跳过原因，尚未核实。",
       "legacyFailedReason": "历史记录未保存具体失败原因。",
-
       "title": "导入图书",
       "titles": {
         "addOpdsSource": "添加 OPDS 源",
@@ -852,7 +851,7 @@
         "importDirInfo": "请将需要导入的书籍放入{0}目录中。 支持的格式为 azw/azw3/epub/mobi/pdf/txt/djvu/uvz/cbz/zip/cbr/rar 。",
         "fullScanRunning": "正在后台扫描。全量导入任务会自动把扫描到的书籍入库；单独扫描时可点击“全部导入”接续处理。",
         "importRunning": "正在后台自动导入书籍，关闭页面后仍会继续。",
-        "scanProgress": "已处理 {0} 本，已检查 {1} 个 ZIP，失败 {2} 项。",
+        "scanProgress": "当前扫描目录：已处理 {0} 个候选文件，打开 {1} 个 ZIP，失败 {2} 项。",
         "fullImportQueued": "全部导入已排队，当前任务结束后会自动扫描并入库，无需再次点击。",
         "importAsyncInfo": "无需选择书籍，点击“全部导入”即可在后台扫描全部配置目录并自动入库，已有待处理书籍也会导入。ZIP 会自动解压识别，原压缩包保留；关闭页面后任务继续。",
         "calibreInfo": "另外，还可以使用 PC 版 Calibre 软件 (https://calibre-ebook.com/) 管理书籍，但是请注意：使用完 PC 版后，需重启 Web 版方可生效。",
@@ -864,7 +863,7 @@
         "loadingDirectory": "正在加载目录...",
         "emptyDirectory": "目录为空",
         "importingBooks": "正在导入书籍到待处理列表...",
-        "importProgress": "已入库 {0} 本，待处理 {1} 本，失败 {2} 项。",
+        "importProgress": "累计成功处理 {0} 个文件，待处理 {1} 个，失败 {2} 个，已跳过 {3} 个。",
         "importToTodo": "导入的书籍会自动添加到\"待处理\"列表",
         "importAfterScan": "导入完成后，您需要在主界面上点击\"扫描书籍\"按钮来识别这些书籍",
         "importCompleted": "导入完成！",
@@ -890,7 +889,8 @@
         "noSavedOpdsSources": "暂无已保存的 OPDS 源，请点击上方按钮添加",
         "saveFailed": "保存 OPDS 源失败",
         "deleteFailed": "删除 OPDS 源失败",
-        "confirmDeleteSource": "确定要删除此 OPDS 源配置吗？"
+        "confirmDeleteSource": "确定要删除此 OPDS 源配置吗？",
+        "autoWatchRunning": "自动监控正在检查目录中的新增或变化文件；这不表示上次“全部导入”尚未完成。"
       },
       "status": {
         "new": "待扫描",
@@ -910,7 +910,7 @@
       "tab": {
         "skipped": "已跳过",
         "todo": "待处理",
-        "done": "已导入",
+        "done": "成功文件",
         "failed": "失败"
       },
       "settings": {
@@ -959,7 +959,16 @@
         "queued": "排队中 {0}",
         "importing": "导入中 {0}",
         "failed": "失败 {0}"
-      }
+      },
+      "statistics": {
+        "heading": "书库与文件统计",
+        "library_books": "实际书籍数（本）",
+        "available_books": "可浏览书籍（本）",
+        "done": "成功处理文件（个）",
+        "missing_source_books": "来源缺失书籍（本）",
+        "explanation": "实际书籍按书目去重，包含来源缺失书籍；可浏览数已扣除确认缺失的书籍。一本书可对应多个成功文件。重复文件归“已跳过”，不算成功或待处理；目录和书库列表还按访问权限筛选。"
+      },
+      "duplicateSkippedReason": "书库已存在相同内容或对应格式，已跳过，无需再次导入。"
     },
     "settings": {
       "title": "系统设置",

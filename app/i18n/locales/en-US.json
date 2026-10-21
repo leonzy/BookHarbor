@@ -789,7 +789,6 @@
       "reasonLabel": "Reason: ",
       "legacySkippedReason": "This older record has no saved skip reason and has not been verified.",
       "legacyFailedReason": "This older record has no saved failure reason.",
-
       "title": "Import Books",
       "titles": {
         "addOpdsSource": "Add OPDS Source",
@@ -832,7 +831,7 @@
         "importDirInfo": "Please put books in {0} directory. Supported formats: azw/azw3/epub/mobi/pdf/txt/djvu/uvz/cbz/zip/cbr/rar.",
         "fullScanRunning": "Scanning in the background. Full imports automatically add discovered books. For a scan-only task, use Import all to queue automatic importing.",
         "importRunning": "Importing books automatically in the background. You can close this page.",
-        "scanProgress": "Processed {0} books, checked {1} ZIP files, {2} failures.",
+        "scanProgress": "Current scan directory: {0} candidate files processed, {1} ZIP archives opened, {2} failures.",
         "fullImportQueued": "Full import queued. Scanning and importing will continue after the current task. No further clicks are needed.",
         "importAsyncInfo": "No selection needed. Import all scans every configured directory and imports books in the background, including pending discoveries. ZIP files are unpacked automatically and retained. The task continues after you close this page.",
         "calibreInfo": "You can also use Calibre software (https://calibre-ebook.com/), but restart web service after use.",
@@ -844,7 +843,7 @@
         "loadingDirectory": "Loading directory...",
         "emptyDirectory": "Empty directory",
         "importingBooks": "Importing books...",
-        "importProgress": "Imported {0}, pending {1}, failed {2}.",
+        "importProgress": "Lifetime totals: {0} successful files, {1} pending, {2} failed, {3} skipped.",
         "importToTodo": "Books will be added to 'Pending' list",
         "importAfterScan": "Click 'Scan Books' to identify",
         "importCompleted": "Import completed!",
@@ -870,7 +869,8 @@
         "noSavedOpdsSources": "No saved OPDS sources, please click the button above to add one",
         "saveFailed": "Failed to save OPDS source",
         "deleteFailed": "Failed to delete OPDS source",
-        "confirmDeleteSource": "Are you sure you want to delete this OPDS source configuration?"
+        "confirmDeleteSource": "Are you sure you want to delete this OPDS source configuration?",
+        "autoWatchRunning": "Automatic monitoring is checking for new or changed files. This does not mean the previous Import all task is unfinished."
       },
       "status": {
         "new": "New",
@@ -890,7 +890,7 @@
       "tab": {
         "skipped": "Skipped",
         "todo": "Pending",
-        "done": "Imported",
+        "done": "Successful files",
         "failed": "Failed"
       },
       "settings": {
@@ -939,7 +939,16 @@
         "queued": "Queued {0}",
         "importing": "Importing {0}",
         "failed": "Failed {0}"
-      }
+      },
+      "statistics": {
+        "heading": "Library and file statistics",
+        "library_books": "Library books",
+        "available_books": "Available books",
+        "done": "Successfully processed files",
+        "missing_source_books": "Books with missing sources",
+        "explanation": "Library books are distinct titles, including books with confirmed missing sources. Available books exclude those missing books. One book can have several processed files. Duplicates are skipped, never pending or successful files. Browsing also applies access permissions."
+      },
+      "duplicateSkippedReason": "Identical content or the corresponding format already exists in the library. Skipped; no further import is needed."
     },
     "settings": {
       "title": "System Settings",
