@@ -19,6 +19,7 @@ type BrowseQuery struct {
 	Excluded      map[int64]bool
 	Candidates    []int64
 	TimestampSort bool
+	SizeSort      string
 	RatingSort    bool
 	Start, Size   int
 }
@@ -131,7 +132,7 @@ func BrowseBooks(ctx context.Context, db *sql.DB, q BrowseQuery) ([]int64, int, 
 	var total int
 	countSQL := "SELECT count(*) FROM books b WHERE " + where
 	countArgs := args
-	unfiltered := !q.FormatFilter && q.Candidates == nil && q.Category == "" && len(q.Excluded) == 0 && (q.Format == "" || q.Format == "全部")
+	unfiltered := !q.FormatFilter && q.Candidates == nil && q.Category == "" && (q.Format == "" || q.Format == "全部")
 	for _, value := range q.Filters {
 		if value != "" && value != "全部" {
 			unfiltered = false
@@ -145,6 +146,16 @@ func BrowseBooks(ctx context.Context, db *sql.DB, q BrowseQuery) ([]int64, int, 
 		if indexed > 0 {
 			countSQL = "SELECT (SELECT count(*) FROM books)-(SELECT count(*) FROM book_unavailable_sources)"
 			countArgs = nil
+			hidden := []int64{}
+			for id, excluded := range q.Excluded {
+				if excluded {
+					hidden = append(hidden, id)
+				}
+			}
+			if len(hidden) > 0 {
+				countSQL += "-(SELECT count(*) FROM books WHERE id IN (SELECT value FROM json_each(?)) AND id NOT IN (SELECT book_id FROM book_unavailable_sources))"
+				countArgs = []any{jsonIDs(hidden)}
+			}
 		}
 	}
 	if err = tx.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
@@ -170,8 +181,13 @@ func BrowseBooks(ctx context.Context, db *sql.DB, q BrowseQuery) ([]int64, int, 
 	if q.Size < 1 {
 		q.Size = 1
 	}
+	from := "books b"
+	if q.SizeSort != "" {
+		from = "book_sort_sizes z CROSS JOIN books b ON b.id=z.book_id"
+		order = sizeOrderSQL(q.SizeSort, "z")
+	}
 	pageArgs := append(append([]any{}, args...), q.Size, q.Start)
-	rows, err := tx.QueryContext(ctx, "SELECT b.id FROM books b WHERE "+where+" ORDER BY "+order+" LIMIT ? OFFSET ?", pageArgs...)
+	rows, err := tx.QueryContext(ctx, "SELECT b.id FROM "+from+" WHERE "+where+" ORDER BY "+order+" LIMIT ? OFFSET ?", pageArgs...)
 	if err != nil {
 		return nil, 0, err
 	}

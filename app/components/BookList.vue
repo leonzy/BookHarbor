@@ -4,6 +4,7 @@
         <v-row>
             <v-col cols="12">
                 <h2>{{ title }}</h2>
+                <BookSizeSort />
                 <v-divider class="mt-3 mb-0" />
             </v-col>
 
@@ -18,7 +19,7 @@
                 <v-container class="max-width">
                     <AppPagination
                         v-if="page_cnt > 1"
-                        v-model="page"
+                        :model-value="page"
                         :disabled="pending"
                         :length="page_cnt"
                         rounded="circle"
@@ -31,6 +32,7 @@
 </template>
 
 <script setup>
+import BookSizeSort from '@/components/BookSizeSort.vue';
 import AppPagination from '@/components/AppPagination.vue';
 import { ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -45,7 +47,7 @@ const { $backend } = useNuxtApp();
 store.setNavbar(true);
 
 const page_size = ref(60);
-const page = ref(1);
+const page = computed(() => 1 + Math.floor(Math.max(0, Number(route.query.start) || 0) / page_size.value));
 
 const loadData = async () => {
     try {
@@ -71,11 +73,6 @@ const loaded = computed(() => listData.value?.err === 'ok');
 const title = computed(() => loaded.value ? listData.value?.title || '' : '');
 const books = computed(() => loaded.value && Array.isArray(listData.value?.books) ? listData.value.books : []);
 const total = computed(() => loaded.value ? Number(listData.value?.total) || 0 : 0);
-
-// Calculate page from query
-if (route.query.start) {
-    page.value = 1 + Math.floor(parseInt(route.query.start) / page_size.value);
-}
 
 const page_cnt = computed(() => {
     return total.value > 0 ? Math.max(1, Math.ceil(total.value / page_size.value)) : 0;

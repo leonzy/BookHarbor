@@ -1,5 +1,6 @@
 <template>
     <div>
+        <BookSizeSort />
         <BookCoverGrid
             :books="books"
             :empty-text="t('shelf.empty')"
@@ -12,7 +13,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import BookSizeSort from '@/components/BookSizeSort.vue';
+import { ref, onMounted, watch } from 'vue';
 import BookCoverGrid from '@/components/BookCoverGrid.vue';
 import { useMainStore } from '@/stores/main';
 import { useI18n } from 'vue-i18n';
@@ -22,6 +24,15 @@ const mainStore = useMainStore();
 const { t } = useI18n();
 
 const books = ref([]);
+const route = useRoute();
+let sequence = 0;
+async function loadBooks() {
+    const current = ++sequence;
+    const query = new URLSearchParams({ sort: route.query.sort || '' });
+    const rsp = await $backend('/shelf?' + query);
+    if (current === sequence && rsp.err === 'ok') { books.value = rsp.books || []; }
+}
+watch(() => route.fullPath, loadBooks);
 
 useHead({
     title: () => t('shelf.pageTitle'),
@@ -29,10 +40,6 @@ useHead({
 
 onMounted(() => {
     mainStore.setNavbar(true);
-    $backend('/shelf').then(rsp => {
-        if (rsp.err === 'ok') {
-            books.value = rsp.books || [];
-        }
-    });
+    loadBooks();
 });
 </script>

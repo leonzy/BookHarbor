@@ -786,7 +786,7 @@ func AdminBookListHandler(cfg AdminConfig) HandlerFunc {
 				start = int(^uint(0) >> 1)
 			}
 		}
-		pageIDs, total, err := library.SearchPage(ctx.Request.Context(), cfg.LibraryDB, search, start, size, sortBy == "id" && desc)
+		pageIDs, total, err := library.SearchPage(ctx.Request.Context(), cfg.LibraryDB, search, start, size, sortBy == "id" && desc, adminSizeOrder(sortBy, desc))
 		if err != nil {
 			return nil, err
 		}

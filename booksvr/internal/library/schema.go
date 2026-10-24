@@ -112,6 +112,9 @@ func Migrate(db *sql.DB) error {
 	if err := migrateBrowseFormats(db); err != nil {
 		return err
 	}
+	if err := migrateBookSizes(db); err != nil {
+		return err
+	}
 	return migrateBookDirectoryIndex(db)
 }
 

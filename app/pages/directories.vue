@@ -109,6 +109,7 @@
                     >
                         {{ selected }}
                     </h2>
+                    <BookSizeSort />
                     <v-checkbox
                         :model-value="recursive"
                         :label="t('directories.recursive')"
@@ -178,6 +179,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useNuxtApp, useRoute, useRouter, useHead } from 'nuxt/app';
 import { useI18n } from 'vue-i18n';
 import BookCards from '@/components/BookCards.vue';
+import BookSizeSort from '@/components/BookSizeSort.vue';
 import AppPagination from '@/components/AppPagination.vue';
 import { useMainStore } from '@/stores/main';
 
@@ -272,7 +274,7 @@ async function loadBooks() {
     if (!selected.value) return;
     booksLoading.value = true;
     try {
-        const query = new URLSearchParams({ path: selected.value, start: String((page.value - 1) * pageSize), size: String(pageSize), recursive: recursive.value ? '1' : '0' });
+        const query = new URLSearchParams({ path: selected.value, start: String((page.value - 1) * pageSize), size: String(pageSize), recursive: recursive.value ? '1' : '0', sort: typeof route.query.sort === 'string' ? route.query.sort : '' });
         const rsp = await $backend('/library/directories?' + query);
         if (disposed || seq !== booksSequence) return;
         if (rsp.err !== 'ok') throw new Error(rsp.err);

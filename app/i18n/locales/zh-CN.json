@@ -1,4 +1,12 @@
 {
+  "bookSort": {
+    "label": "排序",
+    "default": "默认排序",
+    "ascending": "大小：从小到大",
+    "descending": "大小：从大到小",
+    "hint": "按最大的可用格式排序，未知大小排最后",
+    "size": "文件大小"
+},
   "directories": {
     "title": "文件目录",
     "tree": "目录树",

@@ -457,7 +457,7 @@ func fullText(value string) (string, []any, error) {
 
 // SearchPage uses the existing query grammar but returns only a requested page.
 // A negative size preserves the administrative export-all contract.
-func SearchPage(ctx context.Context, db *sql.DB, query string, start, size int, descending bool) ([]int64, int, error) {
+func SearchPage(ctx context.Context, db *sql.DB, query string, start, size int, descending bool, sizeSort ...string) ([]int64, int, error) {
 	cond := "1=1"
 	args := []any{}
 	if strings.TrimSpace(query) != "" {
@@ -492,6 +492,9 @@ func SearchPage(ctx context.Context, db *sql.DB, query string, start, size int, 
 		order = "DESC"
 	}
 	stmt := "SELECT b.id FROM books b WHERE " + cond + " ORDER BY b.id " + order
+	if len(sizeSort) > 0 && sizeSort[0] != "" {
+		stmt = "SELECT b.id FROM book_sort_sizes z CROSS JOIN books b ON b.id=z.book_id WHERE " + cond + " ORDER BY " + sizeOrderSQL(sizeSort[0], "z")
+	}
 	if size >= 0 {
 		stmt += " LIMIT ? OFFSET ?"
 		args = append(args, size, start)

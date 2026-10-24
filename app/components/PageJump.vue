@@ -78,7 +78,7 @@ function jump() {
     padding-block: 0.5rem;
 }
 .page-jump__input {
-    flex: 0 0 5rem;
+    flex: 0 1 5rem;
     width: 5rem;
     min-width: 0;
 }
@@ -96,8 +96,8 @@ function jump() {
 }
 @media (max-width: 599px) {
     .page-jump { gap: 6px; }
-    .page-jump__input { flex-basis: 3.75rem; width: 3.75rem; }
-    .page-jump > span { font-size: 12px !important; }
+    .page-jump__input { flex: 0 0 min(3.75rem, 80px); width: min(3.75rem, 80px); min-width: 60px; }
+    .page-jump > span { flex: 0 1 auto; min-width: 0; white-space: normal; font-size: 12px !important; }
     .page-jump > .v-btn { padding-inline: 8px; font-size: 12px; }
 }
 </style>

@@ -413,6 +413,9 @@ func bookAttachStates(cfg BookConfig, ctx *Context, books []map[string]any) ([]m
 
 // bookRenderList 复刻 ListHandler.render_book_list。
 func bookRenderList(cfg BookConfig, ctx *Context, ids []int64, title string, sortByID bool) (map[string]any, error) {
+	if bookSizeSort(ctx) != "" && cfg.BrowsePage != nil {
+		return bookBrowsePage(cfg, ctx, library.BrowseQuery{Candidates: ids}, title)
+	}
 	start := bookArgumentStart(ctx)
 	maxSize := bookMaxPageSize(cfg)
 	delta := bookPageDelta(ctx, maxSize)
@@ -448,7 +451,7 @@ func bookRenderResolvedPage(cfg BookConfig, ctx *Context, page []int64, title st
 			values = append(values, bookDictWithItem(cfg, b, bookItemFromRow(items[id])))
 		}
 	}
-	if sortByID {
+	if sortByID && bookSizeSort(ctx) == "" {
 		sort.SliceStable(values, func(i, j int) bool {
 			return int64Of(values[i]["id"]) > int64Of(values[j]["id"])
 		})
@@ -928,6 +931,13 @@ func bookRelevanceKey(cfg BookConfig, id int64, keyword string, titleAliasIDs ma
 // BookHotHandler 实现 /api/hot。
 func BookHotHandler(cfg BookConfig) HandlerFunc {
 	return func(ctx *Context) (map[string]any, error) {
+		if bookSizeSort(ctx) != "" && cfg.HotBooks != nil && cfg.BrowsePage != nil {
+			ids, _, err := cfg.HotBooks(ctx, 0, -1)
+			if err != nil {
+				return nil, err
+			}
+			return bookBrowsePage(cfg, ctx, library.BrowseQuery{Candidates: ids}, "热度榜单")
+		}
 		start := bookArgumentStart(ctx)
 		const delta = 60
 		ids := []int64{}
@@ -984,6 +994,12 @@ func bookReadingListHandler(cfg BookConfig, readState int64, title string) Handl
 		for _, s := range states {
 			ids = append(ids, s.BookID)
 			stateByID[s.BookID] = s
+		}
+		if bookSizeSort(ctx) != "" && cfg.LibraryDB != nil {
+			ids, err = library.SizeSortedIDs(ctx.Request.Context(), cfg.LibraryDB, ids, bookSizeSort(ctx), 0, -1)
+			if err != nil {
+				return nil, err
+			}
 		}
 		booksMap, err := bookLoadBooks(cfg, ids)
 		if err != nil {
@@ -1168,6 +1184,7 @@ func bookBrowsePage(cfg BookConfig, ctx *Context, q library.BrowseQuery, title s
 			return nil, err
 		}
 	}
+	q.SizeSort = bookSizeSort(ctx)
 	q.Start = bookArgumentStart(ctx)
 	q.Size = bookPageDelta(ctx, bookMaxPageSize(cfg))
 	ids, total, err := cfg.BrowsePage(ctx, q)

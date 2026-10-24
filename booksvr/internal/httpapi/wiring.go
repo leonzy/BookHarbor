@@ -148,6 +148,9 @@ func (w *bookWiring) Config(cdnURL string) BookConfig {
 					visible = append(visible, id)
 				}
 			}
+			if delta < 0 {
+				return visible, len(visible), nil
+			}
 			return bookSlice(visible, start, start+delta), len(visible), nil
 		},
 		NavTags: func(ctx *Context) (map[string]int, error) {

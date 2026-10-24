@@ -181,6 +181,10 @@
                 <BookFileSizes :sizes="item.format_sizes" />
             </template>
 
+            <template #item.size="{ item }">
+                {{ maxBookSize(item) }}
+            </template>
+
             <template #item.authors="{ item }">
                 <div
                     class="cursor-pointer"
@@ -512,6 +516,8 @@
 <script setup>
 import PageJump from '@/components/PageJump.vue';
 import BookFileSizes from '@/components/BookFileSizes.vue';
+import { formatFileSize } from '@/utils/file-size';
+function maxBookSize(book) { const size = Math.max(0, ...Object.values(book.format_sizes || {}).map(Number)); return size > 0 ? formatFileSize(size) : '—'; }
 import { withBasePath } from '@/utils/base-path';
 import { ref, computed, watch, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -542,6 +548,7 @@ const options = ref({ page: 1, itemsPerPage: 10, sortBy: [{ key: 'id', order: 'd
 const headers = computed(() => [
     { title: t('book.cover'), key: 'img', sortable: false, width: '80px' },
     { title: 'ID', key: 'id', sortable: true, width: '80px' },
+    { title: t('bookSort.size'), key: 'size', sortable: true },
     { title: t('book.field.title'), key: 'title', sortable: true, width: '200px' },
     { title: t('book.field.authors'), key: 'authors', sortable: true, width: '100px' },
     { title: t('book.field.rating'), key: 'rating', sortable: false, width: '60px' },

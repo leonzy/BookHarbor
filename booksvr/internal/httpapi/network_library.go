@@ -884,11 +884,21 @@ func renderBookList(ctx *Context, cfg NetworkConfig, allBooks []map[string]any,
 		}
 		count = len(filtered)
 		page := sliceInt64(filtered, start, start+delta)
+		if bookSizeSort(ctx) != "" {
+			db := ctx.LibraryDB
+			if db == nil {
+				db = ctx.DB
+			}
+			page, count, err = library.BrowseBooks(ctx.Request.Context(), db, library.BrowseQuery{Candidates: filtered, SizeSort: bookSizeSort(ctx), Start: start, Size: delta})
+			if err != nil {
+				return nil, err
+			}
+		}
 		books, err = loadFormattedBooks(ctx, cfg, page)
 		if err != nil {
 			return nil, err
 		}
-		if sortByID {
+		if sortByID && bookSizeSort(ctx) == "" {
 			// 归一化，按照 id 从大到小排列。
 			sortBooksByIDDesc(books)
 		}
@@ -950,7 +960,11 @@ func loadFormattedBooks(ctx *Context, cfg NetworkConfig, ids []int64) ([]map[str
 	if len(ids) == 0 {
 		return []map[string]any{}, nil
 	}
-	data, err := library.GetBooksData(ctx.DB, ids)
+	db := ctx.LibraryDB
+	if db == nil {
+		db = ctx.DB
+	}
+	data, err := library.GetBooksData(db, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -988,7 +1002,9 @@ func formatBookData(ctx *Context, cfg NetworkConfig, b *library.BookData) map[st
 		UserID:  ctx.Identity.UserID,
 		IsAdmin: ctx.Identity.IsAdmin,
 	}
-	return f.Format(false, false)
+	result := f.Format(false, false)
+	result["format_sizes"] = b.FormatSizes
+	return result
 }
 
 // attachReadingStates 给已格式化的书籍列表附加当前登录用户的阅读状态。

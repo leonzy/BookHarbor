@@ -336,8 +336,22 @@ func attachFormats(db *sql.DB, byID map[int64]*BookData, ph string, args []any) 
 	if err != nil {
 		return err
 	}
-	rows, err := db.Query(fmt.Sprintf(`
-		SELECT book, UPPER(format), MAX(uncompressed_size) FROM data WHERE book IN (%s) GROUP BY book, UPPER(format) ORDER BY book, UPPER(format)`, ph), args...)
+	registered, err := columnExists(db, "book_formats", "size")
+	if err != nil {
+		return err
+	}
+	stmt := fmt.Sprintf(`SELECT book,UPPER(format),MAX(uncompressed_size) FROM data WHERE book IN (%s) GROUP BY book,UPPER(format) ORDER BY book,UPPER(format)`, ph)
+	formatArgs := args
+	if registered {
+		// Indexed sources are authoritative, including after a file changes size.
+		// Calibre-only formats retain their stored size without a disk stat.
+		stmt = `WITH requested(id) AS (VALUES ` + strings.ReplaceAll(ph, "?", "(?)") + `)
+ SELECT book,format,MAX(size) FROM (
+ SELECT f.book_id book,UPPER(f.format) format,f.size size FROM book_formats f WHERE f.book_id IN (SELECT id FROM requested)
+ UNION ALL SELECT d.book,UPPER(d.format),d.uncompressed_size FROM data d WHERE d.book IN (SELECT id FROM requested) AND NOT EXISTS(SELECT 1 FROM book_formats f WHERE f.book_id=d.book AND UPPER(f.format)=UPPER(d.format))
+ ) GROUP BY book,format ORDER BY book,format`
+	}
+	rows, err := db.Query(stmt, formatArgs...)
 	if err != nil {
 		return fmt.Errorf("library: 查询格式失败: %w", err)
 	}

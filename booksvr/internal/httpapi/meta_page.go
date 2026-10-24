@@ -19,6 +19,7 @@ func metaRenderQuery(ctx *Context, cfg MetaConfig, q library.BrowseQuery, title 
 	q.Excluded = private
 	bc := cfg.Book
 	bc.Settings = cfg.Settings
+	q.SizeSort = bookSizeSort(ctx)
 	q.Start = bookArgumentStart(ctx)
 	q.Size = bookPageDelta(ctx, bookMaxPageSize(bc))
 	ids, total, err := library.BrowseBooks(ctx.Request.Context(), cfg.DB, q)

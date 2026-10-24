@@ -242,7 +242,15 @@ func browseFormatPage(ctx context.Context, db *sql.DB, q BrowseQuery) ([]int64, 
 			order = `rating DESC,book_id DESC`
 		}
 		args = append(args, q.Size, q.Start)
-		rows, e := tx.QueryContext(ctx, `SELECT book_id FROM book_browse_formats WHERE `+where+` ORDER BY `+order+` LIMIT ? OFFSET ?`, args...)
+		stmt := `SELECT book_id FROM book_browse_formats WHERE ` + where + ` ORDER BY ` + order + ` LIMIT ? OFFSET ?`
+		if q.SizeSort != "" {
+			index := "book_size_desc"
+			if q.SizeSort == "asc" {
+				index = "book_size_asc"
+			}
+			stmt = `SELECT z.book_id FROM book_sort_sizes z INDEXED BY ` + index + ` WHERE z.book_id IN (SELECT book_id FROM book_browse_formats WHERE ` + where + `) ORDER BY ` + sizeOrderSQL(q.SizeSort, "z") + ` LIMIT ? OFFSET ?`
+		}
+		rows, e := tx.QueryContext(ctx, stmt, args...)
 		if e != nil {
 			return nil, 0, e
 		}

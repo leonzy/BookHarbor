@@ -22,6 +22,13 @@ func TestBootstrapCreatesNativeSchemaAndPreservesSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	var hotIndex int
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='index' AND name='items_hot_page'`).Scan(&hotIndex); err != nil || hotIndex != 1 {
+		t.Fatal("missing hot-list covering index", hotIndex, err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='index' AND name='items_private_visibility'`).Scan(&hotIndex); err != nil || hotIndex != 1 {
+		t.Fatal("missing private visibility index", hotIndex, err)
+	}
 	for _, table := range userTableNames() {
 		var n int
 		if err := db.QueryRow(`SELECT COUNT(*) FROM ` + quoteIdent(table, "sqlite")).Scan(&n); err != nil {

@@ -15,6 +15,7 @@
             </v-tab>
         </v-tabs>
 
+        <BookSizeSort />
         <v-tabs-window v-model="activeTab">
             <v-tabs-window-item :value="0">
                 <BookCoverGrid
@@ -72,6 +73,7 @@
 </template>
 
 <script setup>
+import BookSizeSort from '@/components/BookSizeSort.vue';
 import { ref, computed, onMounted, watch } from 'vue';
 import BookCoverGrid from '@/components/BookCoverGrid.vue';
 import { useMainStore } from '@/stores/main';
@@ -100,7 +102,13 @@ useHead({
 
 const get_history = (his) => {
     if (!his) { return []; }
-    return his.map(b => {
+    const ordered = [...his];
+    if (['size_asc', 'size_desc'].includes(route.query.sort)) ordered.sort((a, b) => {
+        const size = book => Math.max(0, ...Object.values(book.format_sizes || {}).map(Number));
+        const x = size(a), y = size(b);
+        return (x > 0) !== (y > 0) ? (x > 0 ? -1 : 1) : (x !== y ? (route.query.sort === 'size_asc' ? x - y : y - x) : b.id - a.id);
+    });
+    return ordered.map(b => {
         b.href = '/book/' + b.id;
         return b;
     });
@@ -115,10 +123,13 @@ const history = computed(() => {
     ];
 });
 
+let readingSequence = 0;
+let finishedSequence = 0;
 const loadReadingBooks = async () => {
+    const sequence = ++readingSequence;
     try {
-        const rsp = await $backend('/reading');
-        if (rsp.err === 'ok') {
+        const rsp = await $backend('/reading?sort=' + encodeURIComponent(route.query.sort || ''));
+        if (sequence === readingSequence && rsp.err === 'ok') {
             readingBooks.value = rsp.books || [];
         }
     } catch (e) {
@@ -127,15 +138,18 @@ const loadReadingBooks = async () => {
 };
 
 const loadFinishedBooks = async () => {
+    const sequence = ++finishedSequence;
     try {
-        const rsp = await $backend('/read-done');
-        if (rsp.err === 'ok') {
+        const rsp = await $backend('/read-done?sort=' + encodeURIComponent(route.query.sort || ''));
+        if (sequence === finishedSequence && rsp.err === 'ok') {
             finishedBooks.value = rsp.books || [];
         }
     } catch (e) {
         console.error('Failed to load finished books:', e);
     }
 };
+
+watch(() => route.query.sort, () => { loadReadingBooks(); loadFinishedBooks(); });
 
 onMounted(() => {
     mainStore.setNavbar(true);

@@ -251,7 +251,7 @@ func (c *BookDirectoryCache) Browse(ctx context.Context, viewer, current string,
 }
 
 // size=0 is a children-only query; size=-1 keeps the non-HTTP API compatible.
-func (c *BookDirectoryCache) BrowsePage(ctx context.Context, current string, recursive, refresh bool, excluded map[int64]bool, start, size int) ([]BookDirectory, []int64, int, error) {
+func (c *BookDirectoryCache) BrowsePage(ctx context.Context, current string, recursive, refresh bool, excluded map[int64]bool, start, size int, sizeSort ...string) ([]BookDirectory, []int64, int, error) {
 	if err := c.synchronize(ctx, refresh); err != nil {
 		return nil, nil, 0, err
 	}
@@ -319,7 +319,11 @@ func (c *BookDirectoryCache) BrowsePage(ctx context.Context, current string, rec
 	if start >= total {
 		return dirs, ids, total, nil
 	}
-	rows, err = c.db.QueryContext(ctx, `SELECT book_id FROM book_directory_members WHERE node_id=?`+restriction+` AND book_id NOT IN (SELECT value FROM json_each(?)) ORDER BY book_id DESC LIMIT ? OFFSET ?`, nodeID, visibility, size, start)
+	stmt := `SELECT book_id FROM book_directory_members WHERE node_id=?` + restriction + ` AND book_id NOT IN (SELECT value FROM json_each(?)) ORDER BY book_id DESC LIMIT ? OFFSET ?`
+	if len(sizeSort) > 0 && sizeSort[0] != "" {
+		stmt = `SELECT z.book_id FROM book_sort_sizes z WHERE z.book_id IN (SELECT book_id FROM book_directory_members WHERE node_id=?` + restriction + `) AND z.book_id NOT IN (SELECT value FROM json_each(?)) ORDER BY ` + sizeOrderSQL(sizeSort[0], "z") + ` LIMIT ? OFFSET ?`
+	}
+	rows, err = c.db.QueryContext(ctx, stmt, nodeID, visibility, size, start)
 	if err != nil {
 		return nil, nil, 0, err
 	}

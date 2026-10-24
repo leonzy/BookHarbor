@@ -3,6 +3,7 @@
         <v-row>
             <v-col cols="12">
                 <div class="library-filter-panel">
+                    <BookSizeSort />
                     <v-progress-linear
                         v-if="filterOptionsLoading"
                         indeterminate
@@ -104,19 +105,21 @@
 </template>
 
 <script setup>
+import BookSizeSort from '@/components/BookSizeSort.vue';
 import AppPagination from '@/components/AppPagination.vue';
 import BookCards from '~/components/BookCards.vue';
 import LibraryChipFilter from '~/components/LibraryChipFilter.vue';
 import SerializeStatusBadge from '~/components/SerializeStatusBadge.vue';
 import { useMainStore } from '@/stores/main';
 import { useI18n } from 'vue-i18n';
-import { useNuxtApp, useRoute, useHead } from 'nuxt/app';
+import { useNuxtApp, useRoute, useHead, useRouter } from 'nuxt/app';
 import { metadataPageUrl } from '@/composables/useMetadataPage';
 
 const store = useMainStore();
 const { t } = useI18n();
 const { $backend, $backend_stream, $alert } = useNuxtApp();
 const route = useRoute();
+const router = useRouter();
 
 store.setNavbar(true);
 
@@ -161,8 +164,7 @@ const statusOptions = computed(() => [
 ]);
 
 const updateStatus = (value) => {
-    statusFilter.value = value;
-    fetchBooks(1);
+    router.push({ query: { ...route.query, status: value === 'all' ? undefined : value, start: undefined } });
 };
 
 // 监听total变化，动态更新page_cnt
@@ -181,7 +183,8 @@ const fetchBooks = async (p = 1) => {
 
     const query = {
         start: (p - 1) * page_size,
-        size: page_size
+        size: page_size,
+        sort: typeof route.query.sort === 'string' ? route.query.sort : ''
     };
 
     Object.keys(filters.value).forEach(key => {
@@ -274,6 +277,7 @@ const init = async () => {
 
     // 从URL查询参数中解析筛选条件
     const query = route.query;
+    statusFilter.value = ['serial', 'finished'].includes(query.status) ? query.status : 'all';
     Object.keys(filters.value).forEach(key => {
         const value = query[key];
         filters.value[key] = typeof value === 'string' && value !== t('messages.all') ? value : null;
@@ -290,15 +294,12 @@ const init = async () => {
 
 // 翻页
 const change_page = (newPage) => {
-    page.value = newPage;
-    fetchBooks(newPage);
+    router.push({ query: { ...route.query, start: String((newPage - 1) * page_size) } });
 };
 
 // 更新筛选
 const updateFilter = (type, value) => {
-    filters.value[type] = value || null;
-    // 更新筛选条件后重新获取书籍数据，重置到第一页
-    fetchBooks(1);
+    router.push({ query: { ...route.query, [type]: value || undefined, start: undefined } });
 };
 
 // 监听路由变化

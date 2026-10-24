@@ -1,5 +1,6 @@
 <template>
     <div>
+        <BookSizeSort />
         <v-row>
             <v-col>
                 <v-progress-linear
@@ -32,6 +33,7 @@
 </template>
 
 <script setup>
+import BookSizeSort from '@/components/BookSizeSort.vue';
 import AppPagination from '@/components/AppPagination.vue';
 import BookCards from '~/components/BookCards.vue';
 import { useMainStore } from '@/stores/main';
@@ -41,6 +43,7 @@ const store = useMainStore();
 const { t } = useI18n();
 const { $backend, $backend_stream, $alert } = useNuxtApp();
 const route = useRoute();
+const router = useRouter();
 
 store.setNavbar(true);
 
@@ -56,15 +59,18 @@ watch(total, (newTotal) => {
     page_cnt.value = newTotal > 0 ? Math.max(1, Math.ceil(newTotal / page_size)) : 0;
 });
 
+let fetchSequence = 0;
 const fetchBooks = async (p = 1) => {
+    const seq = ++fetchSequence;
     loading.value = true;
     books.value = [];
 
-    const url = `/scopedbooks?start=${(p - 1) * page_size}&size=${page_size}&stream=1`;
+    const url = `/scopedbooks?start=${(p - 1) * page_size}&size=${page_size}&stream=1&scope=private&sort=${encodeURIComponent(route.query.sort || '')}`;
 
     let firstLine = true;
     try {
         for await (const data of $backend_stream(url)) {
+            if (seq !== fetchSequence) return;
             if (firstLine) {
                 firstLine = false;
                 if (data.err === 'exception') {
@@ -82,7 +88,7 @@ const fetchBooks = async (p = 1) => {
         console.error('Failed to fetch scoped books:', error);
         if ($alert) $alert('error', t('library.message.fetchBooksFailed'));
     } finally {
-        loading.value = false;
+        if (seq === fetchSequence) loading.value = false;
     }
 };
 
@@ -98,8 +104,7 @@ const init = async () => {
 };
 
 const change_page = (newPage) => {
-    page.value = newPage;
-    fetchBooks(newPage);
+    router.push({ query: { ...route.query, start: String((newPage - 1) * page_size) } });
 };
 
 watch(() => route.query, () => {

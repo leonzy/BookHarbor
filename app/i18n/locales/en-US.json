@@ -1,4 +1,12 @@
 {
+  "bookSort": {
+    "label": "Sort books",
+    "default": "Default order",
+    "ascending": "Size: smallest first",
+    "descending": "Size: largest first",
+    "hint": "Largest available format per book; unknown sizes last",
+    "size": "File size"
+},
   "directories": {
     "title": "File directories",
     "tree": "Directory tree",

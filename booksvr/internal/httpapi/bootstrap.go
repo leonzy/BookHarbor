@@ -41,6 +41,14 @@ func Bootstrap(userPath, settingsPath string) error {
 		}
 	}
 	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS items_recommendation_heat ON items((COALESCE(count_visit,0)+2*COALESCE(count_download,0)) DESC,book_id DESC)`)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS items_hot_page ON items(count_download DESC,book_id DESC,scope,collector_id) WHERE count_visit>1`)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS items_private_visibility ON items(book_id,collector_id) WHERE scope='private'`)
 	return err
 }
 

@@ -113,6 +113,12 @@ func BookShelfListHandler(cfg BookConfig) HandlerFunc {
 			ids = append(ids, s.BookID)
 			stateByID[s.BookID] = s
 		}
+		if bookSizeSort(ctx) != "" && cfg.LibraryDB != nil {
+			ids, err = library.SizeSortedIDs(ctx.Request.Context(), cfg.LibraryDB, ids, bookSizeSort(ctx), 0, -1)
+			if err != nil {
+				return nil, err
+			}
+		}
 		booksMap, err := bookLoadBooks(cfg, ids)
 		if err != nil {
 			return nil, err

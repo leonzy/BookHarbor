@@ -32,7 +32,7 @@ func BookDirectoriesHandler(cfg BookConfig) HandlerFunc {
 		if ctx.Query("children_only") == "1" {
 			size = 0
 		}
-		dirs, ids, total, err := cache.BrowsePage(ctx.Request.Context(), current, ctx.Query("recursive") == "1", ctx.Query("refresh") == "1", excluded, bookArgumentStart(ctx), size)
+		dirs, ids, total, err := cache.BrowsePage(ctx.Request.Context(), current, ctx.Query("recursive") == "1", ctx.Query("refresh") == "1", excluded, bookArgumentStart(ctx), size, bookSizeSort(ctx))
 		if err != nil {
 			return nil, err
 		}
