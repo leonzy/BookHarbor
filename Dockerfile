@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.6
 # ----------------------------------------
 # 第一阶段，拉取 node 基础镜像并安装依赖，执行构建
-FROM node:20-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
 ARG BUILD_COUNTRY=""
 ARG TARGETARCH
 
@@ -121,6 +121,9 @@ USER 911:911
 CMD ["go", "test", "./..."]
 
 FROM server AS production
+LABEL org.opencontainers.image.title="BookHarbor" \
+      org.opencontainers.image.source="https://github.com/leonzy/BookHarbor" \
+      org.opencontainers.image.licenses="BSD-2-Clause"
 ARG TALEBOOK_BASE_PATH=""
 ARG GIT_VERSION=""
 ARG GIT_COMMIT=""

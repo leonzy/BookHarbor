@@ -13,7 +13,7 @@ import (
 )
 
 // GitHubRepo 是被检查的仓库。
-const GitHubRepo = "talebook/talebook"
+const GitHubRepo = "leonzy/BookHarbor"
 
 // GitHubAPIURL 是 GitHub 最新 release 接口。
 const GitHubAPIURL = "https://api.github.com/repos/" + GitHubRepo + "/releases/latest"
@@ -91,7 +91,7 @@ func (c *Checker) Check() Status {
 		return c.status
 	}
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("User-Agent", "TaleBook-UpdateChecker")
+	req.Header.Set("User-Agent", "BookHarbor-UpdateChecker")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -99,6 +99,12 @@ func (c *Checker) Check() Status {
 		return c.status
 	}
 	defer resp.Body.Close()
+
+	// A new independent project may not have published its first release yet.
+	if resp.StatusCode == http.StatusNotFound {
+		c.status = Status{CurrentVersion: c.CurrentVersion, LastCheckTime: time.Now().Unix()}
+		return c.status
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		c.status.CheckError = fmt.Sprintf("GitHub API error: %d %s",

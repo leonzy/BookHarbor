@@ -1,13 +1,13 @@
 .PHONY: all build test check-design check-spec build-go test-go lint-go
 
 VER = $(shell git branch --show-current | tr '/' '-')
-IMAGE = talebook/talebook:$(VER)
-REPO1 := talebook/talebook:latest
-REPO2 := talebook/calibre-webserver:latest
-GHCR_REPO1 := ghcr.io/talebook/talebook:latest
-GHCR_DEV := ghcr.io/talebook/talebook:dev
-TAG1 := talebook/talebook:server-side-render
-TAG2 = talebook/talebook:server-side-render-$(VER)
+IMAGE = ghcr.io/leonzy/bookharbor:$(VER)
+REPO1 := ghcr.io/leonzy/bookharbor:latest
+REPO2 := ghcr.io/leonzy/bookharbor:latest
+GHCR_REPO1 := ghcr.io/leonzy/bookharbor:latest
+GHCR_DEV := ghcr.io/leonzy/bookharbor:dev
+TAG1 := ghcr.io/leonzy/bookharbor:server-side-render
+TAG2 = ghcr.io/leonzy/bookharbor:server-side-render-$(VER)
 
 all: build up
 
@@ -28,12 +28,12 @@ build-ssr:
 
 build-dev:
 	docker build --no-cache=false --build-arg BUILD_COUNTRY=CN \
-		-f Dockerfile -t talebook/talebook:dev -t $(GHCR_DEV) --target dev .
+		-f Dockerfile -t ghcr.io/leonzy/bookharbor:dev -t $(GHCR_DEV) --target dev .
 
 test:
 	rm -f unittest.log
-	docker build --build-arg BUILD_COUNTRY=CN -t talebook/test --target test -f Dockerfile .
-	docker run --rm --name=talebook-docker-test -v "$$PWD":"$$PWD" -w "$$PWD/booksvr" talebook/test go test ./...
+	docker build --build-arg BUILD_COUNTRY=CN -t bookharbor/test --target test -f Dockerfile .
+	docker run --rm --name=talebook-docker-test -v "$$PWD":"$$PWD" -w "$$PWD/booksvr" bookharbor/test go test ./...
 
 lint-ui:
 	npm ci

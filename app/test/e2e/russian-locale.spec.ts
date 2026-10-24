@@ -9,16 +9,22 @@ test.beforeEach(async ({ request }) => {
 
 test('switches to Russian and retains the selection after reload', async ({ page, context }) => {
     await page.goto('/install');
-    await expect(page.getByText('安装 TaleBook', { exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText('安装 BookHarbor', { exact: true })).toBeVisible({ timeout: 30000 });
     await page.getByRole('button', { name: '语言', exact: true }).press('Enter');
-    await page.locator('.v-list-item').filter({ hasText: /^Русский$/ }).press('Enter');
-    await expect(page.getByText('Установка TaleBook', { exact: true })).toBeVisible();
+    const russian = page.locator('.v-list-item').filter({ hasText: /^Русский$/ });
+    await expect(russian).toBeVisible();
+    await russian.evaluate(async element => {
+        const popup = element.closest('.v-overlay__content');
+        await Promise.all((popup?.getAnimations({ subtree: true }) || []).map(animation => animation.finished.catch(() => {})));
+    });
+    await russian.press('Enter');
+    await expect(page.getByText('Установка BookHarbor', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Язык', exact: true })).toBeVisible();
     await expect(page.getByLabel('Имя администратора', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Завершить настройку' })).toBeVisible();
     expect((await context.cookies()).find(cookie => cookie.name === 'i18n_redirected')?.value).toBe('ru-RU');
     await page.reload();
-    await expect(page.getByText('Установка TaleBook', { exact: true })).toBeVisible();
+    await expect(page.getByText('Установка BookHarbor', { exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath('russian-install-desktop.png'), fullPage: true });
 });
 
@@ -28,7 +34,7 @@ test.describe('Russian browser language', () => {
     test('detects Russian without a cookie and renders the narrow installation form', async ({ page }) => {
         await page.goto('/');
         await expect(page).toHaveURL(/\/install/);
-        await expect(page.getByText('Установка TaleBook', { exact: true })).toBeVisible();
+        await expect(page.getByText('Установка BookHarbor', { exact: true })).toBeVisible();
         await expect(page.getByLabel('Имя администратора', { exact: true })).toBeVisible();
         const submit = page.getByRole('button', { name: 'Завершить настройку' });
         await submit.scrollIntoViewIfNeeded();

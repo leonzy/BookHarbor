@@ -13,7 +13,7 @@
   "format_conversion": {
     "tool": "calibre ebook-convert",
     "version": "8.5.0",
-    "runtime": "talebook/talebook:dev",
+    "runtime": "ghcr.io/leonzy/bookharbor:dev",
     "source_format": "EPUB",
     "artifact_formats": ["EPUB", "MOBI", "AZW3"],
     "metadata_policy": "Preset books use formats that preserve author, language, cover and publication metadata when imported by Calibre; source EPUBs remain EPUB unless a MOBI or AZW3 example is intentional."

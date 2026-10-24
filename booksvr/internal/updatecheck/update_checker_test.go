@@ -152,6 +152,20 @@ func TestCheckNoUpdate(t *testing.T) {
 	}
 }
 
+func TestCheckNoReleaseClearsStaleState(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	c := NewChecker("26.10.24")
+	c.APIURL = srv.URL
+	c.status = Status{CurrentVersion: c.CurrentVersion, LatestVersion: "99", HasUpdate: true, ReleaseURL: "old", CheckError: "old error"}
+	st := c.Check()
+	if st.CurrentVersion != c.CurrentVersion || st.CheckError != "" || st.HasUpdate || st.LatestVersion != "" || st.ReleaseURL != "" || st.LastCheckTime == 0 {
+		t.Fatalf("no published release must be an empty successful check: %+v", st)
+	}
+}
+
 // TestCheckHTTPError 覆盖 HTTP 错误。
 func TestCheckHTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -236,7 +250,7 @@ func TestCheckSendsHeaders(t *testing.T) {
 	c.APIURL = srv.URL
 	c.Check()
 
-	if gotUA != "TaleBook-UpdateChecker" {
+	if gotUA != "BookHarbor-UpdateChecker" {
 		t.Errorf("User-Agent = %q", gotUA)
 	}
 	if gotAccept != "application/vnd.github.v3+json" {
@@ -291,7 +305,7 @@ func TestCheckIntervalConstant(t *testing.T) {
 
 // TestGitHubAPIURLShape 覆盖接口地址。
 func TestGitHubAPIURLShape(t *testing.T) {
-	if GitHubAPIURL != "https://api.github.com/repos/talebook/talebook/releases/latest" {
+	if GitHubAPIURL != "https://api.github.com/repos/leonzy/BookHarbor/releases/latest" {
 		t.Errorf("GitHubAPIURL = %q", GitHubAPIURL)
 	}
 }

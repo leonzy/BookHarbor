@@ -30,7 +30,7 @@
                     class="sidebar-help__fallback-logo"
                     data-testid="sidebar-help-logo"
                 >
-                    {{ store.sys.title || 'Talebook' }}
+                    {{ store.sys.title || 'BookHarbor' }}
                 </div>
 
                 <v-divider />
@@ -40,7 +40,7 @@
                 >
                     <v-list-item
                         class="sidebar-help__item"
-                        href="https://github.com/talebook/talebook/releases"
+                        href="https://github.com/leonzy/BookHarbor/releases"
                         target="_blank"
                         rel="noopener noreferrer"
                         prepend-icon="mdi-history"
@@ -49,7 +49,7 @@
                     />
                     <v-list-item
                         class="sidebar-help__item"
-                        href="https://github.com/talebook/talebook"
+                        href="https://github.com/leonzy/BookHarbor"
                         target="_blank"
                         rel="noopener noreferrer"
                         prepend-icon="mdi-github"

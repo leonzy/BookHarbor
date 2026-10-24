@@ -45,6 +45,9 @@ describe('SidebarHelpMenu', () => {
 
         expect(card?.textContent).toContain('navigationHelp.changelog');
         expect(card?.textContent).toContain('navigationHelp.github');
+        expect(card?.querySelector('a[href="https://github.com/leonzy/BookHarbor"]')).not.toBeNull();
+        expect(card?.querySelector('a[href="https://github.com/leonzy/BookHarbor/releases"]')).not.toBeNull();
+        expect(card?.querySelector('a[href="https://example.com/feedback"]')).not.toBeNull();
         expect(card?.textContent).not.toContain('文档');
         expect(card?.textContent).not.toContain('Documentation');
         const logo = card?.querySelector('[data-testid="sidebar-help-logo"]');

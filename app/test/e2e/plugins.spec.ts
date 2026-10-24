@@ -411,7 +411,7 @@ test.describe('Plugin management', () => {
         await card.getByRole('button', { name: '详情' }).click();
 
         const dialog = page.getByRole('dialog');
-        await expect(dialog.getByRole('heading', { name: 'Talebook OPDS 服务' })).toBeVisible();
+        await expect(dialog.getByRole('heading', { name: 'BookHarbor OPDS 服务' })).toBeVisible();
         const serviceSwitch = dialog.getByLabel('启用 OPDS 服务');
         await expect(serviceSwitch).toBeChecked();
         await serviceSwitch.focus();

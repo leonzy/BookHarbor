@@ -139,7 +139,7 @@
             </p>
             <a
                 v-if="imageRelease"
-                href="https://github.com/talebook/talebook/releases/latest"
+                href="https://github.com/leonzy/BookHarbor/releases"
                 target="_blank"
                 rel="noopener noreferrer"
             >{{ t('upgrade.imageDetails') }}</a>

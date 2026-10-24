@@ -19,7 +19,7 @@
                     small
                     variant="text"
                     target="_blank"
-                    href="https://github.com/talebook/talebook"
+                    href="https://github.com/leonzy/BookHarbor"
                 >
                     Github
                 </v-btn>
@@ -27,7 +27,7 @@
                     small
                     variant="text"
                     target="_blank"
-                    href="https://hub.docker.com/r/talebook/talebook"
+                    href="https://github.com/leonzy/BookHarbor/pkgs/container/bookharbor"
                 >
                     Docker
                 </v-btn>
@@ -35,7 +35,7 @@
                     small
                     variant="text"
                     target="_blank"
-                    href="http://talebook.org"
+                    href="https://github.com/leonzy/BookHarbor"
                 >
                     Project
                 </v-btn>

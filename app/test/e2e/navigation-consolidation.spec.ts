@@ -33,7 +33,7 @@ test.describe('Route-backed navigation sections', () => {
         await expect(page.locator('.route-tab-shell__description')).toHaveCount(0);
         await expect(page.locator('.route-page-toolbar')).toHaveCount(1);
         await expect(page.getByRole('heading', { name: '书库', exact: true })).toHaveCount(0);
-        await expect(page.getByText('浏览、筛选和管理已收藏到 Talebook 的本地书籍。')).toBeVisible();
+        await expect(page.getByText('浏览、筛选和管理已收藏到 BookHarbor 的本地书籍。')).toBeVisible();
 
         await page.getByRole('tab', { name: '网络书库' }).click();
         await expect(page).toHaveURL('/library/network');
@@ -80,7 +80,7 @@ test.describe('Route-backed navigation sections', () => {
         await page.goto('/admin/settings/general');
         await expect(page.getByRole('tab', { name: '系统设置' })).toHaveAttribute('aria-selected', 'true');
         await expectTitleRouteTabs(page);
-        await expect(page.getByText('管理当前 Talebook 实例的全局设置。')).toBeVisible();
+        await expect(page.getByText('管理当前 BookHarbor 实例的全局设置。')).toBeVisible();
         const titlebarBox = await page.locator('.settings-titlebar').boundingBox();
         const settingsBodyBox = await page.locator('.settings-body').boundingBox();
         expect(Math.round(settingsBodyBox!.x)).toBe(Math.round(titlebarBox!.x));
@@ -97,7 +97,7 @@ test.describe('Route-backed navigation sections', () => {
         await expect(page.getByRole('tab', { name: '个人配置' })).toHaveCount(0);
         await page.getByRole('tab', { name: '主题管理' }).click();
         await expect(page).toHaveURL('/admin/settings/themes');
-        await expect(page.getByText('选择和启用 Talebook 的界面主题。')).toBeVisible();
+        await expect(page.getByText('选择和启用 BookHarbor 的界面主题。')).toBeVisible();
         await expect(page.locator('.theme-page-head')).toHaveCount(0);
 
         await page.goto('/admin/plugins');

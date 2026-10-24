@@ -76,7 +76,7 @@ func newGenericOPDSProvider() *GenericOPDSProvider {
 		PluginID:    "talebook.source.opds",
 		Name:        "Generic OPDS",
 		Description: "管理已保存的 OPDS 1/2 目录，并浏览、搜索与批量导入。",
-		Homepage:    "https://github.com/talebook/talebook",
+		Homepage:    "https://github.com/leonzy/BookHarbor",
 	})
 	p := &GenericOPDSProvider{OPDSProvider: inner}
 	// 覆写为 Python opds.py 的完整 manifest（含 ui.service_toggle 等专有字段）。
@@ -97,7 +97,7 @@ func newGenericOPDSProvider() *GenericOPDSProvider {
 		"compatibility":    map[string]any{"talebook": ">=0.1.0"},
 		"connection_owners": []any{"instance"},
 		"download_mode":    "single_book",
-		"homepage":         "https://github.com/talebook/talebook",
+		"homepage":         "https://github.com/leonzy/BookHarbor",
 		"license":          "GPL-3.0",
 		"ui": map[string]any{
 			"icon":            "mdi-rss-box",

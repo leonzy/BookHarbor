@@ -6,6 +6,11 @@
 !scripts/
 !scripts/upgrade/
 !scripts/upgrade/**
+!scripts/install_tomato_downloader.py
+!document/
+!document/licenses/
+!document/licenses/tomato-novel-downloader-MIT.txt
+!document/licenses/tomato-novel-downloader-NOTICE.md
 !app/
 !app/**
 !conf/

@@ -756,7 +756,7 @@ test.describe('Book Detail Page', () => {
         await expect(page.getByText('微信读书', { exact: true })).toBeVisible();
         await expect(page.getByText('这是从微信读书导入的章节级笔记。')).toBeVisible();
         await expect(page.getByText('仅章节定位').first()).toBeVisible();
-        await expect(page.getByText('Talebook 原生', { exact: true })).toBeVisible();
+        await expect(page.getByText('BookHarbor 原生', { exact: true })).toBeVisible();
     });
 
     test('filters annotations by source and deletes an owned note', async ({ page }) => {
@@ -765,7 +765,7 @@ test.describe('Book Detail Page', () => {
         await page.getByRole('tab', { name: /我的笔记/ }).click();
 
         await page.locator('.annotation-panel__filter .v-field__input').click();
-        await page.getByRole('option', { name: 'Talebook 原生' }).click();
+        await page.getByRole('option', { name: 'BookHarbor 原生' }).click();
         await expect(page.getByText('Talebook 原生笔记，拥有精确定位。')).toBeVisible();
         await expect(page.getByText('这是从微信读书导入的章节级笔记。')).not.toBeVisible();
 
@@ -786,7 +786,7 @@ test.describe('Book Detail Page', () => {
         await page.getByRole('button', { name: '撤销导入' }).last().click();
         await expect(page.getByText(/已撤销 1 条来源关联/)).toBeVisible();
         await expect(page.getByText('这是从微信读书导入的章节级笔记。')).toBeVisible();
-        await expect(page.getByText('Talebook 原生').first()).toBeVisible();
+        await expect(page.getByText('BookHarbor 原生').first()).toBeVisible();
     });
 
     test('hides the annotation section when the book has no visible notes', async ({ page, request }) => {

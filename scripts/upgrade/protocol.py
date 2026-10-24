@@ -21,7 +21,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 MAX_PACKAGE = 512 * 1024 * 1024
 MAX_EXPANDED = 2 * 1024 * 1024 * 1024
 MAX_MANIFEST = 128 * 1024
-GITHUB = "https://github.com/talebook/talebook/releases/download"
+GITHUB = "https://github.com/leonzy/BookHarbor/releases/download"
 
 
 class UpgradeError(Exception):

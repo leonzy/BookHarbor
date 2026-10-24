@@ -58,7 +58,7 @@ export const useMainStore = defineStore('main', () => {
   const authEpoch = ref(0)
 
   const site_title = ref("首页")
-  const site_title_template = ref("%s | talebook")
+  const site_title_template = ref("%s | BookHarbor")
 
   // Actions
   function setLoading(isLoading: boolean) {

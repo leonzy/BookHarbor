@@ -54,7 +54,7 @@ export default defineNuxtConfig({
         api_url: process.env.API_URL || 'http://127.0.0.1:8080',
         public: {
             api_url: process.env.API_URL || 'http://127.0.0.1:8080',
-            site_title: process.env.TITLE || 'talebook',
+            site_title: process.env.TITLE || 'BookHarbor',
         }
     },
     routeRules: {
@@ -119,8 +119,8 @@ export default defineNuxtConfig({
     app: {
         baseURL: basePath + "/",
         head: {
-            title: 'talebook',
-            titleTemplate: '%s | talebook',
+            title: 'BookHarbor',
+            titleTemplate: '%s | BookHarbor',
             meta: [
                 { charset: 'utf-8' },
                 { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui' },

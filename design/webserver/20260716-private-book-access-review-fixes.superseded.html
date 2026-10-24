@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>私藏图书访问 PR Review 修复方案</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #637083;
+      --line: #dce2ea;
+      --paper: #fff;
+      --canvas: #f4f6f9;
+      --blue: #2457c5;
+      --blue-soft: #eaf0ff;
+      --amber: #9a6700;
+      --green: #18794e;
+      --red: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font: 15px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(1040px, calc(100% - 32px)); margin: 32px auto 72px; }
+    header, section {
+      margin-bottom: 20px;
+      padding: 26px 30px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--paper);
+    }
+    header { border-top: 5px solid var(--blue); }
+    h1 { margin: 0 0 10px; font-size: 29px; line-height: 1.25; }
+    h2 { margin: 0 0 14px; font-size: 21px; }
+    h3 { margin: 18px 0 8px; font-size: 16px; }
+    p, ul, ol { margin: 8px 0; }
+    code { padding: 2px 5px; border-radius: 5px; background: #eef1f5; }
+    code.command { display: block; margin: 6px 0; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    a { color: var(--blue); }
+    .lead { color: var(--muted); font-size: 16px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .tag { padding: 4px 10px; border-radius: 999px; color: var(--muted); background: #eef1f5; font-size: 13px; }
+    .status { color: var(--green); background: #e8f5ee; font-weight: 700; }
+    .callout { margin: 14px 0; padding: 13px 16px; border-left: 4px solid var(--blue); background: var(--blue-soft); }
+    table { width: 100%; margin: 12px 0; border-collapse: collapse; }
+    th, td { padding: 10px 12px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: #f7f8fa; }
+    .yes { color: var(--green); font-weight: 700; }
+    .no { color: var(--red); font-weight: 700; }
+    .pending { color: var(--amber); font-weight: 700; }
+    .flow { display: grid; grid-template-columns: 1fr 42px 1fr 42px 1fr; align-items: center; gap: 6px; margin-top: 16px; }
+    .node { min-height: 92px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: #fafbfc; }
+    .arrow { color: var(--blue); text-align: center; font-size: 24px; }
+    footer { color: var(--muted); text-align: center; font-size: 13px; }
+    @media (max-width: 760px) {
+      main { width: min(100% - 20px, 1040px); margin-top: 10px; }
+      header, section { padding: 20px; }
+      .flow { grid-template-columns: 1fr; }
+      .arrow { transform: rotate(90deg); }
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body><aside role="note" style="margin:16px;padding:16px;border:2px solid #92652b;background:#fff8e8;color:#342717">SUPERSEDED：原 Python HTTP 后端已由 Go 后端替代，本文保留历史实现记录。替代方案：<a href="../booksvr/20261021-upstream-go-integration.active.html">Go 后端集成与 Python HTTP 服务退役</a>。产品行为以当前 spec 为准。</aside>
+<main>
+  <header>
+    <h1>私藏图书访问 PR Review 修复方案</h1>
+    <p class="lead">处理 PR #869 的评审意见，修复静态资源域名与认证 Cookie 不同源的问题，并恢复阅读入口原有的 HTTP 404 语义。</p>
+    <div class="meta">
+      <span class="tag status">状态：SUPERSEDED</span>
+      <span class="tag">创建日期：2026-07-16</span>
+      <span class="tag">所属模块：webserver</span>
+      <span class="tag">需求来源：GitHub PR #869 Review</span>
+      <span class="tag">影响范围：资源 URL、阅读入口、测试</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>原始诉求与核对结果</h2>
+    <p>原始任务是处理 <a href="https://github.com/talebook/talebook/pull/869">PR #869</a> 中评审发现的问题。该 PR 的基础方案为 <code>design/webserver/20260716-admin-private-book-access.active.html</code> ，本方案是兼容性补充，不替代其管理员权限矩阵。</p>
+    <table>
+      <thead><tr><th>评审项</th><th>核对结论</th><th>处理决定</th></tr></thead>
+      <tbody>
+        <tr><td><code>can_view_book()</code> 与既有 <code>can_read_book()</code> 重复</td><td>当前 master、PR HEAD 与本地所有引用中都不存在 <code>can_read_book()</code>，无法复现重复。</td><td>保留唯一的 <code>can_view_book()</code>，不凭空新增第二套授权函数；在 PR 回复中说明证据。</td></tr>
+        <tr><td>阅读入口的旧检查成为死代码</td><td>当前代码没有这些旧调用；但中央 <code>get_book()</code> 会让私藏拒绝提前以 HTTP 200 JSON 结束。</td><td>非 JSON 文件与阅读入口统一调用 <code>get_book_or_404()</code>，由该助手复用中央授权并在不可见或不存在时返回 404。</td></tr>
+        <tr><td>配置 <code>static_host</code> 后私藏封面 404</td><td class="yes">成立。序列化仍把封面、缩略图和格式下载 URL 指向 CDN 域名，而认证 Cookie 属于应用域名。</td><td>私藏资源使用应用源；公开资源继续使用 CDN。</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>目标与不变量</h2>
+    <ul>
+      <li>管理员和所有者在配置 <code>static_host</code> 时仍能加载私藏封面、缩略图和下载链接。</li>
+      <li>公开图书继续使用 <code>static_host</code>，不牺牲现有 CDN 缓存能力。</li>
+      <li>无权用户访问 <code>/read/&lt;id&gt;</code> 或 <code>/get/extract/&lt;id&gt;/...</code> 时返回 HTTP 404，不泄露图书存在性。</li>
+      <li>权限矩阵保持不变：管理员可见全部，普通用户仅可见自己的私藏书，游客不可见私藏书。</li>
+      <li>只保留 <code>can_view_book()</code> 作为单本可见性判断，不引入同义函数。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>方案</h2>
+    <h3>1. 按图书 scope 选择资源源地址</h3>
+    <p>由 <code>SimpleBookFormatter</code> 同时接收 CDN 地址与应用 API 地址。图书为 private 时，封面和缩略图使用应用地址；其他图书继续使用 CDN 地址。所有调用方，包括普通列表与管理员图书列表，都走同一选择逻辑。</p>
+    <p><code>BookFormatter.get_files()</code> 对格式下载链接应用同样规则，避免详情页封面修好但下载仍因跨域缺少 Cookie 而 404。</p>
+
+    <h3>2. 非 JSON 阅读入口保留 404</h3>
+    <p><code>BookRead</code>、<code>EpubReader</code> 与 <code>BookDownload</code> 统一调用 <code>get_book_or_404()</code>。该助手通过中央 <code>get_book()</code> 复用唯一的 <code>can_view_book()</code> 授权，拒绝或不存在时抛出 HTTP 404；JSON 接口仍保留原有的 not_found 语义。</p>
+
+    <div class="flow" aria-label="私藏资源地址选择流程">
+      <div class="node"><strong>序列化图书</strong><br>读取 scope 与请求源</div>
+      <div class="arrow">→</div>
+      <div class="node"><strong>选择资源源</strong><br>private → 应用源<br>public → CDN</div>
+      <div class="arrow">→</div>
+      <div class="node"><strong>资源请求</strong><br>私藏携带认证 Cookie<br>公开保留 CDN 缓存</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>兼容性、安全与回滚</h2>
+    <ul>
+      <li>无配置 <code>static_host</code> 时，应用源与 CDN 地址都为空前缀，仍生成相对 URL，行为不变。</li>
+      <li>私藏资源不再经过独立静态域名，避免 Cookie 缺失；代价是私藏封面不使用 CDN 缓存，这是授权正确性所需。</li>
+      <li>公开图书 URL 不变，CDN 命中率不受影响。</li>
+      <li>不修改数据库、配置字段或前端代码。回滚时可单独撤销本次 follow-up 提交，不影响原权限方案。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>测试计划</h2>
+    <table>
+      <thead><tr><th>公开 seam</th><th>预期</th><th>当前结果</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /api/book/&lt;id&gt;</code></td><td>配置 static_host 后，私藏图书 img、thumb、files 使用请求应用源；公开图书仍使用 CDN。</td><td class="yes">通过：私藏资源使用 books.example，公开资源保留 cdn.example。</td></tr>
+        <tr><td><code>GET /api/admin/book/list</code></td><td>管理员列表中的私藏封面使用应用源。</td><td class="yes">通过：私藏封面与缩略图均使用 books.example。</td></tr>
+        <tr><td><code>GET /read/&lt;id&gt;</code></td><td>其他用户访问私藏图书返回 HTTP 404。</td><td class="yes">通过：修复前为 200，修复后为 404。</td></tr>
+        <tr><td><code>GET /get/extract/&lt;id&gt;/...</code></td><td>其他用户访问私藏 EPUB 内容返回 HTTP 404。</td><td class="yes">通过：修复前为 200，修复后为 404。</td></tr>
+        <tr><td>质量门禁</td><td>相关测试、完整 pytest、<code>make lint-py-fix</code>、<code>make lint-py</code>、<code>make check-design</code> 通过。</td><td class="yes">相关测试与全量 pytest、格式化、lint、方案门禁全部通过。</td></tr>
+      </tbody>
+    </table>
+    <h3>实际执行记录</h3>
+    <ul>
+      <li>阅读 seam 红灯与绿灯：
+        <code class="command">docker run --rm -v /private/tmp/talebook-wt-867:/workspace -w /workspace talebook/test:latest pytest -q tests/test_main.py::TestBookDetailScope::test_other_user_cannot_read_private_book_by_direct_url tests/test_main.py::TestBookDetailScope::test_other_user_cannot_read_private_epub_content_by_direct_url</code>
+        修复前 2 项失败，均为期望 404、实际 200；最小修复后 2 项通过。
+      </li>
+      <li>static_host seam 红灯：私藏详情与管理员列表 2 项失败，公开 CDN 回归项通过。</li>
+      <li>自审整理后的 5 项核心 seam：
+        <code class="command">docker run --rm -v /private/tmp/talebook-wt-867:/workspace -w /workspace talebook/test:latest pytest -q tests/test_main.py::TestBookDetailScope::test_private_book_resources_use_authenticated_origin_when_static_host_is_set tests/test_main.py::TestBookDetailScope::test_public_book_resources_keep_using_static_host tests/test_admin.py::TestAdminPrivateBookResources::test_private_book_cover_uses_authenticated_origin_when_static_host_is_set tests/test_main.py::TestBookDetailScope::test_other_user_cannot_read_private_book_by_direct_url tests/test_main.py::TestBookDetailScope::test_other_user_cannot_read_private_epub_content_by_direct_url</code>
+        5 项通过，用时 2.54 秒。
+      </li>
+      <li>自审修正后的相关测试：
+        <code class="command">docker run --rm -v /private/tmp/talebook-wt-867:/workspace -w /workspace talebook/test:latest pytest -q tests/test_main.py::TestBookDetailScope tests/test_main.py::TestFile tests/test_main.py::TestBook tests/test_admin.py::TestAdminPrivateBookResources</code>
+        36 项通过。
+      </li>
+      <li><code>make lint-py-fix</code>：通过，96 个后端文件无需额外格式化。</li>
+      <li><code>make lint-py</code>：通过，ruff 检查与格式检查均无错误。</li>
+      <li>完整后端测试：
+        <code class="command">docker run --rm -v /private/tmp/talebook-wt-867:/workspace -w /workspace talebook/test:latest pytest tests -q</code>
+        586 项通过、1 项跳过、32 条既有警告，用时 43.97 秒。
+      </li>
+      <li><code>make check-design</code>：通过，14 份方案文档全部合格。</li>
+    </ul>
+    <p>宿主机缺少 Calibre Python 模块，因此完整测试继续使用仓库现有 <code>talebook/test:latest</code> 镜像挂载当前 worktree 执行；该镜像与生产 Dockerfile 当前固定的 Calibre 8.5 基础版本一致。</p>
+  </section>
+
+  <section>
+    <h2>决策记录</h2>
+    <ol>
+      <li>2026-07-16：不接受无法在 master 或 PR HEAD 复现的 <code>can_read_book()</code> 重复结论；保持一个授权函数并在 review 中提供核对结果。</li>
+      <li>2026-07-16：修复范围从封面扩展到缩略图与格式下载链接，因为它们共享同一个跨域认证根因。</li>
+      <li>2026-07-16：恢复阅读入口的 HTTP 404，而不是把 HTTP 200 JSON 行为写成新的兼容约定。</li>
+    </ol>
+  </section>
+
+  <footer>Talebook 内部开发方案 · ACTIVE · PR #869 Review Follow-up</footer>
+</main>
+</body>
+</html>

@@ -3,7 +3,7 @@ import { buildThemeDisplayList } from '~/utils/theme-display';
 
 const t = (key: string) => ({
     'theme.defaultTheme': '默认主题',
-    'theme.defaultThemeDescription': 'TaleBook 原生界面风格',
+    'theme.defaultThemeDescription': 'BookHarbor 原生界面风格',
 }[key] || key);
 
 describe('theme-display', () => {

@@ -20,6 +20,10 @@ import mirror
 import protocol as p
 
 
+def test_default_release_source_belongs_to_bookharbor():
+    assert p.GITHUB == "https://github.com/leonzy/BookHarbor/releases/download"
+
+
 @pytest.fixture
 def signed():
     key = Ed25519PrivateKey.generate()

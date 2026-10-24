@@ -91,7 +91,7 @@ func legadoManifest() map[string]any {
 		"compatibility":     map[string]any{"talebook": ">=0.1.0"},
 		"connection_owners": []any{"instance"},
 		"download_mode":     "by_chapters",
-		"homepage":          "https://github.com/talebook/talebook",
+		"homepage":          "https://github.com/leonzy/BookHarbor",
 		"license":           "GPL-3.0",
 		"ui": map[string]any{
 			"icon":                "mdi-book-cog-outline",

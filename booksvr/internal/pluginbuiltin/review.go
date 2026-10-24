@@ -17,7 +17,7 @@ import (
 )
 
 // reviewUserAgent 复刻 review/base.py 的 USER_AGENT。
-const reviewUserAgent = "Talebook plugin connector/1.0 (+https://github.com/talebook/talebook)"
+const reviewUserAgent = "BookHarbor plugin connector/1.0 (+https://github.com/leonzy/BookHarbor)"
 
 // reviewHTTPClient 是评价源的共享 HTTP 客户端。
 var reviewHTTPClient = &safehttp.SafeHttpClient{}

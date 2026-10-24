@@ -41,7 +41,7 @@ func toolManifest(pluginID, name, description, icon, manageRoute, healthyMessage
 		"compatibility":    map[string]any{"talebook": ">=0.1.0"},
 		// Talebook 自有能力由管理员在实例级配置，不存在每用户连接。
 		"connection_owners": []any{"instance"},
-		"homepage":          "https://github.com/talebook/talebook",
+		"homepage":          "https://github.com/leonzy/BookHarbor",
 		"license":           "GPL-3.0",
 		"ui":                ui,
 	}

@@ -5,10 +5,16 @@ import * as directives from 'vuetify/directives';
 import { expect, it, vi } from 'vitest';
 
 const { backend, stream } = vi.hoisted(() => ({ backend: vi.fn(), stream: vi.fn() }));
-vi.mock('nuxt/app', () => ({
-    useNuxtApp: () => ({ $backend: backend, $backend_stream: stream }),
-    useRoute: () => ({ query: {} }), useHead: vi.fn()
-}));
+vi.mock('nuxt/app', async () => {
+    const { reactive } = await import('vue');
+    const route = reactive({ query: {} });
+    return {
+        useNuxtApp: () => ({ $backend: backend, $backend_stream: stream }),
+        useRoute: () => route,
+        useRouter: () => ({ push: vi.fn(async ({ query }) => { route.query = query; }) }),
+        useHead: vi.fn()
+    };
+});
 vi.mock('@/stores/main', () => ({ useMainStore: () => ({ setNavbar: vi.fn(), sys: {} }) }));
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 vi.mock('@/components/BookCards.vue', () => ({ default: { template: '<div />' } }));
@@ -33,7 +39,7 @@ it('loads only ten options per filter and applies a remotely selected author to 
     stream.mockImplementation(async function* () { yield { total: 0 }; });
     const wrapper = mount(LocalLibraryContent, {
         attachTo: document.body,
-        global: { plugins: [vuetify], mocks: { $t: (key: string) => key }, stubs: { BookCards: true } }
+        global: { plugins: [vuetify], mocks: { $t: (key: string) => key }, stubs: { BookCards: true, BookSizeSort: true } }
     });
     await flushPromises();
     expect(backend.mock.calls.map(call => call[0]).sort()).toEqual(
@@ -45,7 +51,7 @@ it('loads only ten options per filter and applies a remotely selected author to 
     const option = document.querySelector<HTMLElement>('.library-filter-picker__option');
     option!.click();
     await flushPromises();
-    expect(stream).toHaveBeenLastCalledWith('/library?start=0&size=60&author=Author0&stream=1');
+    expect(stream).toHaveBeenLastCalledWith('/library?start=0&size=60&sort=&author=Author0&stream=1');
     expect(backend).toHaveBeenCalledTimes(5);
     wrapper.unmount();
     document.body.replaceChildren();

@@ -70,7 +70,7 @@ func newBRSProvider() *BRSProvider {
 		"permissions":   []any{"books.read", "plugin_records.write", "network.read", "network.write", "annotations.write"},
 		"data_policy":   map[string]any{"stores_full_text": true, "retention": "remote_user_controlled"},
 		"compatibility": map[string]any{"talebook": ">=0.1.0"},
-		"homepage":      "https://github.com/talebook/talebook",
+		"homepage":      "https://github.com/leonzy/BookHarbor",
 		"license":       "GPL-3.0",
 		"ui": map[string]any{
 			"icon": "mdi-comment-text-multiple-outline", "primary_action": "configure",

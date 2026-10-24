@@ -1,12 +1,10 @@
 package httpapi
 
-// 本文件由 booksvr/scripts/e2e_export_settings_defaults.py 生成，请勿手工编辑。
-//
-// 内容等价于 webserver/settings.py 的 settings 字典（Python 求值后的字面量），
-// 用于复刻 SettingsLoader.loadfile() 的三层合并：
+// 本文件维护 BookHarbor 原生 Go 后端的出厂默认值。
+// 保留既有部署的三层配置合并约定：
 //   出厂默认（本表） → auto.py 用户覆盖 → manual.py 手工覆盖。
 
-// builtinSettingsDefaults 是 Talebook 的出厂默认配置。
+// builtinSettingsDefaults 是 BookHarbor 的出厂默认配置。
 var builtinSettingsDefaults = map[string]any{
 	"ACTIVE_THEME":                             "",
 	"ALLOW_FEEDBACK":                           true,
@@ -59,13 +57,13 @@ var builtinSettingsDefaults = map[string]any{
 	"DEVICES":                                  []any{},
 	"ENABLE_WEBDAV_SERVICE":                    true,
 	"EPUB_VIEWER":                              "creader.html",
-	"FEEDBACK_URL":                             "https://github.com/talebook/talebook/issues",
+	"FEEDBACK_URL":                             "https://github.com/leonzy/BookHarbor/issues",
 	"FOOTER":                                   "本站基于Calibre构建，感谢开源界的力量。所有资源搜集于互联网，如有侵权请邮件联系。",
 	"FOOTER_EXTRA_HTML":                        "",
 	"FRIENDS":                                  []any{map[string]any{"href": "https://www.jiumodiary.com/", "text": "鸠摩搜索"}, map[string]any{"href": "https://github.com/hectorqin/reader", "text": "追更神器"}, map[string]any{"href": "https://www.kgbook.com", "text": "苦瓜书盘"}, map[string]any{"href": "https://www.iyd.wang/", "text": "爱悦读"}, map[string]any{"href": "https://mox.moe/", "text": "moe漫画"}, map[string]any{"href": "https://yabook.blog/", "text": "雅书"}},
 	"GEETEST_CAPTCHA_ID":                       "",
 	"GEETEST_CAPTCHA_KEY":                      "",
-	"HEADER":                                   "欢迎访问！如果你喜欢此项目，请前往 Github <a target=\"_blank\" href=\"https://github.com/talebook/talebook\"> 给 talebook 点击一个Star！</a>",
+	"HEADER":                                   "欢迎访问！如果你喜欢此项目，请前往 Github <a target=\"_blank\" href=\"https://github.com/leonzy/BookHarbor\"> 给 BookHarbor 点击一个Star！</a>",
 	"INVITE_CODE":                              "love",
 	"INVITE_MESSAGE":                           "本站为私人图书馆，需输入密码才可进行访问",
 	"INVITE_MODE":                              false,
@@ -87,7 +85,7 @@ var builtinSettingsDefaults = map[string]any{
 	"RESET_MAIL_TITLE":                         "奇异书屋密码重置",
 	"SHOW_NETWORK_LIBRARY":                     true,
 	"SHOW_SIDEBAR_SYS":                         true,
-	"SIDEBAR_EXTRA_HTML":                       "<img class=\"ma-auto footer-logo\" style=\"max-width: 130px; height: auto;\" src=\"/logo/link.png\">",
+	"SIDEBAR_EXTRA_HTML":                       "<img class=\"ma-auto footer-logo\" style=\"max-width: 130px; height: auto;\" src=\"/brand/bookharbor.svg\" alt=\"BookHarbor\">",
 	"SIGNUP_MAIL_CONTENT":                      "\nHi, %(username)s！\n欢迎注册%(site_title)s，这里虽然是个小小的图书馆，但是希望你找到所爱。\n\n点击链接激活你的账号: %(active_link)s\n",
 	"SIGNUP_MAIL_TITLE":                        "欢迎注册奇异书屋",
 	"SOCIALS":                                  []any{},
@@ -159,7 +157,7 @@ var builtinSettingsDefaults = map[string]any{
 	"resource_path":                            "/var/www/talebook/resources",
 	"scan_upload_path":                         "/data/books/imports/",
 	"settings_path":                            "/data/books/settings/",
-	"site_title":                               "奇异书屋",
+	"site_title":                               "BookHarbor",
 	"smtp_encryption":                          "TLS",
 	"smtp_password":                            "password",
 	"smtp_server":                              "smtp.talebook.org",

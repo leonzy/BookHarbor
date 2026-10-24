@@ -1,14 +1,15 @@
 name: Code Quality Check and Build
 
 on:
+  workflow_dispatch:
   push:
     branches:
-      - master
+      - main
       - dev
       - dev-*
   pull_request:
     branches:
-      - master
+      - main
 
 jobs:
   check-design:
@@ -35,22 +36,35 @@ jobs:
       - name: Go backend tests and vet
         run: |
           cd booksvr
-          go test ./...
+          if [ "$(id -u)" = 0 ]; then
+            # act runs as root; execute permission-sensitive binaries as nobody.
+            go test ./... -skip 'TestFileThemeStoreWriteFileError|TestBackupCreateFailsOnReadOnlyDir'
+            permission_dir=$(mktemp -d)
+            chmod 755 "$permission_dir"
+            go test -c -o "$permission_dir/httpapi.test" ./internal/httpapi
+            go test -c -o "$permission_dir/reindex.test" ./internal/reindex
+            runuser -u nobody -- "$permission_dir/httpapi.test" -test.run '^TestFileThemeStoreWriteFileError$'
+            runuser -u nobody -- "$permission_dir/reindex.test" -test.run '^TestBackupCreateFailsOnReadOnlyDir$'
+          else
+            go test ./...
+          fi
           go vet ./...
       - name: Image management tests
         run: |
-          python3 -m pip install pytest cryptography
-          python3 -m pytest tests -q
+          python3 -m venv /tmp/bookharbor-management-tests
+          /tmp/bookharbor-management-tests/bin/pip install pytest cryptography
+          /tmp/bookharbor-management-tests/bin/python -m pytest tests -q
 
   test-ui:
     runs-on: ubuntu-latest
-    container:
-      image: node:20-alpine
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - name: Install dependencies
         run: |
           cd app
@@ -88,12 +102,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci
       - name: Test metadata contract and pagination components
-        run: npx vitest run --maxWorkers=1 test/utils/metadata-pagination.spec.ts test/components/MetaList.spec.ts test/components/useMetadataPage.spec.ts test/components/LocalLibraryContent.spec.ts test/components/LibraryChipFilter.spec.ts
+        run: npx vitest run --maxWorkers=1 test/utils/metadata-pagination.spec.ts test/components/MetaList.spec.ts test/components/useMetadataPage.spec.ts test/components/LocalLibraryContent.spec.ts test/components/LibraryChipFilter.spec.ts test/components/SidebarHelpMenu.spec.ts test/components/ApplicationUpgrade.spec.ts test/utils/theme-display.spec.ts test/stores/main.nuxt.spec.ts
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - name: Run library browser regressions (including picker and keyboard cases)

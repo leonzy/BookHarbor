@@ -1,98 +1,35 @@
+<p align="center"><img src="app/public/brand/bookharbor.svg" width="96" alt="BookHarbor"></p>
 
-[![GitHub License](https://img.shields.io/github/license/talebook/talebook?style=flat-square)](https://github.com/talebook/talebook/blob/master/LICENSE)
-[![GitHub commit activity](https://img.shields.io/github/commit-activity/w/talebook/talebook?logo=github&amp;style=flat-square&amp;label=commits)]()
-[![Tests](https://github.com/talebook/talebook/actions/workflows/ci.yml/badge.svg)](https://github.com/talebook/talebook/actions/workflows/ci.yml)
-[![Docker Build](https://github.com/talebook/talebook/actions/workflows/build.yml/badge.svg)](https://github.com/talebook/talebook/actions/workflows/build.yml)
-[![Docker Pulls](https://img.shields.io/docker/pulls/talebook/talebook.svg)](https://hub.docker.com/r/talebook/talebook)
-
-
-# Tale Book: My Calibre WebServer
+# BookHarbor
 
 [中文](README.md) | English
 
-A better online books library management website built on Calibre + Vue
+BookHarbor is a self-hosted ebook library with a Go HTTP backend and Nuxt 4 / Vue 3 frontend. It is independently maintained from [Talebook](https://github.com/talebook/talebook), preserving its commit history, copyright notices and BSD-2-Clause license.
 
-## A Simple and User-Friendly Personal Book Management System
+Features include multiple source directories, indexing without copying books by default, background imports and ZIP support, source rename/move/delete synchronization with mount protection, directory browsing, file-size sorting, online reading, shelves, reading history, OPDS and device connectors. The interface supports Chinese, English and Russian, with light and dark themes.
 
-This is a simple personal book management system based on Calibre, supporting **online reading**. Main features:
-* Beautiful interface: A modern interface rebuilt with Nuxt 4 + Vue 3 + Vuetify, supporting both PC and mobile browsing, with multi-language (Chinese/English) support and light/dark theme switching;
-* Multi-user support: Multi-user functionality with login via social platforms like ~~Douban~~ (deprecated), QQ, Weibo, Github, etc.; full user management and guest permission control, bcrypt password storage, image captcha and GeeTest verification;
-* Online reading support: Built-in [candle-reader](https://github.com/talebook/candle-reader) for reading e-books in the browser, with automatic conversion for non-EPUB formats;
-* Online library with book sources: Import [Legado](https://github.com/gedoor/legado)-style book sources to search and read web novels online, and save them to the library as txt/epub with one click; book source management UI with batch import, enable/disable and validity checks;
-* Batch scan and import of books, with automatic metadata filling, recycle bin and batch deletion;
-* Email push support: Manage multiple Kindle and other receiving devices, one-click push with automatic batch format conversion;
-* OPDS support: Use apps like [KyBooks](http://kybook-reader.com/) for convenient reading; also browse and import books from other OPDS libraries;
-* One-click installation, web-based initial configuration, easy website setup, with online update checking;
-* Optimized file storage path for large libraries, can be categorized by alphabet or keep Chinese filenames;
-* Quick update of book information: Search and import metadata in parallel from multiple sources (Douban, Baidu Encyclopedia, Xinhua Bookstore, Tomato Novel), with optional AI-powered book information recognition;
-* Private mode support: Requires access code to enter the website, convenient for small group sharing; individual books can also be marked as private, visible only to yourself;
+## Run with Docker
 
-This project was previously named: calibre-webserver
-
-## Highlights of the Past Year
-
-* **Online library & book sources**: New Legado-style book source parsing engine — search and read web novels online and save them to the library as txt/epub; book source management UI (batch enable/disable/delete, validity checks, paginated search).
-* **Frontend rewrite**: Upgraded from Nuxt 2 to Nuxt 4 + Vue 3 + Vuetify 3, full i18n (Chinese/English), light/dark theme switching, redesigned login/signup and book editing pages.
-* **AI & multi-source metadata**: New AI-powered book information API; metadata sources extended to Douban, Baidu Encyclopedia, Xinhua Bookstore, Tomato Novel and Calibre, queried in parallel.
-* **Online reading**: Default EPUB reader switched to [candle-reader](https://github.com/talebook/candle-reader); non-EPUB books are converted automatically before online reading.
-* **Push & conversion**: New user device management with multi-device push; background batch conversion of Kindle-proprietary formats to EPUB.
-* **OPDS import**: Add external OPDS sources, browse and batch import books, with failure retry and progress tracking.
-* **Security hardening**: Automatic password migration from SHA256 to bcrypt; image captcha and GeeTest verification for login/signup/password reset; multiple security fixes (ReDoS, code injection, etc.).
-* **Admin enhancements**: User management UI, guest upload permission control, recycle bin, batch book deletion, update checking, and a user feedback entry.
-* **Infrastructure**: Upgraded to Tornado 6.5, switched to uv for Python dependency management, added database migration tooling; Docker base image consolidated into `talebook/talebook-base` for faster builds.
-
-
-## Docker ![Docker Pulls](https://img.shields.io/docker/pulls/talebook/talebook.svg)
-
-Docker is the recommended deployment method. Images are published to both [Docker Hub](https://hub.docker.com/r/talebook/talebook) and [GitHub Container Registry](https://github.com/talebook/talebook/pkgs/container/talebook); pull them as `talebook/talebook` or `ghcr.io/talebook/talebook`, respectively.
-
-It is recommended to use `docker-compose`, download the configuration file [docker-compose.yml](docker-compose.yml) from the repository, and then execute the command to start.
-If you want to modify the mounted directories or ports, please modify the docker-compose.yml file.
-
-By default, the Compose file keeps Talebook settings, the user database, and the library together in `data/` next to `docker-compose.yml`. Rebuilding or replacing the container does not remove those files. Back up this directory regularly, and do not keep long-lived data under `/tmp`, which the host may clean. To use another location, set an absolute path in a colocated `.env` file:
-
-```dotenv
-TALEBOOK_DATA_DIR=/path/to/talebook-data
+```bash
+git clone https://github.com/leonzy/BookHarbor.git
+cd BookHarbor
+docker compose up -d
 ```
 
-If an existing deployment still uses `/tmp/demo`, back it up before updating the Compose file and set `TALEBOOK_DATA_DIR=/tmp/demo` to keep mounting the existing data. Alternatively, migrate it while the container is stopped. Do not complete setup again without first mounting the original data.
+Open `http://localhost:8080` and complete administrator setup. The main-branch image is `ghcr.io/leonzy/bookharbor:main`. Versioned images are available after a release.
 
-```
-wget https://raw.githubusercontent.com/talebook/talebook/master/docker-compose.yml
-docker-compose -f docker-compose.yml  up -d
-```
+For existing installations, keep the same `/data` bind mount and mount source books at `/books`, `/books1`, etc. The Calibre library remains at `/data/books/library`. Renaming the project does not migrate databases or copy source books. Existing custom site settings remain valid. The Compose service name `talebook`, `TALEBOOK_*` environment variables and internal protocol identifiers remain compatible. Back up your data and settings before changing images; only one application container may write to the data directory.
 
+## Site name and logo
 
-If using native docker, then execute the command:
+New installations use the BookHarbor name and logo. Administrators can edit the site title, header, and sidebar HTML in general settings; existing custom settings remain intact. Put custom sidebar images in `books/logo/` inside the persistent data directory and reference them as `/logo/filename` in sidebar HTML. This directory is `/data/books/logo/` inside the container, and image updates preserve existing files.
 
-`docker run -d --name talebook -p &lt;local-port&gt;:80 -v &lt;local-data-directory&gt;:/data talebook/talebook`
+## Development
 
+See [CONTRIBUTING.md](CONTRIBUTING.md). `origin` is BookHarbor; configure `https://github.com/talebook/talebook.git` as `upstream` for selective updates. Calibre remains an external format tool; Python is used for image management and Calibre tools, not as an HTTP backend.
 
-For example
+[Issues](https://github.com/leonzy/BookHarbor/issues) · [Releases](https://github.com/leonzy/BookHarbor/releases) · [Container images](https://github.com/leonzy/BookHarbor/pkgs/container/bookharbor)
 
-`mkdir -p "$PWD/data" && docker run -d --name talebook -p 8080:80 -v "$PWD/data:/data" talebook/talebook`
+## Attribution and license
 
-
-
-## FAQ
-
-For frequently asked questions, please refer to the [User Guide](document/README.en_US.md). If you can't solve it, please submit an ISSUE.
-
-For manual installation, please refer to the [Developer Guide](document/Development.en_US.md)
-
-**If you think this project is great, welcome to support the author!**
-
-**Disclaimer! This project does not maintain any public book library sites. Sites like joyeuse, wenyuange, etc. are built by users. Please do not consult me about related issues, I can't help!**
-
-
-## Contributors
-[![](https://contrib.rocks/image?repo=talebook/talebook)](https://github.com/talebook/talebook/graphs/contributors)
-
-
-## Demo
-
-[Demo site (password admin/demodemo)](http://demo.talebook.org)
-
-
-Project demo screenshot below:
-![](document/screenshot.png)
+Derived from Talebook. Original author and contributor copyright notices are retained in [LICENSE](LICENSE). Calibre, candle-reader and other dependencies remain independent projects. Third-party notices are in [document/licenses](document/licenses).

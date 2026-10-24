@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-Talebook 是基于 [Calibre](https://calibre-ebook.com/) 的个人电子书管理系统：
+BookHarbor 是基于 [Calibre](https://calibre-ebook.com/) 的个人电子书管理系统：
 
 - **`booksvr/`** — 唯一 Go HTTP 后端；内嵌用户表 schema 并执行幂等初始化，Calibre 只作为外部格式工具。旧 Python HTTP 服务已删除。
 - **`app/`** — 前端（Nuxt 4 + Vue 3 + Vuetify），详见 `app/CLAUDE.md`
@@ -34,7 +34,7 @@ make dev     # 挂载 booksvr/ 进容器，用于 Go 后端开发调试
 
 ### 领域规格文档
 
-`spec/` 是 Talebook 的领域规格文档，描述产品**是什么**、按什么规则运转。它与 `design/` 的分工是硬边界：
+`spec/` 是 BookHarbor 的领域规格文档，描述产品**是什么**、按什么规则运转。它与 `design/` 的分工是硬边界：
 
 - **`spec/` 回答「是什么」**：当前的产品应然，唯一一份，总是最新，无时态。
 - **`design/` 回答「怎么做」**：某次改动的论证与验证记录，有时态，带 WIP/ACTIVE/SUPERSEDED 生命周期。
@@ -136,7 +136,7 @@ cp design/TEMPLATE.html design/<module>/yyyymmdd-<feature>.wip.html
 
 - 修改前端交互、样式、主题、页面布局或弹窗时，除单元/组件测试外，必须使用 Chrome DevTools MCP 在浏览器中做实际渲染验证，并在回复中说明验证过的页面、主题或关键状态。
 - 修改界面时允许使用 mock API 完成组件测试、E2E 和快速回归等隔离自测。mock 环境只服务于自动化测试或智能体内部验证，不得作为用户体验环境、实际数据验收或完整功能验证结果。
-- 用户要求本地体验、查看实际效果或提供可访问地址时，必须使用 Docker 运行 Talebook 后端，并让前端连接该真实后端；不得提供由 mock API 驱动的体验地址。体验环境应能使用真实书库、封面、登录、阅读和管理等完整功能。
+- 用户要求本地体验、查看实际效果或提供可访问地址时，必须使用 Docker 运行 BookHarbor 后端，并让前端连接该真实后端；不得提供由 mock API 驱动的体验地址。体验环境应能使用真实书库、封面、登录、阅读和管理等完整功能。
 - 只要智能体需要手动启动并保留 Nuxt dev server，无论用户是否已明确要求体验，都必须先启动 Docker 后端并确认 `http://127.0.0.1:8080/api/welcome` 可用，再通过 `API_URL=http://127.0.0.1:8080` 启动前端。Docker 后端不可用时必须报告阻塞，不得静默降级到 mock。
 - 自动化测试命令可以管理短生命周期的 mock 与临时页面服务作为上述规则的唯一例外；这些服务不得向用户提供，测试结束后必须停止。
 - 前端改动完成后，如果需要 dev server 才能体验，必须启动符合上述 Docker 后端约束的本地 dev server，并在最终回复中提供可访问地址（例如 `http://127.0.0.1:3000/` ）。

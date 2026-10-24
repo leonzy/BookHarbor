@@ -22,7 +22,7 @@ def prepare(work, runtime_image, frontend):
 if __name__ == '__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('--work',type=Path,required=True)
-    parser.add_argument('--runtime-image',default='talebook/talebook:master')
+    parser.add_argument('--runtime-image',default='ghcr.io/leonzy/bookharbor:main')
     parser.add_argument('--frontend',type=Path,required=True)
     args=parser.parse_args()
     prepare(args.work.resolve(),args.runtime_image,args.frontend.resolve())

@@ -63,7 +63,7 @@ jobs:
           if tag:
               assert re.fullmatch(r'v[a-zA-Z0-9._-]{1,79}', tag) and version == tag
               assert git('rev-parse', '--verify', f'refs/tags/{tag}^{{commit}}') == commit
-          subprocess.run(['git', 'merge-base', '--is-ancestor', commit, 'origin/master'], check=True)
+          subprocess.run(['git', 'merge-base', '--is-ancestor', commit, 'origin/main'], check=True)
           sequence = int(git('show', '-s', '--format=%ct', commit))
           assert sequence > 0
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:

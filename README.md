@@ -1,207 +1,53 @@
-[![GitHub License](https://img.shields.io/github/license/talebook/talebook?style=flat-square)](https://github.com/talebook/talebook/blob/master/LICENSE)
-[![GitHub commit activity](https://img.shields.io/github/commit-activity/w/talebook/talebook?logo=github&style=flat-square&label=commits)]()
-[![Tests](https://github.com/talebook/talebook/actions/workflows/ci.yml/badge.svg)](https://github.com/talebook/talebook/actions/workflows/ci.yml)
-[![Docker Build](https://github.com/talebook/talebook/actions/workflows/build.yml/badge.svg)](https://github.com/talebook/talebook/actions/workflows/build.yml)
-[![Docker Pulls](https://img.shields.io/docker/pulls/talebook/talebook.svg)](https://hub.docker.com/r/talebook/talebook)
+<p align="center"><img src="app/public/brand/bookharbor.svg" width="96" alt="BookHarbor"></p>
 
-
-# Tale Book: My Calibre WebServer
+# BookHarbor
 
 中文 | [English](README_EN.md)
 
-A better online books library management website built on Calibre + Vue
+BookHarbor 是面向个人和家庭的自托管电子书库，采用 **Go 后端、Nuxt 4 / Vue 3 前端**，提供书籍管理、在线阅读与阅读设备推送。
 
-## 简单好用的个人图书管理系统
+本项目基于 [Talebook](https://github.com/talebook/talebook) 独立维护，保留原项目的提交历史与 BSD-2-Clause 许可证。Calibre 作为外部格式处理工具，Python 仅用于镜像管理与 Calibre 相关工具，不再运行 Python HTTP 后端。
 
-**友情提醒：中国境内网站，个人是不允许进行在线出版的，维护公开的书籍网站是违法违规的行为！建议仅作为个人使用！**
+## 功能
 
-这是一个基于Calibre的简单的个人图书管理系统，支持**在线阅读**。主要特点是：
-* 美观的界面：基于 Nuxt 4 + Vue 3 + Vuetify 全新编写的现代化界面，支持PC访问和手机浏览，支持中英文多语言、白天/夜间主题切换；
-* 支持多用户：为了网友们更方便使用，开发了多用户功能，支持~~豆瓣~~（已废弃）、QQ、微博、Github等社交网站的登录；完善的用户管理、访客权限控制，密码采用 bcrypt 加密存储，支持图形验证码与极验人机验证；
-* 支持在线阅读：内置 [candle-reader](https://github.com/talebook/candle-reader) 阅读器，网页在线阅读电子书，非EPUB格式自动转换；
-* 支持网络书库：可导入 [Legado（开源阅读）](https://github.com/gedoor/legado)风格的书源，在线搜索、阅读网络小说，并可一键保存为 txt/epub 入库；提供书源管理界面，支持批量导入、启停、有效性体检；
-* 支持批量扫描导入书籍，自动填充元数据，并提供回收站、批量删除等管理功能；
-* 支持邮件推送：可管理多个 Kindle 等接收设备，一键推送，自动批量转换格式；
-* 支持OPDS：可使用[KyBooks](http://kybook-reader.com/)等APP方便地读书；也支持从其它OPDS书库浏览并导入书籍；
-* 支持一键安装，网页版初始化配置，轻松启动网站，并可在线检查版本更新；
-* 优化大书库时文件存放路径，可以按字母分类、或者文件名保持中文；
-* 支持快捷更新书籍信息：支持从百度百科、豆瓣、新华书店、番茄小说等多信息源并行搜索导入，还可接入 AI 大模型自动识别书籍信息；
-* 支持私人模式：需要输入访问码，才能进入网站，便于小圈子分享网站；支持将单本书设为私藏，仅自己可见；
+- 多个来源目录自动扫描，默认仅索引原文件；后台全量导入与 ZIP 书籍导入。
+- 文件删除、改名与移动同步，挂载掉线保护，来源缺失状态与回收站。
+- 书库、分类、目录树浏览；按文件大小排序，筛选和页码跳转。
+- 在线阅读、格式转换、书架、阅读记录、私有书目与多用户权限。
+- OPDS、元数据插件及 BOOX、Kindle、WebDAV 等设备或服务连接。
+- 中文、英文、俄文界面，浅色和深色主题。
 
-本项目曾用名：calibre-webserver
+## Docker 部署
 
-## AI Skills — 用自然语言管理 Talebook
-
-Talebook 提供独立的 [Agent Skill](https://github.com/talebook/skills)，可让支持 Agent Skills 的 AI 工具通过自然语言安全地操作自托管实例：
-
-* **书库操作**：搜索和浏览书籍，上传、下载与收藏图书，管理书架、阅读状态和接收设备；
-* **有声书**：列出、查看和下载已发布的有声书；
-* **远程书库**：浏览远程书库与网络书源，将搜索到的内容保存到本地书库；
-* **管理与部署**：执行经过确认的管理员操作，并辅助使用 Docker Compose 部署或更新 Talebook。
-
-在支持 Agent Skills 的 AI 工具中，可使用以下命令全局安装 `talebook` Skill：
+镜像：`ghcr.io/leonzy/bookharbor:main`（主分支）、正式版本标签（发布后可用）。仅使用你有权访问和管理的图书。
 
 ```bash
-npx skills add talebook/skills -g
+git clone https://github.com/leonzy/BookHarbor.git
+cd BookHarbor
+docker compose up -d
 ```
 
-连接实例时建议通过环境变量提供站点和登录信息，避免密码进入命令历史：
+首次部署访问 `http://localhost:8080`，完成管理员初始化。`docker-compose.yml` 中的服务名 `talebook` 与 `TALEBOOK_DATA_DIR` 环境变量保留，以兼容已有部署。
+
+已有用户继续将原数据目录挂载到 `/data`，源书籍目录分别挂载为 `/books`、`/books1` 等，再在导入设置填写这些容器内路径。Calibre 书库仍默认位于 `/data/books/library`；不会因项目改名迁移数据库或复制源书籍。自定义站点名称和设置保留。替换镜像前备份数据库和设置，避免两个容器同时写入同一数据目录。
+
+## 站点名称与标识
+
+新安装默认使用 BookHarbor 名称和标识。管理员可在常规设置中修改网站标题、页头与侧栏自定义 HTML；已有站点的自定义设置会保留。需要自定义侧栏图片时，将图片放在持久化数据目录的 `books/logo/` 下，并在侧栏 HTML 中使用 `/logo/文件名`；该目录在容器内为 `/data/books/logo/`，更新镜像不会覆盖已有图片。
+
+## 开发与上游同步
 
 ```bash
-export TALEBOOK_URL="https://books.example.com"
-export TALEBOOK_USERNAME="your-username"
-export TALEBOOK_PASSWORD="your-password"
+git remote add upstream https://github.com/talebook/talebook.git
+git fetch upstream
+git log --oneline main..upstream/master
 ```
 
-安装后直接用自然语言描述任务即可，Skill 会自动触发：
+`origin` 指向 BookHarbor；Talebook 为 `upstream`，按需选择性吸收改动。前端改动可以按依赖评估后迁入；后端行为适配到 Go，保留本项目已有修复，不重新引入 Python HTTP 服务。完整开发、发布及兼容约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-```text
-帮我在书库里找一下《三体》，把找到的那本加入收藏。
-把 ~/Downloads/三体.epub 上传到我的书库。
-把《三体》的 mobi 推送到我的 Kindle。
-```
+## 项目与致谢
 
-在 Claude Code 中也可以用 `/talebook` 显式调用。
-
-Skill 会在写入前确认目标与权限，对管理员写入、删除和批量操作先展示影响并请求确认，执行后再查询状态进行核验。完整说明与源码见 [talebook/skills](https://github.com/talebook/skills)。
-
-DeepSeek Harness（DSH）用户可安装社区插件 [dsh-talebook-plugin](https://github.com/hehetoshang/dsh-talebook-plugin)，在 DSH 中通过 12 个强类型工具搜索、下载、上传和管理书籍与有声书，管理 Legado 书源并执行管理员操作。写入前同样需要确认，密码只保存在 DSH 凭据存储中：
-
-```bash
-dsh plugin --profile web add github:hehetoshang/dsh-talebook-plugin
-```
-
-## 近一年更新亮点
-
-* **网络书库与书源**：新增 Legado 风格书源解析引擎，可在线搜索、阅读网络小说并保存为 txt/epub 入库；配套书源管理界面（批量启停/删除、有效性体检、分页搜索）。
-* **前端全面重写**：从 Nuxt 2 升级至 Nuxt 4 + Vue 3 + Vuetify 3，全站多语言国际化（中/英），新增白天/夜间主题切换，重做登录注册、书籍编辑等页面。
-* **AI 与多源元数据**：新增 AI 大模型识别书籍信息接口；元数据信息源扩展至豆瓣、百度百科、新华书店、番茄小说、Calibre，多源并行查询。
-* **在线阅读体验**：默认 EPUB 阅读器切换为自研 [candle-reader](https://github.com/talebook/candle-reader)；非 EPUB 书籍在线阅读时自动转换。
-* **推送与转换**：新增用户设备管理，支持多设备推送；后台批量转换 Kindle 专有格式为 EPUB。
-* **OPDS 导入**：支持添加外部 OPDS 源，浏览、批量导入书籍，含失败重试与进度查询。
-* **安全加固**：用户密码从 SHA256 自动迁移至 bcrypt；登录/注册/找回密码支持图形验证码与极验 GeeTest；修复多处安全告警（ReDoS、代码注入等）。
-* **管理后台增强**：新增用户管理界面、访客上传权限控制、回收站、批量删除图书、检查更新、用户反馈入口。
-* **基础设施**：升级 Tornado 6.5，改用 uv 管理 Python 依赖，新增数据库迁移工具；使用独立维护的 `talebook/talebook-base` slim 基础镜像，构建提速。
-
-
-## 全平台客户端 — Moke
-
-**[Moke](https://github.com/talebook/moke)** 是 Talebook 的全平台客户端，跨平台支持 Windows、macOS、Linux、Android、iOS、iPadOS 及 OpenHarmony（Alpha，这个需要自己编译）。启动后输入你的 Talebook 服务器地址即可浏览、搜索、下载并阅读电子书。
-* **专业阅读器**：内嵌 [readest](https://github.com/readest/readest) 阅读器，支持 EPUB、PDF 等多种格式，提供高亮、笔记、书签、标注等进阶阅读功能；
-* **离线下载**：将服务器上的书籍一键下载到本地，断网也能随时打开阅读；支持批量下载和 EPUB 完整性校验；
-* **局域网友好**：完美支持自签名证书和 HTTP/HTTPS 局域网服务器，NAS 用户开箱即用；
-* **完整认证**：支持访问码、登录、注册、密码重置等 Talebook 的全部认证方式，内置 GeeTest 人机验证；
-* **墨水屏模式**：专为墨水屏设备优化的高对比度黑白显示模式，支持手动开启及自动检测（Kindle 等设备），去除所有半透明、模糊和渐变效果；
-* **阅读进度同步**：自动与服务器同步阅读进度（页码、章节、百分比），多设备无缝衔接；
-* **批量操作**：书库/书架/搜索结果支持多选模式，批量加入书架、移出书架、下载，支持全选和 Shift 范围选择；
-* **多视图模式**：支持网格、列表、表格三种视图，表格视图可按标题、作者、出版社、格式、大小、添加时间排序；
-* **右键菜单**：桌面端右键 / 移动端长按书籍卡片，弹出快捷菜单（加入/移出书架、查看详情、下载）；
-* **用户数据面板**：阅读历史、下载历史、推送历史、上传历史分类展示，支持完整历史记录页；
-* **自动更新**：桌面端支持应用内版本检测、自动下载、更新日志展示、一键安装重启；
-* **扩展系统(Alpha)**：支持安装和管理本地扩展，扩展可提供后端进程和前端界面，通过 HTTP/WebSocket 与主应用通信；
-* **阅读器进阶能力**：TTS 语音朗读、RSVP 快速阅读、OPDS 目录浏览与订阅、多端云同步（WebDAV / KOReader KOSync）、AI 阅读助手、Word Lens 行间翻译、多词典与多翻译引擎、自定义主题/字体/背景纹理、阅读统计与阅读标尺、硬件翻页键绑定等；
-
-从 [Releases](https://github.com/talebook/moke/releases) 页面下载对应平台的安装包（`.msi` / `.exe` / `.dmg` / `.deb` / `.AppImage` / `.apk` / `.ipa`），即刻体验全平台阅读。
-
-## 安卓客户端 — Talebook Android
-
-**[Talebook Android](https://github.com/yangjian1412/talebook-android)** 是社区开发的 Talebook 安卓阅读客户端，既可连接 Talebook 服务器，也可作为本地阅读器使用。
-
-* **在线与离线阅读**：支持从 Talebook 服务器在线阅读或缓存书籍，离线时也能继续阅读；
-* **本地书架**：可添加本地文件夹，阅读 EPUB、PDF 和 TXT 文件；
-* **阅读辅助**：支持阅读进度、书签、笔记、全文搜索、目录跳转和 TTS 朗读；
-* **多服务器与备份**：支持切换多个 Talebook 服务器，并可导入、导出阅读数据；
-
-## 手表客户端 — 氢电子书（H2read）
-
-**H2read（氢电子书）** 是专为 Android Wear OS / 智能手表定制的小说阅读与听书客户端，支持 OLED 纯黑省电模式与多种 TTS 语音听书。
-
-* **OLED 纯黑模式**：`#000000` 像素级黑底，0 发光超省电；
-* **全矩阵听书（TTS）（付费）**：支持 Edge-TTS 网络语音、Sherpa-ONNX 离线语音与系统 TTS，句子级高亮跟随，0 秒无缝连播；
-* **多源聚合阅读**：在线阅读与全本离线，支持导出 EPUB / TXT；
-* **智能分包**：自动适配 32 位（armeabi-v7a）与 64 位（arm64-v8a）设备；
-* **Talebook 集成**：「导入书籍」功能支持配置 Talebook 服务器地址（可填写访问码或账号密码），直接从 Talebook 书库浏览、搜索并导入书籍到手表阅读/听书。
-
-## 有声书命令行客户端 — Talebook Audio CLI
-
-**[Talebook Audio CLI](https://github.com/hehetoshang/talebook-audio-cli)** 是独立安装的 Talebook 有声书终端客户端：使用账号密码直接登录（不依赖浏览器 Cookie），列出当前账号可访问的已发布有声书，通过本机 `mpv` 播放，或经 OpenXiaoAI Bridge 在小爱音箱上播放。
-
-* **账号密码登录**：`talebook-audio configure --server https://books.example.com --username alice` 保存服务地址与账号，`talebook-audio login` 以隐藏输入读取密码；客户端只保存服务地址、用户名和登录 Cookie，不保存密码；
-* **浏览与播放**：`talebook-audio books` 列出可访问的已发布有声书，`talebook-audio play --book-id 42 --chapter 3` 按书籍或有声版本播放并指定起始章节，也支持交互选择与单键控制（暂停/继续、上一章/下一章）；
-* **小爱音箱播放**：经 OpenXiaoAI Bridge 的鉴权 StreamPlayer API 播放，支持进度、暂停/继续与切章；
-* **MCP 集成**：`talebook-audio mcp` 提供 9 个浏览、播放与状态控制工具，可像 neteasecli 一样以 stdio 方式接入 OpenXiaoAI Bridge。
-
-安装（PyPI，Python ≥ 3.11；本机播放需要 `mpv`）：
-
-```bash
-python3 -m pip install talebook-audio-cli
-```
-
-源码与发布：[talebook-audio-cli](https://github.com/hehetoshang/talebook-audio-cli) · [PyPI](https://pypi.org/project/talebook-audio-cli/)
-
-## Docker ![Docker Pulls](https://img.shields.io/docker/pulls/talebook/talebook.svg)
-
-部署比较简单，建议采用 Docker。镜像同时发布到 [Docker Hub](https://hub.docker.com/r/talebook/talebook) 和 [GitHub Container Registry](https://github.com/talebook/talebook/pkgs/container/talebook)，可分别使用 `talebook/talebook` 或 `ghcr.io/talebook/talebook` 拉取。
-
-推荐使用`docker-compose`，下载仓库中的配置文件[docker-compose.yml](docker-compose.yml)，然后执行命令启动即可。
-若希望修改挂载的目录或端口，请修改docker-compose.yml文件。
-
-默认配置会把 Talebook 的配置、用户数据库和书库统一保存在 `docker-compose.yml` 同目录的 `data/` 中；重新构建或替换容器不会删除这些文件。请定期备份该目录，不要把长期数据放在可能被系统清理的 `/tmp` 下。需要使用其他位置时，可在同目录的 `.env` 中设置绝对路径：
-
-```dotenv
-TALEBOOK_DATA_DIR=/path/to/talebook-data
-```
-
-如果旧部署仍使用 `/tmp/demo`，升级 Compose 前请先备份该目录，并设置 `TALEBOOK_DATA_DIR=/tmp/demo` 继续挂载原数据；也可以在停止容器后自行迁移到新的持久化目录。不要在没有原数据挂载的情况下完成再次初始化。
-
-```
-wget https://raw.githubusercontent.com/talebook/talebook/master/docker-compose.yml
-docker-compose -f docker-compose.yml  up -d
-```
-
-
-如果使用原生docker，那么执行命令：
-
-`docker run -d --name talebook -p <本机端口>:80 -v <本机data目录>:/data talebook/talebook`
-
-
-例如
-
-`mkdir -p "$PWD/data" && docker run -d --name talebook -p 8080:80 -v "$PWD/data:/data" talebook/talebook`
-
-
-## Star History
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=talebook/talebook&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=talebook/talebook&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=talebook/talebook&type=date&legend=top-left" />
- </picture>
-
-
-
-## 常见问题 
-
-常见问题请参阅[使用指南](document/README.zh_CN.md)，无法解决的话，提个ISSUES，[进Q群交流](https://qm.qq.com/q/5lSfpJGsBq)
-
-手动安装请参考[开发者指南](document/Development.zh_CN.md)（[English](document/Development.en_US.md)）
-
-NAS安装指南：请参考网友们的帖子：[帖子1](https://post.smzdm.com/p/a992p6e0/)，[帖子2](https://post.smzdm.com/p/a3d7ox0k/), [帖子3](https://odcn.top/2019/02/26/2734/)
-
-**如果觉得本项目很棒，欢迎前往[爱发电](https://afdian.com/@talebook)，赞助作者，持续优化，为爱充电！**
-
-**再次声明！本项目没有维护任何公开的书库站点，各类网站均属于网友搭建的，相关问题请不要咨询我，爱莫能助！**
-
-
-## 贡献者
-[![](https://contrib.rocks/image?repo=talebook/talebook)](https://github.com/talebook/talebook/graphs/contributors)
-
-
-## 演示
-
-[Demo站点（密码 admin/demodemo ）](http://demo.talebook.org)
-
-[视频简介（感谢@Pan06da的制作）](https://player.bilibili.com/player.html?aid=482258810&bvid=BV1AT411S7c3&cid=1018595245&page=1)
-
-
-项目演示截图如下：
-![](document/screenshot.png)
+- [问题反馈](https://github.com/leonzy/BookHarbor/issues) · [版本发布](https://github.com/leonzy/BookHarbor/releases) · [容器镜像](https://github.com/leonzy/BookHarbor/pkgs/container/bookharbor)
+- 原项目：[Talebook](https://github.com/talebook/talebook)，原作者及贡献者版权保留。
+- 依赖 [Calibre](https://calibre-ebook.com/)、[candle-reader](https://github.com/talebook/candle-reader) 等独立项目；第三方许可见 [document/licenses](document/licenses)。
+- 许可证：[BSD-2-Clause](LICENSE)。

@@ -6,7 +6,7 @@
     "descending": "大小：从大到小",
     "hint": "按最大的可用格式排序，未知大小排最后",
     "size": "文件大小"
-},
+  },
   "directories": {
     "title": "文件目录",
     "tree": "目录树",
@@ -325,7 +325,7 @@
     "readBooks": "已读书目"
   },
   "navigationSections": {
-    "libraryLocalDescription": "浏览、筛选和管理已收藏到 Talebook 的本地书籍。",
+    "libraryLocalDescription": "浏览、筛选和管理已收藏到 BookHarbor 的本地书籍。",
     "libraryNetworkDescription": "搜索和浏览已启用书源插件提供的在线书籍。",
     "libraryAppsDescription": "查看 Moke、OPDS 与 WebDAV 的访问地址和配置指引。",
     "meShelfDescription": "查看收藏到个人书架的书籍。",
@@ -333,9 +333,9 @@
     "meAccountDescription": "管理个人资料和登录密码。",
     "meDevicesDescription": "管理当前账号用于接收和推送书籍的阅读设备。",
     "mePrivateDescription": "查看仅自己可见的私有书籍。",
-    "settingsGeneralDescription": "管理当前 Talebook 实例的全局设置。",
+    "settingsGeneralDescription": "管理当前 BookHarbor 实例的全局设置。",
     "settingsPluginsDescription": "启用插件并配置实例级策略与个人连接。",
-    "settingsThemesDescription": "选择和启用 Talebook 的界面主题。",
+    "settingsThemesDescription": "选择和启用 BookHarbor 的界面主题。",
     "appAccess": "使用 App 访问",
     "generalSettings": "系统设置"
   },
@@ -353,7 +353,7 @@
     "opdsDescription": "使用支持 OPDS 的阅读器浏览并下载书库内容。",
     "webdavDescription": "使用文件管理器或阅读应用通过 WebDAV 访问书库文件。",
     "connectionAddress": "连接地址",
-    "accountHint": "使用您的 Talebook 账号登录。",
+    "accountHint": "使用您的 BookHarbor 账号登录。",
     "enabled": "已启用",
     "disabled": "未启用"
   },
@@ -930,7 +930,7 @@
         "needsAttention": "需处理",
         "directory": "目录",
         "directoryLabel": "服务器导入目录",
-        "directoryHint": "Talebook 会扫描该目录中的电子书文件。",
+        "directoryHint": "BookHarbor 会扫描该目录中的电子书文件。",
         "directoryCheckFailed": "目录检测失败，请检查网络或稍后重试。",
         "chooseDirectoryTitle": "选择服务器目录",
         "emptyDirectorySelectable": "此目录下没有可选择的子目录。可以选择当前目录。",
@@ -1142,7 +1142,7 @@
         "upToDate": "已是最新版本",
         "updateAvailable": "发现新版本 {version}，请及时更新以获取最新功能和安全修复",
         "checkError": "检查更新失败",
-        "dbInfo": "Talebook 自身数据（用户、书架、配置等）支持迁移至 MySQL/MariaDB，Calibre 书籍元数据仍保持使用 SQLite。迁移完成后需重启服务器生效。",
+        "dbInfo": "BookHarbor 自身数据（用户、书架、配置等）支持迁移至 MySQL/MariaDB，Calibre 书籍元数据仍保持使用 SQLite。迁移完成后需重启服务器生效。",
         "dbMigrateWarning": "迁移将把当前数据库所有数据复制到新数据库，完成后需要重启服务器。操作不可逆，请提前备份！",
         "dbMigrateConfirmTitle": "确认迁移数据库？",
         "dbMigrateSuccess": "数据迁移成功，请重启服务器以生效",
@@ -1267,7 +1267,7 @@
     }
   },
   "install": {
-    "installTaleBook": "安装 TaleBook",
+    "installTaleBook": "安装 BookHarbor",
     "websiteTitle": "网站标题",
     "adminUsername": "管理员用户名",
     "adminPassword": "管理员登录密码",
@@ -1677,7 +1677,7 @@
     "loadFailed": "笔记加载失败，请稍后重试。",
     "permissionDenied": "没有权限查看这本书的笔记，或登录状态已失效。",
     "emptyTitle": "还没有笔记",
-    "emptyBody": "从 Talebook 或外部阅读服务导入后，笔记会出现在这里。",
+    "emptyBody": "从 BookHarbor 或外部阅读服务导入后，笔记会出现在这里。",
     "filterEmptyTitle": "这个来源没有笔记",
     "filterEmptyBody": "请选择其他来源，或刷新后再试。",
     "listLabel": "本书笔记列表",
@@ -1691,13 +1691,13 @@
     "openPanel": "打开阅读笔记",
     "delete": "删除这条笔记",
     "deleteTitle": "删除笔记？",
-    "deleteConfirm": "这会删除 Talebook 中的权威笔记，且无法撤销。",
+    "deleteConfirm": "这会删除 BookHarbor 中的权威笔记，且无法撤销。",
     "deleted": "笔记已删除。",
     "alreadyDeleted": "这条笔记已被删除，列表已更新。",
     "deleteFailed": "笔记未能删除，请重试。",
     "rollbackTitle": "撤销这批导入？",
     "rollbackConfirm": "将撤销“{target}”的来源关联。",
-    "rollbackKeepsContent": "撤销导入只解除外部来源关联，Talebook 中的笔记正文会保留。",
+    "rollbackKeepsContent": "撤销导入只解除外部来源关联，BookHarbor 中的笔记正文会保留。",
     "rollbackRunOption": "{source} · 批次 {run}（{count} 条）",
     "rollbackSourceOption": "{source} · 未标记批次（{count} 条）",
     "rollbackDone": "已撤销 {count} 条来源关联，笔记正文已保留。",
@@ -1714,7 +1714,7 @@
       "chapter_comment": "章评"
     },
     "sources": {
-      "talebook": "Talebook 原生",
+      "talebook": "BookHarbor 原生",
       "weread": "微信读书",
       "calibre": "Calibre",
       "brs": "BRS",
@@ -1741,7 +1741,7 @@
     "ready": "书籍匹配已就绪",
     "matchTitle": "确认书籍匹配",
     "unknownBook": "未命名书籍",
-    "selectMatch": "选择 Talebook 中的书",
+    "selectMatch": "选择 BookHarbor 中的书",
     "result": "写入或更新 {written} 条，跳过重复 {skipped} 条，失败或待确认 {failed} 条。",
     "test": "测试连接",
     "preview": "预览",
@@ -1751,7 +1751,7 @@
     "open": "微信读书",
     "title": "微信读书工作台",
     "description": "统一浏览微信读书的搜索、书架、统计、笔记、社区与推荐能力。",
-    "readOnly": "微信读书接口为只读：可读取和导入到 Talebook，但不能把修改写回微信读书。",
+    "readOnly": "微信读书接口为只读：可读取和导入到 BookHarbor，但不能把修改写回微信读书。",
     "apiKey": "微信读书 API Key",
     "apiKeyHint": "API Key 只会加密保存在你的个人连接中。",
     "savedKey": "已保存密钥 {mask}；留空即可复用。",
@@ -1785,7 +1785,7 @@
     "readDays": "有效阅读天数",
     "dailyAverage": "自然日均时长",
     "loadNotebooks": "读取笔记本",
-    "importNotesTitle": "把微信读书笔记导入 Talebook",
+    "importNotesTitle": "把微信读书笔记导入 BookHarbor",
     "importNotesDescription": "从已连接账号拉取个人划线、想法、章节点评和整本书评；也可改用官方 JSON 文件。",
     "notebookSummary": "{books} 本书有笔记，共 {notes} 条（书签只统计数量，不能导出正文）。",
     "noteCounts": "划线 {highlights} · 想法/点评 {reviews} · 书签 {bookmarks}",
@@ -1832,7 +1832,7 @@
   },
   "brs": {
     "title": "BRS 章评账号",
-    "description": "连接你的书评系统账号，将公开章评同步到 Talebook。",
+    "description": "连接你的书评系统账号，将公开章评同步到 BookHarbor。",
     "loginTitle": "登录到书评系统",
     "loginDescription": "直接连接你的 BRS 服务器并验证个人账号。",
     "signupTitle": "快速注册",
@@ -1864,7 +1864,7 @@
     "loadFailed": "BRS 个人配置加载失败。",
     "failed": "BRS 操作失败，请稍后重试。",
     "disabledByAdmin": "管理员尚未启用 BRS 插件。已保存的个人配置会保留，启用后可继续使用。",
-    "privacyHint": "登录、注册和重置请求由浏览器直接发往上述 BRS 服务器；登录成功后，Talebook 会加密保存个人凭证用于同步。"
+    "privacyHint": "登录、注册和重置请求由浏览器直接发往上述 BRS 服务器；登录成功后，BookHarbor 会加密保存个人凭证用于同步。"
   },
   "pluginManagement": {
     "title": "插件",
@@ -1923,7 +1923,7 @@
     "tabPush": "发送到设备",
     "categoryDescriptionIntegrations": "综合服务插件同时提供多种关联能力；启用后，可在对应的全局配置或个人设置中使用。",
     "categoryDescriptionMetadata": "元数据插件提供书籍信息的搜索功能。在书籍管理页面中选择“从互联网同步书籍信息”时，系统会自动调用已启用的插件进行查询；您还可以通过“自动补全设置”，在书籍上传时自动选择最合适的信息补全到书库中。",
-    "categoryDescriptionAnnotations": "Talebook 负责保存本地划线与笔记；此类插件用于从外部阅读服务导入内容，或将公开内容同步到已连接的服务。",
+    "categoryDescriptionAnnotations": "BookHarbor 负责保存本地划线与笔记；此类插件用于从外部阅读服务导入内容，或将公开内容同步到已连接的服务。",
     "categoryDescriptionReviews": "评价插件用于查询书籍评分、评价摘要与样本数量，并在书籍详情中提供参考信息。",
     "categoryDescriptionBookSources": "书源插件用于浏览、搜索和获取在线书籍；启用后，可在网络书库或插件的全局配置中使用对应来源。",
     "categoryDescriptionTools": "书籍工具用于修复或转换书籍文件；启用后，处理入口会出现在书籍详情页的“处理”菜单中。",
@@ -1988,9 +1988,9 @@
     "capabilityResultCount": "返回 {count} 条结果",
     "ratingSummary": "评分 {value} / {scale}（{count} 人）",
     "publicFreeCatalog": "这是无需账号的公开免费书目，可直接体验。下载前请确认作品在你所在地区的版权状态。",
-    "rightsVaryCatalog": "此目录同时包含开放、借阅和受限条目；Talebook 只会取得明确开放下载的文件。",
-    "opdsService": "Talebook OPDS 服务",
-    "opdsServiceDescription": "向 OPDS 客户端发布当前书库。此设置只控制 Talebook 的 OPDS 访问，不影响从外部 OPDS 书源导入。",
+    "rightsVaryCatalog": "此目录同时包含开放、借阅和受限条目；BookHarbor 只会取得明确开放下载的文件。",
+    "opdsService": "BookHarbor OPDS 服务",
+    "opdsServiceDescription": "向 OPDS 客户端发布当前书库。此设置只控制 BookHarbor 的 OPDS 访问，不影响从外部 OPDS 书源导入。",
     "opdsServiceEnabled": "启用 OPDS 服务",
     "opdsServiceGuide": "查看 OPDS 使用说明",
     "opdsServiceSaved": "OPDS 服务设置已保存。",
@@ -2114,7 +2114,7 @@
     "deactivate": "恢复默认",
     "deleteConfirm": "确认删除此主题？",
     "defaultTheme": "默认主题",
-    "defaultThemeDescription": "TaleBook 原生界面风格"
+    "defaultThemeDescription": "BookHarbor 原生界面风格"
   },
   "bookTools": {
     "common": {

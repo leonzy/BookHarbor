@@ -202,7 +202,7 @@ func newReviewFileProvider() *ReviewFileProvider {
 		"permissions":       []any{"plugin_records.write"},
 		"data_policy":       map[string]any{"stores_full_text": false, "retention": "rating_summary_and_source_link"},
 		"compatibility":     map[string]any{"talebook": ">=0.1.0"},
-		"homepage":          "https://github.com/talebook/talebook",
+		"homepage":          "https://github.com/leonzy/BookHarbor",
 		"license":           "GPL-3.0",
 		"ui":                map[string]any{"icon": "mdi-file-delimited-outline", "primary_action": "configure"},
 		"connection_owners": []any{"instance", "user"},

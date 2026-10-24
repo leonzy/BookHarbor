@@ -45,7 +45,7 @@ test.describe('Install Flow', () => {
         await expect(page).toHaveURL(/\/install/, { timeout: 10000 });
     
         // Check install form
-        await expect(page.getByText('安装 TaleBook')).toBeVisible();
+        await expect(page.getByText('安装 BookHarbor')).toBeVisible();
         await page.waitForLoadState('networkidle');
 
         expect(installRedirects).toEqual([302]);

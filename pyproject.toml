@@ -1,7 +1,7 @@
 [project]
-name = "talebook"
+name = "bookharbor"
 version = "0.1.0"
-description = "Talebook image management and Calibre CLI tools; HTTP backend is Go"
+description = "BookHarbor image management and Calibre CLI tools; HTTP backend is Go"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

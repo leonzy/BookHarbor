@@ -603,7 +603,7 @@ func newWatchFolderProvider() *watchFolderProvider {
 			"required":   []any{"path"},
 		},
 		sourcebase.ManifestOptions{
-			Homepage:       "https://github.com/talebook/talebook",
+			Homepage:       "https://github.com/leonzy/BookHarbor",
 			RuntimeKind:    "file",
 			NetworkRead:    false,
 			NetworkReadSet: true,

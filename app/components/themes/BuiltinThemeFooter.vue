@@ -12,15 +12,15 @@
         />
         <nav class="tb-theme-footer-links">
             <a
-                href="https://github.com/talebook/talebook"
+                href="https://github.com/leonzy/BookHarbor"
                 target="_blank"
             >Github</a>
             <a
-                href="https://hub.docker.com/r/talebook/talebook"
+                href="https://github.com/leonzy/BookHarbor/pkgs/container/bookharbor"
                 target="_blank"
             >Docker</a>
             <a
-                href="http://talebook.org"
+                href="https://github.com/leonzy/BookHarbor"
                 target="_blank"
             >Project</a>
         </nav>
