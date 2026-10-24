@@ -4,7 +4,7 @@
 
 ## 本地验证
 
-遵循根目录 `AGENTS.md` 和各目录规范。后端执行 `make test-go lint-go`，镜像管理脚本执行 `python3 -m pytest tests -q`，前端在 `app` 执行 `npm ci`、`npm run lint`、`npm run generate` 及相应 Vitest / Playwright 用例。行为变化同步更新 `spec`；重要改动先建立 WIP 方案，实际验证后转 ACTIVE。
+遵循根目录 `AGENTS.md` 和各目录规范。后端执行 `make test-go lint-go`；镜像管理脚本测试在 Linux root 环境运行，例如 `sudo .venv/bin/python -m pytest tests -q`，与升级执行器要求信任配置由 root 持有的实际环境一致。前端在 `app` 执行 `npm ci`、`npm run lint`、`npm run generate` 及相应 Vitest / Playwright 用例。行为变化同步更新 `spec`；重要改动先建立 WIP 方案，实际验证后转 ACTIVE。
 
 ## 吸收上游
 
@@ -21,7 +21,7 @@ git switch -c sync/upstream-YYYYMMDD main
 
 主分支镜像为 `ghcr.io/leonzy/bookharbor:main`（linux/amd64）；正式版本使用日期版本标签 `vYY.MM.DD`（必要时加后缀），保留旧版本比较兼容性并构建多架构镜像。前端构建与 CI 使用 Node 24 LTS。浏览回归固定 Ubuntu 24.04，以匹配已锁定的 Playwright 依赖。镜像发布使用仓库的 `GITHUB_TOKEN`，不依赖原项目的 Docker Hub 凭据。工作流的手动验证默认不发布。
 
-应用内签名升级沿用原协议与运行时校验，但下载来源和签名发布身份属于 BookHarbor。维护者已配置 `application-upgrade` 的独立 `UPGRADE_SIGNING_KEY`、`UPGRADE_KEY_ID`，以及 `application-upgrade-publish` 的 `UPGRADE_TRUSTED_KEYS` 和发布审批。私钥保存在源码外的维护目录，不进入代码仓库或镜像。公开信任配置见 `conf/bookharbor-upgrade.json`；启用应用内升级时可将它只读挂载到 `/etc/talebook-upgrade.json`。未配置受信任公钥的部署保持签名升级禁用，可使用 Docker 镜像更新。
+应用内签名升级沿用原协议与运行时校验，但下载来源和签名发布身份属于 BookHarbor。维护者已配置 `application-upgrade` 的独立 `UPGRADE_SIGNING_KEY`、`UPGRADE_KEY_ID`，以及 `application-upgrade-publish` 的 `UPGRADE_TRUSTED_KEYS` 和发布审批。私钥保存在源码外的维护目录，不进入代码仓库或镜像。公开信任配置见 `conf/bookharbor-upgrade.json`；启用应用内升级时可将它只读挂载到 `/etc/talebook-upgrade.json`。宿主配置文件需由 root 持有，权限可设为 `0644`，禁止组或其他用户写入。未配置受信任公钥的部署保持签名升级禁用，可使用 Docker 镜像更新。
 
 ## 兼容边界
 

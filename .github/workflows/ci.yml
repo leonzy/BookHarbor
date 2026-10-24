@@ -53,7 +53,12 @@ jobs:
         run: |
           python3 -m venv /tmp/bookharbor-management-tests
           /tmp/bookharbor-management-tests/bin/pip install pytest cryptography
-          /tmp/bookharbor-management-tests/bin/python -m pytest tests -q
+          # The image-owned upgrade executor requires root-owned trust configuration.
+          if [ "$(id -u)" = 0 ]; then
+            /tmp/bookharbor-management-tests/bin/python -m pytest tests -q
+          else
+            sudo -n /tmp/bookharbor-management-tests/bin/python -m pytest tests -q
+          fi
 
   test-ui:
     runs-on: ubuntu-latest
