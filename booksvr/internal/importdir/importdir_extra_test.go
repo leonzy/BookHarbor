@@ -314,11 +314,11 @@ func TestListDirectoriesReadDirError(t *testing.T) {
 		t.Fatalf("建目录失败: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(sub, 0o755) })
-	// 直接对不可读目录列举：SafeDirectoryForListing 会因不可读退回根目录，
-	// 因此这里断言退回行为而非报错。
+	// 目录不再受根目录白名单约束；无法读取请求目录时应原样返回路径和错误，
+	// 不能悄悄跳到另一个目录，让用户误以为请求目录可用。
 	res := ListDirectories(sub, testConfig(t, root))
-	if res.Path != NormalizePath(root) {
-		t.Errorf("不可读目录应退回根目录，得到 %q", res.Path)
+	if res.Path != NormalizePath(sub) || res.Err != "params.path" || res.Msg == "" || len(res.Items) != 0 {
+		t.Errorf("不可读目录应返回原路径及错误，得到 %+v", res)
 	}
 }
 

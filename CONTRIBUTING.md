@@ -19,7 +19,7 @@ git switch -c sync/upstream-YYYYMMDD main
 
 ## 镜像与发布
 
-主分支镜像为 `ghcr.io/leonzy/bookharbor:main`（linux/amd64）；正式版本使用日期版本标签 `vYY.MM.DD`（必要时加后缀），保留旧版本比较兼容性并构建多架构镜像。前端构建与 CI 使用 Node 24 LTS。镜像发布使用仓库的 `GITHUB_TOKEN`，不依赖原项目的 Docker Hub 凭据。工作流的手动验证默认不发布。
+主分支镜像为 `ghcr.io/leonzy/bookharbor:main`（linux/amd64）；正式版本使用日期版本标签 `vYY.MM.DD`（必要时加后缀），保留旧版本比较兼容性并构建多架构镜像。前端构建与 CI 使用 Node 24 LTS。浏览回归固定 Ubuntu 24.04，以匹配已锁定的 Playwright 依赖。镜像发布使用仓库的 `GITHUB_TOKEN`，不依赖原项目的 Docker Hub 凭据。工作流的手动验证默认不发布。
 
 应用内签名升级沿用原协议与运行时校验，但下载来源和签名发布身份属于 BookHarbor。维护者已配置 `application-upgrade` 的独立 `UPGRADE_SIGNING_KEY`、`UPGRADE_KEY_ID`，以及 `application-upgrade-publish` 的 `UPGRADE_TRUSTED_KEYS` 和发布审批。私钥保存在源码外的维护目录，不进入代码仓库或镜像。公开信任配置见 `conf/bookharbor-upgrade.json`；启用应用内升级时可将它只读挂载到 `/etc/talebook-upgrade.json`。未配置受信任公钥的部署保持签名升级禁用，可使用 Docker 镜像更新。
 
