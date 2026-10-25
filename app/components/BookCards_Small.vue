@@ -10,20 +10,16 @@
                 :md="mdCols"
                 class="book-list-card"
             >
-                <v-card
-                    :to="book.href"
-                    target="_blank"
-                    rel="noopener"
-                    :aria-label="$t('pagination.openBookInNewTab', { title: book.title })"
-                >
+                <v-card>
                     <v-row>
                         <v-col
                             cols="3"
                             class="col-book-img"
                             style="position: relative;"
                         >
-                            <v-img
+                            <BookCover
                                 :src="book.img"
+                                :title="book.title"
                                 :aspect-ratio="11/15"
                                 cover
                             />
@@ -33,43 +29,51 @@
                             cols="9"
                             class="col-book-info"
                         >
-                            <v-card-text
-                                class="pb-0"
-                                align-left
+                            <NuxtLink
+                                :to="book.href"
+                                target="_blank"
+                                rel="noopener"
+                                class="book-details-link"
+                                :aria-label="$t('pagination.openBookInNewTab', { title: book.title })"
                             >
-                                <div class="book-title">
-                                    {{ book.title }}
-                                    <v-chip
-                                        v-if="book.state?.read_state === 2"
-                                        size="x-small"
-                                        color="primary"
-                                        variant="tonal"
-                                        class="read-chip"
-                                    >
-                                        <v-icon
-                                            start
-                                            size="12"
+                                <v-card-text
+                                    class="pb-0"
+                                    align-left
+                                >
+                                    <div class="book-title">
+                                        {{ book.title }}
+                                        <v-chip
+                                            v-if="book.state?.read_state === 2"
+                                            size="x-small"
+                                            color="primary"
+                                            variant="tonal"
+                                            class="read-chip"
                                         >
-                                            mdi-check
-                                        </v-icon>
-                                        {{ $t('readingState.done') }}
-                                    </v-chip>
-                                </div>
-                                <slot
-                                    name="introduce"
-                                    :book="book"
-                                />
-                                <BookFileSizes :sizes="book.format_sizes" />
-                                <div class="book-comments">
-                                    <p
-                                        v-if="book.comments"
-                                        v-html="book.comments"
+                                            <v-icon
+                                                start
+                                                size="12"
+                                            >
+                                                mdi-check
+                                            </v-icon>
+                                            {{ $t('readingState.done') }}
+                                        </v-chip>
+                                    </div>
+                                    <slot
+                                        name="introduce"
+                                        :book="book"
                                     />
-                                    <p v-else>
-                                        {{ $t('messages.clickToView') }}
-                                    </p>
-                                </div>
-                            </v-card-text>
+                                    <BookFileSizes :sizes="book.format_sizes" />
+                                    <div class="book-comments">
+                                        <p
+                                            v-if="book.comments"
+                                            v-html="book.comments"
+                                        />
+                                        <p v-else>
+                                            {{ $t('messages.clickToView') }}
+                                        </p>
+                                    </div>
+                                </v-card-text>
+                            </NuxtLink>
                         </v-col>
                     </v-row>
                     <slot
@@ -106,6 +110,7 @@
 </template>
 
 <script setup>
+import BookCover from '@/components/BookCover.vue';
 import BookFileSizes from '@/components/BookFileSizes.vue';
 import { computed } from 'vue';
 import BookReadBadge from '@/components/BookReadBadge.vue';

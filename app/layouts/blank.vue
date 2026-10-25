@@ -46,10 +46,12 @@
             </v-dialog>
             <LoginPrompt />
         </v-main>
+        <CoverPreview />
     </v-app>
 </template>
 
 <script setup>
+import CoverPreview from '@/components/CoverPreview.vue';
 import { useMainStore } from '@/stores/main';
 import { useThemeRuntime } from '@/composables/useThemeRuntime';
 import { useDisplay } from 'vuetify';

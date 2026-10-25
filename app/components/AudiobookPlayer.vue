@@ -13,19 +13,18 @@
                 height="3"
             />
             <div class="player-main">
-                <button
+                <div
                     class="player-identity"
-                    type="button"
-                    @click="player.expanded = !player.expanded"
                 >
                     <v-avatar
                         rounded="lg"
                         size="46"
                         color="blue-grey-darken-4"
                     >
-                        <v-img
+                        <BookCover
                             v-if="player.book.img"
                             :src="player.book.img"
+                            :title="player.book.title"
                             cover
                         />
                         <v-icon
@@ -35,11 +34,15 @@
                             mdi-book-music
                         </v-icon>
                     </v-avatar>
-                    <span class="player-copy">
+                    <button
+                        class="player-copy"
+                        type="button"
+                        @click="player.expanded = !player.expanded"
+                    >
                         <strong>{{ player.book.title }}</strong>
                         <small>{{ player.chapter.title }}</small>
-                    </span>
-                </button>
+                    </button>
+                </div>
 
                 <div class="player-controls">
                     <v-btn
@@ -183,7 +186,8 @@ onMounted(() => player.restore());
 }
 .player-main { min-height: 68px; padding: 8px 12px; display: flex; align-items: center; gap: 12px; }
 .player-identity { min-width: 220px; max-width: 310px; display: flex; align-items: center; gap: 10px; text-align: left; }
-.player-copy { display: grid; min-width: 0; }
+.player-copy:focus-visible { outline: 3px solid rgb(var(--v-theme-primary)); outline-offset: 2px; }
+.player-copy { text-align: start; display: grid; min-width: 0; }
 .player-copy strong, .player-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .player-copy small { color: rgb(var(--v-theme-on-surface-variant)); }
 .player-controls { display: flex; align-items: center; gap: 2px; }

@@ -19,36 +19,44 @@
             :lg="lg"
         >
             <v-card
-                :to="book.href || '/book/' + book.id"
-                target="_blank"
-                rel="noopener"
-                :aria-label="book.title"
-                :aria-description="$t('pagination.openBookInNewTab', { title: book.title })"
                 class="book-cover-card ma-1"
                 data-testid="book-cover-card"
             >
-                <v-img
+                <BookCover
                     :src="book.img"
+                    :title="book.title"
                     :aspect-ratio="11 / 15"
                     alt=""
-                    aria-hidden="true"
                     data-testid="book-cover-image"
                 />
-                <BookCardText
-                    v-if="showTitle"
-                    :book="book"
-                    :show-summary="showSummary"
-                />
-                <BookFileSizes
-                    :sizes="book.format_sizes"
-                    class="px-2 pb-2"
-                />
+                <NuxtLink
+                    :to="book.href || '/book/' + book.id"
+                    target="_blank"
+                    rel="noopener"
+                    class="book-details-link"
+                    :aria-label="$t('pagination.openBookInNewTab', { title: book.title })"
+                >
+                    <BookCardText
+                        v-if="showTitle"
+                        :book="book"
+                        :show-summary="showSummary"
+                    />
+                    <BookFileSizes
+                        :sizes="book.format_sizes"
+                        class="px-2 pb-2"
+                    />
+                    <span
+                        v-if="!showTitle"
+                        class="d-block pa-2 text-body-2"
+                    >{{ book.title }}</span>
+                </NuxtLink>
             </v-card>
         </v-col>
     </v-row>
 </template>
 
 <script setup>
+import BookCover from '@/components/BookCover.vue';
 import BookFileSizes from '@/components/BookFileSizes.vue';
 import BookCardText from '@/components/BookCardText.vue';
 

@@ -30,6 +30,7 @@ test.describe('Reading history card text', () => {
                 await page.setViewportSize({ width, height: 900 });
                 await page.context().addCookies([{ name: 'theme', value: theme, url: 'http://127.0.0.1:9000' }]);
                 await page.goto('/user/history');
+                await page.waitForLoadState('networkidle');
                 await expect(page.locator(`.v-application.v-theme--${theme}`)).toBeVisible();
 
                 for (const tab of [/^在读/, /^已读完/, /^阅读记录/]) {
@@ -40,7 +41,7 @@ test.describe('Reading history card text', () => {
                         const title = card.getByTestId('book-card-title');
                         const description = card.getByTestId('book-card-summary');
                         await expect(description).toHaveText(summary);
-                        await expect(card).toHaveAccessibleName(await title.textContent() || '');
+                        expect(await card.getByRole('link').getAttribute('aria-label')).toContain(await title.textContent() || '');
                         for (const text of [title, description]) {
                             await expect(text).toHaveCSS('-webkit-line-clamp', '2');
                             const box = await text.boundingBox();
@@ -79,6 +80,7 @@ test.describe('Reading history card text', () => {
                 await page.setViewportSize({ width, height: 900 });
                 await page.context().addCookies([{ name: 'theme', value: theme, url: 'http://127.0.0.1:9000' }]);
                 await page.goto('/user/history');
+                await page.waitForLoadState('networkidle');
                 const cards = page.locator('[data-testid="book-cover-card"]:visible');
                 await expect(cards).toHaveCount(3);
                 for (const [position, lines] of [[0, [1, 1]], [1, [1, 2]], [2, [2, 1]]] as const) {
@@ -103,11 +105,13 @@ test.describe('Reading history card text', () => {
         test(`keeps a single history card at the ordinary width at ${width}px`, async ({ page, request }) => {
             await page.setViewportSize({ width, height: 900 });
             await page.goto('/user/history');
+            await page.waitForLoadState('networkidle');
             const card = page.locator('[data-testid="book-cover-card"]:visible').first();
             await expect(card).toBeVisible();
             const ordinaryBox = await card.boundingBox();
             await request.post(`${mockApiUrl}/_test/reset`, { data: { readingBooks: [books[0]] } });
             await page.reload();
+            await page.waitForLoadState('networkidle');
             await expect(page.locator('[data-testid="book-cover-card"]:visible')).toHaveCount(1);
             const singleBox = await card.boundingBox();
             expect(singleBox!.width).toBeCloseTo(ordinaryBox!.width, 1);
@@ -120,18 +124,20 @@ test.describe('Reading history card text', () => {
             data: { readingBooks: [{ ...books[0], comments: '' }] },
         });
         await page.goto('/user/history');
+        await page.waitForLoadState('networkidle');
         await expect(page.getByTestId('book-card-summary').first()).toHaveText('暂无简介');
     });
 
     test('opens a reading card by keyboard with visible focus', async ({ page }) => {
         await page.goto('/user/history');
-        const card = page.locator('[data-testid="book-cover-card"]:visible').first();
+        await page.waitForLoadState('networkidle');
+        const card = page.locator('[data-testid="book-cover-card"]:visible').first().getByRole('link');
         await expect(card).toBeVisible();
         await card.focus();
         await page.keyboard.press('Shift+Tab');
         await page.keyboard.press('Tab');
         await expect(card).toBeFocused();
-        await expect(card).toHaveCSS('outline-width', '2px');
+        await expect(card).toHaveCSS('outline-width', '3px');
         const href = await card.getAttribute('href');
         const popup = page.waitForEvent('popup');
         await page.keyboard.press('Enter');

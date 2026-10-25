@@ -66,7 +66,7 @@ test('library jump preserves filters and opens book details in a new tab', async
     expect(starts.filter(start => start === '660')).toHaveLength(1);
     const currentURL = page.url();
     const popup = page.waitForEvent('popup');
-    await page.getByTestId('book-card').first().click();
+    await page.getByTestId('book-card').first().getByRole('link').click();
     const details = await popup;
     await details.waitForURL('**/book/1');
     expect(page.url()).toBe(currentURL);

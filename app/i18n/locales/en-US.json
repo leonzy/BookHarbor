@@ -1,4 +1,15 @@
 {
+  "coverPreview": {
+    "open": "Enlarge cover: {title}",
+    "title": "Cover preview: {title}",
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "reset": "Reset zoom",
+    "close": "Close",
+    "imageArea": "Cover image, scroll to view",
+    "failed": "Could not load the cover",
+    "retry": "Retry"
+  },
   "bookSort": {
     "label": "Sort books",
     "default": "Default order",

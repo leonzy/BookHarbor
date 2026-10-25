@@ -81,9 +81,9 @@ describe('BookCards.vue', () => {
         // 检查 v-card 的 to 属性
         const vCards = wrapper.findAllComponents({ name: 'VCard' });
         expect(vCards.length).toBeGreaterThan(0);
-        expect(vCards[0].props('to')).toBe('/book/1');
-        expect(vCards[0].attributes('target')).toBe('_blank');
-        expect(vCards[0].attributes('rel')).toBe('noopener');
+        expect(wrapper.getComponent({ name: 'NuxtLink' }).props('to')).toBe('/book/1');
+        expect(wrapper.get('.book-details-link').attributes('target')).toBe('_blank');
+        expect(wrapper.get('.book-details-link').attributes('rel')).toBe('noopener');
     });
 
     it('identifies every standard book card regardless of introduction length', () => {

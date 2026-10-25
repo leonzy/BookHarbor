@@ -24,17 +24,17 @@ describe('RecommendationBookCard.vue', () => {
         const wrapper = render({ id: 3, title, img: '/get/cover/3.jpg' });
 
         expect(wrapper.get('[data-testid="book-card-title"]').text()).toBe(title);
-        expect(wrapper.attributes('aria-label')).toBe(title);
+        expect(wrapper.get('.book-details-link').exists()).toBe(true);
         expect(wrapper.get('[data-testid="book-card-title"]').attributes('title')).toBe(title);
         expect(wrapper.find('.v-card-title').exists()).toBe(false);
-        expect(wrapper.getComponent({ name: 'VCard' }).props('to')).toBe('/book/3');
+        expect(wrapper.getComponent({ name: 'NuxtLink' }).props('to')).toBe('/book/3');
         expect(wrapper.getComponent({ name: 'VImg' }).props('src')).toBe('/get/cover/3.jpg');
-        expect(wrapper.getComponent({ name: 'VImg' }).attributes('aria-hidden')).toBe('true');
+        expect(wrapper.get('button.book-cover-preview-trigger').attributes('aria-label')).toBe('coverPreview.open');
     });
 
     it('honors a supplied details URL', () => {
         const wrapper = render({ id: 3, title: '三体', href: '/custom/book/3' });
-        expect(wrapper.getComponent({ name: 'VCard' }).props('to')).toBe('/custom/book/3');
+        expect(wrapper.getComponent({ name: 'NuxtLink' }).props('to')).toBe('/custom/book/3');
     });
 
     it('updates the displayed and accessible title with the recommended book', async () => {
@@ -43,9 +43,9 @@ describe('RecommendationBookCard.vue', () => {
         await wrapper.setProps({ book: { id: 2, title } });
 
         expect(wrapper.get('[data-testid="book-card-title"]').text()).toBe(title);
-        expect(wrapper.attributes('aria-label')).toBe(title);
+        expect(wrapper.get('.book-details-link').exists()).toBe(true);
         expect(wrapper.get('[data-testid="book-card-title"]').attributes('title')).toBe(title);
-        expect(wrapper.getComponent({ name: 'VCard' }).props('to')).toBe('/book/2');
+        expect(wrapper.getComponent({ name: 'NuxtLink' }).props('to')).toBe('/book/2');
     });
 
     it('renders metadata as plain text and keeps the read badge on the cover', () => {

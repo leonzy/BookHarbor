@@ -1,4 +1,15 @@
 {
+  "coverPreview": {
+    "open": "放大封面：{title}",
+    "title": "封面预览：{title}",
+    "zoomOut": "缩小",
+    "zoomIn": "放大",
+    "reset": "重置缩放",
+    "close": "关闭",
+    "imageArea": "封面图片，可滚动查看",
+    "failed": "封面加载失败",
+    "retry": "重试"
+  },
   "bookSort": {
     "label": "排序",
     "default": "默认排序",

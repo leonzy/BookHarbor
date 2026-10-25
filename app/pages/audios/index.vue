@@ -81,20 +81,23 @@
                     </div>
                 </div>
                 <div class="continue-grid">
-                    <NuxtLink
+                    <div
                         v-for="item in home.continue_listening"
                         :key="item.edition.id"
                         class="continue-card"
-                        :to="`/audio/${item.edition.id}`"
                     >
-                        <v-img
+                        <BookCover
                             :src="item.img"
+                            :title="item.title"
                             width="80"
                             height="112"
                             cover
                             class="continue-cover"
                         />
-                        <div>
+                        <NuxtLink
+                            :to="`/audio/${item.edition.id}`"
+                            class="book-details-link"
+                        >
                             <strong>{{ item.title }}</strong>
                             <span>{{ t('audiobook.listenedFor', { percent: progressOf(item) }) }}</span>
                             <v-progress-linear
@@ -102,8 +105,8 @@
                                 color="amber-darken-2"
                                 rounded
                             />
-                        </div>
-                    </NuxtLink>
+                        </NuxtLink>
+                    </div>
                 </div>
             </section>
 
@@ -130,27 +133,30 @@
                     v-if="filteredBooks.length"
                     class="book-grid"
                 >
-                    <NuxtLink
+                    <div
                         v-for="item in filteredBooks"
                         :key="item.edition.id"
                         class="book-card"
-                        :to="`/audio/${item.edition.id}`"
                     >
                         <div class="cover-wrap">
-                            <v-img
+                            <BookCover
                                 :src="item.img"
+                                :title="item.title"
                                 aspect-ratio="0.72"
                                 cover
                                 class="book-cover"
                             />
                             <span class="chapter-count">{{ t('audiobook.chapterCount', { count: item.edition.chapter_count }) }}</span>
                         </div>
-                        <div class="book-copy">
+                        <NuxtLink
+                            :to="`/audio/${item.edition.id}`"
+                            class="book-copy book-details-link"
+                        >
                             <h3>{{ item.title }}</h3>
                             <p>{{ (item.authors || []).join(' / ') }}</p>
                             <span>{{ formatDuration(item.edition.duration_ms) }}</span>
-                        </div>
-                    </NuxtLink>
+                        </NuxtLink>
+                    </div>
                 </div>
                 <v-empty-state
                     v-else
@@ -336,7 +342,7 @@ useHead({ title: () => t('audiobook.libraryTitle') });
 .continue-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px; }
 .continue-card { display: flex; gap: 16px; padding: 14px; color: inherit; background: rgba(var(--v-theme-surface-variant), .34); border: 1px solid rgba(var(--v-border-color), .13); border-radius: 18px; text-decoration: none; }
 .continue-cover { border-radius: 8px; }
-.continue-card div { flex: 1; display: grid; align-content: center; gap: 7px; }
+.continue-card > .book-details-link { flex: 1; display: grid; align-content: center; gap: 7px; }
 .continue-card span { color: rgb(var(--v-theme-on-surface-variant)); font-size: .78rem; }
 .podcast-dialog { border-top: 5px solid #d99a2b; }
 @media (max-width: 700px) {

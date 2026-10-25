@@ -513,9 +513,10 @@
                             sm="4"
                         >
                             <div class="book-cover-wrap">
-                                <v-img
+                                <BookCover
                                     class="book-img"
                                     :src="book.img"
+                                    :title="book.title"
                                     :alt="`${book.title} ${t('book.cover')}`"
                                     :aspect-ratio="11 / 15"
                                     max-height="500"
@@ -719,7 +720,6 @@
                                             <template v-if="store.user.is_login && isInShelf">
                                                 <span
                                                     class="book-shelf-remove-divider"
-                                                    aria-hidden="true"
                                                 />
                                                 <v-btn
                                                     class="book-shelf-remove-action"
@@ -813,7 +813,6 @@
                                 >
                                     {{ t('book.comicReadUnsupportedDescription') }}
                                 </v-alert>
-
                             </div>
                         </v-col>
                     </v-row>
@@ -882,6 +881,7 @@
 </template>
 
 <script setup>
+import BookCover from '@/components/BookCover.vue';
 import { formatFileSize } from '@/utils/file-size';
 import { withBasePath } from '@/utils/base-path';
 import { ref, computed, watch, onMounted } from 'vue';

@@ -26,8 +26,9 @@
         </v-alert>
         <template v-else-if="detail?.book && detail?.audio">
             <section class="detail-hero">
-                <v-img
+                <BookCover
                     :src="detail.book.img"
+                    :title="detail.book.title"
                     width="180"
                     aspect-ratio="0.72"
                     cover

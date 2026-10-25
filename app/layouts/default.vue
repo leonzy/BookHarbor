@@ -64,10 +64,12 @@
         </v-main>
         <Upload v-if="store.nav" />
         <AudiobookPlayer />
+        <CoverPreview />
     </v-app>
 </template>
 
 <script setup>
+import CoverPreview from '@/components/CoverPreview.vue';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter, useHead } from 'nuxt/app';
 import { useThemeRuntime } from '@/composables/useThemeRuntime';

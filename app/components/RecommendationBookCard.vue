@@ -1,10 +1,5 @@
 <template>
     <v-card
-        :to="book.href ?? '/book/' + book.id"
-        target="_blank"
-        rel="noopener"
-        :aria-label="book.title"
-        :aria-description="$t('pagination.openBookInNewTab', { title: book.title })"
         class="recommendation-book-card ma-1"
         data-testid="recommendation-book-card"
     >
@@ -12,24 +7,33 @@
             class="recommendation-cover"
             :title="book.title"
         >
-            <v-img
+            <BookCover
                 :src="book.img"
+                :title="book.title"
                 :aspect-ratio="11/15"
                 alt=""
-                aria-hidden="true"
                 data-testid="recommendation-cover"
                 cover
             />
             <BookReadBadge :read-state="book.state?.read_state" />
         </div>
-        <BookCardText :book="book" /><BookFileSizes
-            :sizes="book.format_sizes"
-            class="px-2 pb-2"
-        />
+        <NuxtLink
+            :to="book.href || '/book/' + book.id"
+            target="_blank"
+            rel="noopener"
+            class="book-details-link"
+            :aria-label="$t('pagination.openBookInNewTab', { title: book.title })"
+        >
+            <BookCardText :book="book" /><BookFileSizes
+                :sizes="book.format_sizes"
+                class="px-2 pb-2"
+            />
+        </NuxtLink>
     </v-card>
 </template>
 
 <script setup>
+import BookCover from '@/components/BookCover.vue';
 import BookFileSizes from '@/components/BookFileSizes.vue';
 import BookReadBadge from '@/components/BookReadBadge.vue';
 import BookCardText from '@/components/BookCardText.vue';

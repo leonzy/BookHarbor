@@ -67,24 +67,29 @@
                     class="book-list"
                     data-testid="create-wizard-book-list"
                 >
-                    <button
+                    <div
                         v-for="book in filteredBooks"
                         :key="book.id"
-                        type="button"
                         class="book-row"
                         :class="{ selected: Number(book.id) === selectedBookId }"
                         :data-testid="`select-audiobook-book-${book.id}`"
-                        @click="selectBook(book)"
                     >
-                        <img
+                        <BookCover
+                            width="48"
+                            height="64"
+                            :preview-src="book.img"
                             :src="book.thumb || book.img"
-                            :alt="book.title"
+                            :title="book.title"
+                        />
+                        <button
+                            type="button"
+                            class="book-main"
+                            @click="selectBook(book)"
                         >
-                        <span class="book-main">
                             <strong>{{ book.title }}</strong>
                             <small>{{ authorLabel(book) }}</small>
                             <small>{{ bookFormatLabel(book) }}</small>
-                        </span>
+                        </button>
                         <v-chip
                             size="x-small"
                             :color="bookStatus(book).color"
@@ -93,7 +98,7 @@
                         >
                             {{ bookStatus(book).label }}
                         </v-chip>
-                    </button>
+                    </div>
                 </div>
                 <v-empty-state
                     v-else
@@ -117,8 +122,9 @@
                 </div>
                 <template v-else>
                     <div class="selected-book">
-                        <v-img
+                        <BookCover
                             :src="selectedBook.img"
+                            :title="selectedBook.title"
                             width="92"
                             aspect-ratio="0.72"
                             cover
@@ -592,6 +598,8 @@ useHead({ title: () => t('audiobook.createAudiobook') });
 .panel-heading h2, .selected-book h2, .empty-selection h2 { font: 700 1.45rem/1.2 Georgia, 'Noto Serif SC', serif; }
 .loading-panel { min-height: 260px; display: grid; place-items: center; }
 .book-list { max-height: min(680px, calc(100vh - 290px)); overflow: auto; display: grid; gap: 8px; }
+.book-main:focus-visible { outline: 3px solid rgb(var(--v-theme-primary)); outline-offset: 2px; }
+.book-main { text-align: start; }
 .book-row { width: 100%; min-width: 0; padding: 10px; display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: center; color: inherit; text-align: left; border: 1px solid rgba(var(--v-border-color), .1); border-radius: 8px; background: rgba(var(--v-theme-surface), .72); }
 .book-row:hover, .book-row.selected { border-color: rgba(157, 106, 19, .42); background: rgba(217, 154, 43, .08); }
 .book-row:focus-visible { outline: 3px solid rgba(217,154,43,.4); outline-offset: 2px; }

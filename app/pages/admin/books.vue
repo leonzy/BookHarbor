@@ -152,8 +152,9 @@
             </template>
             
             <template #item.img="{ item }">
-                <v-img
+                <BookCover
                     :src="item.img"
+                    :title="item.title"
                     width="40"
                     height="60"
                     cover
@@ -321,8 +322,9 @@
                             cols="12"
                             sm="6"
                         >
-                            <v-img
+                            <BookCover
                                 :src="editingItem?.img"
+                                :title="editingItem?.title"
                                 max-height="200"
                                 class="mb-4"
                                 contain
@@ -514,6 +516,7 @@
 </template>
 
 <script setup>
+import BookCover from '@/components/BookCover.vue';
 import PageJump from '@/components/PageJump.vue';
 import BookFileSizes from '@/components/BookFileSizes.vue';
 import { formatFileSize } from '@/utils/file-size';

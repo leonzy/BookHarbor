@@ -19,8 +19,9 @@
                 cols="12"
                 sm="3"
             >
-                <v-img
+                <BookCover
                     :src="book.cover_url"
+                    :title="book.title"
                     :aspect-ratio="11 / 15"
                     cover
                     class="rounded"
@@ -194,6 +195,7 @@
 </template>
 
 <script setup>
+import BookCover from '@/components/BookCover.vue';
 import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import SerializeStatusBadge from '~/components/SerializeStatusBadge.vue';

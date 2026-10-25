@@ -24,6 +24,7 @@ test.describe('Homepage', () => {
 
     test('displays recommended and recent books', async ({ page }) => {
         await page.goto('/');
+        await page.waitForLoadState('networkidle');
 
         // Check headers（首页“推荐”板块标题来自 navigation.recommended）
         await expect(page.getByText('推荐', { exact: true }).first()).toBeVisible();
@@ -56,6 +57,7 @@ test.describe('Homepage', () => {
             data: { indexData: { ...apiIndex, random_books: books, visible_books_count: 30 } }
         });
         await page.goto('/');
+        await page.waitForLoadState('networkidle');
         const cards = page.locator('.book-card a');
         await expect(cards).toHaveCount(books.length);
         await expect.poll(() => cards.evaluateAll(elements => elements.map(element => element.getAttribute('href'))))
@@ -81,6 +83,7 @@ test.describe('Homepage', () => {
                 await page.setViewportSize({ width, height: 900 });
                 await page.context().addCookies([{ name: 'theme', value: theme, url: 'http://127.0.0.1:9000' }]);
                 await page.goto('/');
+                await page.waitForLoadState('networkidle');
 
                 const cards = page.getByTestId('recommendation-book-card');
                 await expect(cards).toHaveCount(books.length);
@@ -89,7 +92,7 @@ test.describe('Homepage', () => {
                     const card = cards.nth(index);
                     await expect(card.getByTestId('book-card-title')).toHaveText(title);
                     await expect(card.getByTestId('book-card-title')).toHaveAttribute('title', title);
-                    await expect(card).toHaveAccessibleName(title);
+                    expect(await card.getByRole('link').getAttribute('aria-label')).toContain(title);
                     const coverBox = await card.getByTestId('recommendation-cover').boundingBox();
                     const titleBox = await card.getByTestId('book-card-title').boundingBox();
                     const lineHeight = await card.getByTestId('book-card-title').evaluate(element => parseFloat(getComputedStyle(element).lineHeight));
@@ -134,6 +137,7 @@ test.describe('Homepage', () => {
         test(`keeps a single recommendation at normal card width at ${width}px`, async ({ page, request }) => {
             await page.setViewportSize({ width, height: 900 });
             await page.goto('/');
+            await page.waitForLoadState('networkidle');
             const cards = page.getByTestId('recommendation-book-card');
             await expect(cards.first()).toBeVisible();
             const normalBox = await cards.first().boundingBox();
@@ -141,6 +145,7 @@ test.describe('Homepage', () => {
                 data: { indexData: { ...apiIndex, random_books: apiIndex.random_books.slice(0, 1) } }
             });
             await page.reload();
+            await page.waitForLoadState('networkidle');
             await expect(cards).toHaveCount(1);
             await expect(cards.first()).toBeVisible();
             const singleBox = await cards.first().boundingBox();
@@ -151,14 +156,15 @@ test.describe('Homepage', () => {
 
     test('opens a recommendation by keyboard with a visible focus indicator', async ({ page }) => {
         await page.goto('/');
-        const card = page.getByTestId('recommendation-book-card').first();
+        await page.waitForLoadState('networkidle');
+        const card = page.getByTestId('recommendation-book-card').first().getByRole('link');
         await expect(card).toBeVisible();
         await card.focus();
         await page.keyboard.press('Shift+Tab');
         await page.keyboard.press('Tab');
         await expect(card).toBeFocused();
         await expect(card).toHaveCSS('outline-style', 'solid');
-        await expect(card).toHaveCSS('outline-width', '2px');
+        await expect(card).toHaveCSS('outline-width', '3px');
         const href = await card.getAttribute('href');
         const popup = page.waitForEvent('popup');
         await page.keyboard.press('Enter');
@@ -170,6 +176,7 @@ test.describe('Homepage', () => {
     test('keeps recommendation titles readable with doubled text size', async ({ page }) => {
         await page.setViewportSize({ width: 320, height: 900 });
         await page.goto('/');
+        await page.waitForLoadState('networkidle');
         const title = page.getByTestId('book-card-title').first();
         await expect(title).toBeVisible();
         const normalFontSize = await title.evaluate(element => parseFloat(getComputedStyle(element).fontSize));
@@ -183,7 +190,7 @@ test.describe('Homepage', () => {
         expect(resized.fontSize).toBeCloseTo(normalFontSize * 2, 1);
         expect(resized.height).toBeGreaterThanOrEqual(resized.lineHeight * 2);
         expect(resized.width).toBeGreaterThan(0);
-        const card = page.getByTestId('recommendation-book-card').first();
+        const card = page.getByTestId('recommendation-book-card').first().getByRole('link');
         const href = await card.getAttribute('href');
         const popup = page.waitForEvent('popup');
         await card.click();
@@ -197,6 +204,7 @@ test.describe('Homepage', () => {
             data: { indexData: { ...apiIndex, random_books: [], visible_books_count: 30 } }
         });
         await page.goto('/');
+        await page.waitForLoadState('networkidle');
         await expect(page.getByText('暂无未读书籍推荐')).toBeVisible();
         await expect(page.getByText('本书库暂无藏书')).toHaveCount(0);
         await expect(page.getByText(apiIndex.new_books[0].title).first()).toBeVisible();
@@ -208,6 +216,7 @@ test.describe('Homepage', () => {
             data: { indexData: { ...apiIndex, random_books: [], new_books: [], visible_books_count: 0 } }
         });
         await page.goto('/');
+        await page.waitForLoadState('networkidle');
         await expect(page.getByText('本书库暂无藏书')).toBeVisible();
         await expect(page.getByText('请先添加书籍到书库')).toBeVisible();
         await expect(page.getByText('暂无未读书籍推荐')).toHaveCount(0);
@@ -218,6 +227,7 @@ test.describe('Homepage', () => {
             data: { indexData: { ...apiIndex, random_books: [], recommendations_enabled: false } }
         });
         await page.goto('/');
+        await page.waitForLoadState('networkidle');
         await expect(page.locator('.book-card')).toHaveCount(0);
         await expect(page.getByText('本书库暂无藏书')).toHaveCount(0);
         await expect(page.getByText(apiIndex.new_books[0].title).first()).toBeVisible();
@@ -225,6 +235,7 @@ test.describe('Homepage', () => {
 
     test('refreshes recommendations when returning to the homepage', async ({ page, request }) => {
         await page.goto('/');
+        await page.waitForLoadState('networkidle');
         await expect(page.locator('.book-card a').first()).toBeVisible();
         await page.locator('a[href="/recent"]').first().click();
         await expect(page).toHaveURL(/\/recent/);
@@ -243,6 +254,7 @@ test.describe('Homepage', () => {
                 data: { indexData: { ...apiIndex, random_books: [], visible_books_count: 30 } }
             });
             await page.goto('/');
+            await page.waitForLoadState('networkidle');
             const heading = page.getByText('暂无未读书籍推荐');
             await expect(heading).toBeVisible();
             await expect(page.locator(`.v-application.v-theme--${theme}`)).toBeVisible();
@@ -254,6 +266,7 @@ test.describe('Homepage', () => {
 
     test('keeps every recent book card at the fixed shelf height', async ({ page }) => {
         await page.goto('/');
+        await page.waitForLoadState('networkidle');
 
         const cards = page.getByTestId('book-card');
         await expect(cards).toHaveCount(apiIndex.new_books.length);
@@ -267,6 +280,7 @@ test.describe('Homepage', () => {
 
     test('keeps each cover at its original ratio through the bottom edge of its card', async ({ page }) => {
         await page.goto('/');
+        await page.waitForLoadState('networkidle');
 
         const cardWithCover = page.getByTestId('book-card').filter({
             has: page.getByTestId('book-cover'),
@@ -291,6 +305,7 @@ test.describe('Homepage', () => {
 
     test('uses an ambient shadow that is visible above each card', async ({ page }) => {
         await page.goto('/');
+        await page.waitForLoadState('networkidle');
 
         const cards = page.getByTestId('book-card');
         await expect(cards.first()).toBeVisible();
@@ -304,8 +319,9 @@ test.describe('Homepage', () => {
 
     test('shows the read badge on books marked as finished', async ({ page }) => {
         await page.goto('/');
+        await page.waitForLoadState('networkidle');
 
-        const finishedBook = page.locator('a[href="/book/1"]').first();
+        const finishedBook = page.locator('[data-testid="book-card"], [data-testid="recommendation-book-card"]').filter({ has: page.locator('a[href="/book/1"]') }).first();
         await expect(finishedBook.locator('.book-read-badge')).toBeVisible();
         await expect(finishedBook.locator('.book-read-badge')).toHaveAttribute('title', '已读');
     });
@@ -313,7 +329,7 @@ test.describe('Homepage', () => {
     test('shows the read badge and chip in the library list', async ({ page }) => {
         await page.goto('/library');
 
-        const finishedBook = page.locator('a[href="/book/1"]').first();
+        const finishedBook = page.locator('[data-testid="book-card"], [data-testid="recommendation-book-card"]').filter({ has: page.locator('a[href="/book/1"]') }).first();
         await expect(finishedBook.locator('.book-read-badge')).toBeVisible();
         await expect(finishedBook.getByText('已读', { exact: true })).toBeVisible();
     });

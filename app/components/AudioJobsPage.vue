@@ -107,22 +107,27 @@
                         <time>{{ formatDate(job.updated_at || job.created_at) }}</time>
                     </div>
                     <div class="job-body">
-                        <NuxtLink
+                        <div
                             v-if="job.book"
                             class="job-book"
-                            :to="`/book/${job.book_id}/audios`"
                             :aria-label="t('audiobook.openBookJob', { title: job.book.title })"
                         >
-                            <img
+                            <BookCover
+                                width="58"
+                                height="76"
+                                :preview-src="job.book.img"
                                 :src="job.book.thumb || job.book.img"
-                                :alt="job.book.title"
+                                :title="job.book.title"
+                            />
+                            <NuxtLink
+                                :to="`/book/${job.book_id}/audios`"
+                                class="book-details-link"
                             >
-                            <span>
                                 <strong>{{ job.book.title }}</strong>
                                 <small>{{ job.book.author }}</small>
                                 <small>#{{ job.book_id }}</small>
-                            </span>
-                        </NuxtLink>
+                            </NuxtLink>
+                        </div>
                         <div
                             v-else
                             class="job-book deleted-book"
@@ -878,9 +883,9 @@ useHead({ title: () => t('audiobook.jobs') });
 .job-body { margin-top: 18px; display: grid; grid-template-columns: minmax(250px, 38%) 1fr; align-items: stretch; gap: 26px; }
 .job-book { min-width: 0; display: flex; align-items: center; gap: 14px; color: inherit; text-decoration: none; border-radius: 12px; }
 .job-book:hover strong { color: #9d6a13; }
-.job-book img, .deleted-cover { width: 58px; height: 76px; flex: 0 0 auto; object-fit: cover; border-radius: 7px; background: rgba(var(--v-theme-on-surface), .06); box-shadow: 0 5px 16px rgba(35, 27, 18, .13); }
+.job-book .book-cover-preview-trigger, .deleted-cover { width: 58px; height: 76px; flex: 0 0 auto; object-fit: cover; border-radius: 7px; background: rgba(var(--v-theme-on-surface), .06); box-shadow: 0 5px 16px rgba(35, 27, 18, .13); }
 .deleted-cover { display: grid; place-items: center; color: rgba(var(--v-theme-on-surface), .64); box-shadow: none; }
-.job-book > span:last-child { min-width: 0; display: grid; gap: 3px; }
+.job-book > span:last-child, .job-book > .book-details-link { min-width: 0; display: grid; gap: 3px; }
 .job-book strong { overflow: hidden; font: 700 1.18rem Georgia, 'Noto Serif SC', serif; text-overflow: ellipsis; white-space: nowrap; transition: color .18s ease; }
 .job-book small { overflow: hidden; color: rgba(var(--v-theme-on-surface), .64); font-size: .76rem; text-overflow: ellipsis; white-space: nowrap; }
 .job-plan-toggle { min-width: 0; padding: 4px 2px; display: grid; align-content: center; gap: 8px; color: inherit; text-align: left; border-radius: 10px; }

@@ -38,8 +38,9 @@
                                             cols="12"
                                             sm="4"
                                         >
-                                            <v-img
+                                            <BookCover
                                                 :src="book.img"
+                                                :title="book.title"
                                                 max-height="200"
                                                 contain
                                                 class="mb-4"
@@ -291,6 +292,7 @@
 </template>
 
 <script setup>
+import BookCover from '@/components/BookCover.vue';
 import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';

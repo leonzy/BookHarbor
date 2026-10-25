@@ -237,7 +237,7 @@
                                         </div>
                                         <div v-if="item.cover_link" class="ml-3 flex-shrink-0">
                                             <v-avatar size="40" rounded="sm">
-                                                <v-img :src="item.cover_link" alt="封面" cover />
+                                                <BookCover :src="item.cover_link" :title="item.title" alt="封面" cover />
                                             </v-avatar>
                                         </div>
                                     </div>
@@ -423,6 +423,7 @@
 </template>
 
 <script setup>
+import BookCover from '@/components/BookCover.vue';
 import { ref, computed, onBeforeUnmount } from 'vue';
 
 const props = defineProps({

@@ -20,6 +20,9 @@ const loginBlocksPage = computed(() => store.loginPrompt.requiredPath === route.
 </script>
 
 <style>
+a.book-details-link { display: block; color: inherit; text-decoration: none; }
+a.book-details-link:focus-visible { outline: 3px solid rgb(var(--v-theme-primary)); outline-offset: 2px; }
+
 /* 全局样式：为所有卡片标题添加顶部空隙 */
 .v-card-title {
   padding-top: 16px !important;

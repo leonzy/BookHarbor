@@ -18,8 +18,8 @@ function render(props: Record<string, unknown>) {
 describe('BookCoverGrid', () => {
     it('keeps a named details link in cover-only mode', () => {
         const wrapper = render({ books: [book] });
-        expect(wrapper.getComponent({ name: 'VCard' }).props('to')).toBe('/book/1');
-        expect(wrapper.get('[data-testid="book-cover-card"]').attributes('aria-label')).toBe(book.title);
+        expect(wrapper.getComponent({ name: 'NuxtLink' }).props('to')).toBe('/book/1');
+        expect(wrapper.get('.book-details-link').text()).toContain(book.title);
         expect(wrapper.find('[data-testid="book-card-text"]').exists()).toBe(false);
     });
     it('keeps the shelf title-only while enabling reading-record introductions explicitly', () => {
