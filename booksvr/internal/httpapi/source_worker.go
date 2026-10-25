@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,81 +49,163 @@ func attachSourceWorker(parent context.Context, opts ServeOptions, books, users 
 			events = watcher.Events()
 		}
 		seeded := false
-		var previousPaths map[string]bool
-		refreshOffset := 0
+		initialized := false
+		directories := map[string]bool{}
+		var lastRoots []string
+		var lastHealth map[string]string
+		var lastFull time.Time
+		var retry bool
 		run := func() {
 			started := time.Now()
-			mu.Lock()
-			status["state"] = "scanning"
-			mu.Unlock()
-			var result library.SourceSyncResult
-			var err error
-			if !seeded {
-				var hashes map[string]string
-				err = userdb.EnsureSourceSyncIndexes(users)
-				needed := false
-				if err == nil {
-					needed, err = library.NeedsSourceHashes(books, opts.LibraryRoot)
+			dir := LiveImportDir(opts.ImportDir, opts.SettingsPath)
+			roots := importdir.ConfiguredAllowedRoots(dir)
+			health, err := library.CheckSourceRoots(ctx, books, roots)
+			var changed []string
+			var moves []library.SourceMove
+			overflow := false
+			if watcher != nil {
+				changed = watcher.Changes()
+				overflow = watcher.Overflowed()
+				for _, m := range watcher.Moves() {
+					moves = append(moves, library.SourceMove{From: m.From, To: m.To})
 				}
-				if err == nil && needed {
-					hashes, err = userdb.IndexedSourceHashes(users)
-				}
-				if err == nil && needed {
-					err = library.SeedSourceHashes(books, hashes)
-				}
-				seeded = err == nil
 			}
-			if err == nil {
-				dir := LiveImportDir(opts.ImportDir, opts.SettingsPath)
-				var changed []string
-				var moves []library.SourceMove
-				overflow := false
+			wasInitialized := initialized
+			full := retry || sourceNeedsBaseline(initialized, !reflect.DeepEqual(roots, lastRoots), overflow, len(changed) > 0, lastHealth, health)
+			// Failed event monitoring is visible and falls back at a bounded
+			// interval, rather than repeatedly loading the whole library.
+			if (watcher == nil || watchErr != nil) && time.Since(lastFull) >= 15*time.Minute {
+				full = true
+			}
+			if full {
+				moves = nil
+				// A watch can still refer to the underlying directory after a
+				// mount is restored. Reinstall during baseline discovery.
 				if watcher != nil {
-					changed = watcher.Changes()
-					for _, move := range watcher.Moves() {
-						moves = append(moves, library.SourceMove{From: move.From, To: move.To})
+					watchErr = watcher.SetDirectories(nil)
+				}
+			}
+			var result library.SourceSyncResult
+			result.Roots = health
+			result.CheckedAt = time.Now().Format(time.RFC3339)
+			if err == nil && (full || len(changed) > 0) {
+				mu.Lock()
+				status["state"] = "scanning"
+				mu.Unlock()
+				if !seeded {
+					err = userdb.EnsureSourceSyncIndexes(users)
+					var needed bool
+					if err == nil {
+						needed, err = library.NeedsSourceHashes(books, opts.LibraryRoot)
 					}
-					overflow = watcher.Overflowed()
-				}
-				if overflow {
-					moves = nil
-				}
-				refreshLimit := 0
-				if len(changed) == 0 && previousPaths != nil {
-					refreshLimit = 500
-				}
-				result, err = library.SyncSourceFiles(ctx, books, importdir.ConfiguredAllowedRoots(dir), opts.LibraryRoot, library.SourceSyncOptions{PreviousPaths: previousPaths, ChangedPaths: changed, FullDiscovery: watcher == nil || watchErr != nil || overflow, Moves: moves, RefreshOffset: refreshOffset, RefreshLimit: refreshLimit})
-				if err == nil {
-					refreshOffset += refreshLimit
-				}
-				if err == nil {
-					next := make(map[string]bool, len(result.Files))
-					for _, path := range result.Files {
-						next[path] = true
+					if err == nil && needed {
+						var hashes map[string]string
+						hashes, err = userdb.IndexedSourceHashes(users)
+						if err == nil {
+							err = library.SeedSourceHashes(books, hashes)
+						}
 					}
-					for root, health := range result.Roots {
-						if health != "ok" {
-							for path := range previousPaths {
-								if importdir.IsWithin(path, root) {
-									next[path] = true
+					seeded = err == nil
+				}
+				option := library.SourceSyncOptions{ChangedPaths: changed, FullDiscovery: true, Incremental: !full, Moves: moves}
+				if watcher != nil {
+					option.DirectoryVisited = func(path string) error {
+						directories[path] = true // retain parents even if a deeper subtree is unreadable
+						e := watcher.AddDirectory(path)
+						if e != nil {
+							watchErr = e
+						}
+						return nil
+					}
+				}
+				if err == nil {
+					result, err = library.SyncSourceFiles(ctx, books, roots, opts.LibraryRoot, option)
+				}
+				if err == nil {
+					// Preserve watches for protected roots. Only a healthy
+					// changed subtree replaces its previous directory listing.
+					for path := range directories {
+						configured := false
+						for _, root := range roots {
+							if importdir.IsWithin(path, root) {
+								configured = true
+								break
+							}
+						}
+						if !configured {
+							delete(directories, path)
+							continue
+						}
+						for root, h := range result.Roots {
+							if h != "ok" || !importdir.IsWithin(path, root) {
+								continue
+							}
+							remove := full
+							for _, p := range changed {
+								if importdir.IsWithin(path, p) {
+									remove = true
 								}
+							}
+							if remove {
+								delete(directories, path)
 							}
 						}
 					}
-					previousPaths = next
+					for _, p := range result.Directories {
+						directories[p] = true
+					}
+					lastRoots = append([]string(nil), roots...)
+					initialized = true
+					if full {
+						lastFull = time.Now()
+					}
+					// Only successful baseline creation changes the cheap health
+					// transition from uninitialized to ok. A deep scan error
+					// must not turn each 30-second health tick into a full scan.
+					for root, h := range result.Roots {
+						if h == "ok" {
+							health[root] = "ok"
+						}
+					}
 				}
+
 			}
 			if err == nil {
 				err = flushSourceChanges(books, users)
 			}
-			if watcher != nil && err == nil {
-				watchErr = watcher.SetDirectories(result.Directories)
+			// Queue events even when deletion synchronization is protected:
+			// discovery itself never deletes anything. Reject out-of-root
+			// and health-marker noise before the import worker sees it.
+			if err == nil && opts.QueueSourcePaths != nil {
+				var paths []string
+				for _, p := range changed {
+					if strings.HasPrefix(filepath.Base(p), ".") {
+						continue
+					}
+					for _, root := range roots {
+						if importdir.IsWithin(p, root) {
+							paths = append(paths, p)
+							break
+						}
+					}
+				}
+				opts.QueueSourcePaths(paths, overflow || full && wasInitialized)
 			}
+			if watcher != nil {
+				var dirs []string
+				for p := range directories {
+					dirs = append(dirs, p)
+				}
+				dirs = append(dirs, roots...)
+				watchErr = watcher.SetDirectories(dirs)
+			}
+			retry = err != nil
+			lastHealth = health
 			mu.Lock()
 			status["result"] = result
 			status["duration_ms"] = time.Since(started).Milliseconds()
 			status["state"] = "watching"
-			status["mode"] = "events+reconcile"
+			status["mode"] = "events+incremental"
 			if watchErr != nil {
 				status["mode"] = "reconcile"
 				status["watch_error"] = watchErr.Error()
@@ -185,4 +270,19 @@ func flushSourceChanges(books, users *sql.DB) error {
 			}
 		}
 	}
+}
+
+func sourceNeedsBaseline(initialized, rootsChanged, overflow, dirty bool, previous, current map[string]string) bool {
+	if !initialized || rootsChanged || overflow {
+		return true
+	}
+	for root, h := range current {
+		if h == "ok" && previous[root] != h {
+			return true
+		}
+		if h == "uninitialized" && (dirty || previous[root] != h) {
+			return true
+		}
+	}
+	return false
 }

@@ -7,11 +7,12 @@ services:
   #   make build-dev
   #   docker-compose -f docker-compose.dev.yml up
   talebook-dev:
+    container_name: bookharbor-dev
     build:
       context: .
       dockerfile: Dockerfile
       target: dev
-    image: ghcr.io/ghcr.io/leonzy/bookharbor:dev
+    image: ghcr.io/leonzy/bookharbor:dev
     restart: always
     volumes:
       - /tmp/talebook-dev:/data

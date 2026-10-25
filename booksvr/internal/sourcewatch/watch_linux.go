@@ -100,7 +100,18 @@ func (w *Watcher) recordEvents(buffer []byte) {
 		if parent := w.names[int(event.Wd)]; parent != "" {
 			name := strings.TrimRight(string(buffer[offset+unix.SizeofInotifyEvent:end]), "\x00")
 			path := filepath.Join(parent, name)
+			// IN_IGNORED means a kernel watch disappeared (including unmount).
+			// Forget it so SetDirectories can reinstall it after recovery.
+			if event.Mask&unix.IN_IGNORED != 0 {
+				delete(w.paths, parent)
+				delete(w.names, int(event.Wd))
+				w.overflow = true
+			}
 			w.changes[path] = true
+			if len(w.changes) > 16384 {
+				w.changes = map[string]bool{}
+				w.overflow = true
+			}
 			if event.Mask&unix.IN_MOVED_FROM != 0 && event.Cookie != 0 {
 				w.pending[event.Cookie] = path
 			}
@@ -147,6 +158,9 @@ func (w *Watcher) SetDirectories(paths []string) error {
 		}
 	}
 	for _, path := range paths {
+		if _, ok := w.paths[path]; ok {
+			continue
+		}
 		wd, err := unix.InotifyAddWatch(w.fd, path, unix.IN_CREATE|unix.IN_DELETE|unix.IN_MOVED_FROM|unix.IN_MOVED_TO|unix.IN_DELETE_SELF|unix.IN_MOVE_SELF|unix.IN_UNMOUNT|unix.IN_CLOSE_WRITE|unix.IN_ATTRIB)
 		if err != nil {
 			if first == nil {
@@ -160,3 +174,21 @@ func (w *Watcher) SetDirectories(paths []string) error {
 	return first
 }
 func (w *Watcher) Close() { w.cancel(); <-w.done; unix.Close(w.fd) }
+
+// AddDirectory closes the discovery/watch installation gap for new subtrees.
+func (w *Watcher) AddDirectory(path string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if _, ok := w.paths[path]; ok {
+		return nil
+	}
+	wd, err := unix.InotifyAddWatch(w.fd, path, unix.IN_CREATE|unix.IN_DELETE|unix.IN_MOVED_FROM|unix.IN_MOVED_TO|unix.IN_DELETE_SELF|unix.IN_MOVE_SELF|unix.IN_UNMOUNT|unix.IN_CLOSE_WRITE|unix.IN_ATTRIB)
+	if err == nil {
+		if old := w.names[wd]; old != "" && old != path {
+			delete(w.paths, old)
+		}
+		w.paths[path] = wd
+		w.names[wd] = path
+	}
+	return err
+}

@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="BookHarbor 增量扫描与稳定挂载身份方案。" />
+    <link rel="icon" href="data:," />
+    <title>增量导入与来源同步 · ACTIVE</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><header class="hero"><h1>增量导入与来源同步</h1><p class="sub">BookHarbor 后台空闲开销、稳定挂载身份与安全镜像交接</p><div class="chips"><span class="chip">2026-10-25</span><span class="chip">booksvr / Docker</span><span class="chip active">ACTIVE</span><span class="chip">来源：用户部署请求</span></div></header>
+<section class="card"><h2>原始诉求</h2><p>自动扫描改为增量，避免反复全库核对；设备号变化不应误判来源更换，继续保留挂载掉线保护；保留正在执行的导入，测试通过后部署新镜像并统一容器名 bookharbor，提交并推送。</p></section>
+<section class="card"><h2>目标与边界</h2><p>首次受保护或遍历不完整时保留已发现父目录监听，等待变更或有间隔的恢复核对，不因扫描结果异常而每 30 秒重读全库；健康转换只比较轻量检查的结果。后台空闲仅检查根目录身份与健康标记，不遍历书籍或加载全库。启动、人工全量扫描、事件丢失与监控恢复允许完整建立基线。文件事件按路径及子树使用索引查询。保留账号、配置、书库、任务检查点与原挂载；不重置数据库，不复制或删除来源。</p></section>
+<section class="card"><h2>设计决策与方案</h2><ol><li>来源监控共享事件给自动导入，单写者队列合并事件；自动导入首轮完整发现，此后只扫描变更文件与子目录，运行期间的新事件保留到下一批。已成功入库的路径收到修改或恢复事件时交给来源同步处理，不能重置扫描记录再创建新书；失败或跳过文件仅在 stat 改变时重试。</li><li>来源物理路径建立独立投影与索引，压缩包成员映射到物理压缩包；数据库触发器记录新增及路径变更，仅增量刷新投影。格式登记时在同一事务记录物理来源 stat 基线（ZIP 使用外层压缩包），避免刚导入就改名时缺少移动识别依据；文件 stat 在事务前完成，不读取正文。兼容既有未启用外键的连接，格式删除触发器同时清理 stat 与路径投影，登记复用格式 ID 时替换旧 stat。分批到达的移动事件通过文件身份索引与缺失大小索引查找历史来源；未登记物理文件仅保存路径和大小索引，使跨文件系统先复制后删除也可按大小找候选，再核对内容。首次基线填充，之后仅更新事件子树，关闭自动导入仍生效；不保留正文副本，不回退为周期全库查询。候选文件删除或改动时通过其旧大小索引重新检查相同大小的缺失来源，歧义解除后无需等待完整扫描。路径投影和候选写入使用每 500 条短事务及预编译语句，先取得写锁再读取更新队列，避免活动导入导致读事务升级失败。来源同步无变化时先检查根健康并直接返回；事件同步仅查询受影响子树。</li><li>只读根目录的增量快照没有文件时，从索引有界探测仍可读取的物理文件，不能把局部空快照当成整根目录为空；无法证实非空仍暂停缺失判定。挂载身份优先通过 Linux FS_IOC_GETFSUUID 读取文件系统 UUID、配合根 inode 与覆盖/嵌套挂载拓扑，排除易变设备号和设备名。正式盘实测 F2FS 的 statfs.f_fsid 等于 st_dev（2096），并非稳定 UUID；不能作为 F2FS 的降级身份。使用只读目录 fd 查询 UUID，实测与 findmnt 返回的卷 UUID 一致（原始值仅保存在服务器部署记录中）；无法稳定识别时保持保护。协议依据：<a href="https://raw.githubusercontent.com/torvalds/linux/v6.18/include/uapi/linux/fs.h">Linux UAPI</a> 与 <a href="https://raw.githubusercontent.com/torvalds/linux/v6.18/fs/ioctl.c">VFS ioctl 实现</a>。旧 v2 身份不能仅凭标记自动信任，部署时核对真实挂载后显式重建基线。恢复或完整重建时重装目录监视，避免监视描述符仍指向掉线后的底层目录。根不可读、健康标记缺失、文件系统或嵌套挂载变化继续阻止缺失判断；提交前再次核对。</li><li>重复跳过记录虽然使用临时唯一哈希，仍为已处理，修正 done 和登记判定，避免反复读取整本 PDF。</li><li>先隔离测试和构建，生产继续导入；切换时通过进程正常退出保存检查点，备份数据库和容器参数，保留回滚容器；恢复自动导入并验证新名称、挂载、任务与空闲开销。</li></ol></section>
+<section class="card"><h2>影响范围与风险</h2><p>涉及 booksvr 来源同步、扫描与后台调度，spec/书库.md、spec/系统设置.md、Compose 默认容器名称与开发镜像地址、部署验证。无界面影响：不改变页面、交互、现有接口字段与前端消费者契约；因此豁免 interface-review。剩余风险为事件丢失、压缩包映射、目录移动与进程交接，需要对应测试。非事件平台使用有明确间隔的恢复核对，不能静默声称立即同步。</p></section>
+<section class="card" id="results"><h2>测试结果</h2><ul>
+<li>Go 最终全量检查：<code>go test ./... -skip "TestFileThemeStoreWriteFileError|TestBackupCreateFailsOnReadOnlyDir"</code> 与 <code>go vet ./...</code>，全包通过。两个权限用例在非 root 运行验证；另验证只读目录无法读取时不误判缺失。</li>
+<li>增量回归：10,000 条无关格式记录只核对 1 条目标；物理路径索引、主键与候选大小索引的 EXPLAIN 查询计划通过；移除测试书籍表后，空闲和受保护目录检查仍成功，证明不读取全库。</li>
+<li>来源回归：普通文件与目录改名、移动、删除、恢复，ZIP 物理路径、刚入库即改名、分批复制后删除、候选歧义解除后恢复、只读根目录局部空快照、真正空目录保护、无外键时格式 ID 复用与删除清理，全部通过。</li>
+<li>设备识别：模拟设备号与 statfs 设备标识 2080→2096，UUID 不变时身份不变；UUID 替换、嵌套挂载变化及缺失标记继续保护。以 UID 1000、只读挂载在 leonFN 的实际 F2FS 上运行 <code>TestSourceFilesystemUUIDOnRealMount</code>，返回 UUID 与宿主机查询一致。</li>
+<li>Docker 真实后端验收：安装、登录、初始扫描、内容重复跳过、新文件增量入库、改名与目录移动保留原书号、健康标记失效保护、恢复后确认缺失与源恢复、关闭自动导入后复制再删除的移动，均通过；恢复未重复建书。跨过空闲健康检查周期，源核对为 0，自动扫描时间不再变化；内置书库没有正文 TXT 副本。</li>
+<li>镜像管理脚本：<code>python3 -m pytest tests -q -p no:cacheprovider</code>，101 passed；正式及开发 Compose 配置分别解析为 bookharbor / bookharbor-dev，镜像地址正确；规格、方案与差异校验通过。</li>
+</ul><p>测试中修正了三个验收夹具问题：自动生成 stat 后原回收站夹具重复插入却忽略错误，改为显式 upsert 并检查错误，保留快照恢复及 ID 重映射断言；随机安装密码改用既有长度范围；临时候选镜像同时更新系统入口与应用载荷入口，并核验运行代码，生产 Dockerfile 本就更新两处。未放宽认证或恢复校验。</p><p>无界面影响：未修改 app 文件；调试用 source_sync 模式没有前端枚举消费者，其余字段契约保持。豁免 interface-review；真实后端与现有权限、OPDS、回收站及导入回归提供替代验证。NAS 只验证现有 Linux 本地文件系统，未把未实测的远程文件系统通知可靠性写成通过。</p></section>
+<section class="card" id="deployment"><h2>发布与部署验收</h2><p>本地候选镜像已完成验证。提交后由 BookHarbor 的真实 GitHub CI 和镜像构建工作流继续验证与发布；生产在发布校验通过后交接，具体运行编号、镜像及现场观测在部署完成后补充。</p></section>
+<section class="card"><h2>替代关系</h2><p>本方案替代 20261017-source-file-sync 的后台对账和挂载身份实现；保留旧方案的书号、历史、封面、缺失可用性和跨库变更 outbox 等业务约束。手动全部导入及既有界面继续沿用原方案，本次替换自动后台调度。</p></section>
+</main></body></html>

@@ -4,6 +4,7 @@ services:
 
   # main service
   talebook:
+    container_name: bookharbor
     restart: always
     image: ghcr.io/leonzy/bookharbor:main
     volumes:

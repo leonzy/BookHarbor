@@ -17,27 +17,51 @@ import (
 )
 
 func migrateSourceSync(db *sql.DB) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var pathTable int
+	if err := tx.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name='source_sync_paths'`).Scan(&pathTable); err != nil {
+		return err
+	}
 	for _, q := range []string{
 		`CREATE TABLE IF NOT EXISTS source_sync_roots(root TEXT PRIMARY KEY,identity TEXT NOT NULL,token TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE IF NOT EXISTS source_sync_formats(format_id INTEGER PRIMARY KEY REFERENCES book_formats(id) ON DELETE CASCADE,identity TEXT NOT NULL,size INTEGER NOT NULL,mtime INTEGER NOT NULL,missing INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE INDEX IF NOT EXISTS source_sync_format_path ON book_formats(path)`,
 		`CREATE INDEX IF NOT EXISTS source_sync_missing ON source_sync_formats(missing,format_id)`,
+		`CREATE INDEX IF NOT EXISTS source_sync_identity ON source_sync_formats(identity,format_id)`,
+		`CREATE INDEX IF NOT EXISTS source_sync_missing_size ON source_sync_formats(missing,size,format_id)`,
+		`CREATE TABLE IF NOT EXISTS source_sync_paths(format_id INTEGER PRIMARY KEY REFERENCES book_formats(id) ON DELETE CASCADE,physical_path TEXT NOT NULL)`,
+		`CREATE INDEX IF NOT EXISTS source_sync_physical_path ON source_sync_paths(physical_path,format_id)`,
+		`CREATE TABLE IF NOT EXISTS source_sync_candidates(path TEXT PRIMARY KEY,size INTEGER NOT NULL)`,
+		`CREATE INDEX IF NOT EXISTS source_sync_candidate_size ON source_sync_candidates(size,path)`,
+		`CREATE TABLE IF NOT EXISTS source_sync_pending(format_id INTEGER PRIMARY KEY)`,
+		`CREATE TRIGGER IF NOT EXISTS source_sync_insert AFTER INSERT ON book_formats BEGIN INSERT OR IGNORE INTO source_sync_pending VALUES(NEW.id); END`,
+		`CREATE TRIGGER IF NOT EXISTS source_sync_path_update AFTER UPDATE OF path ON book_formats WHEN OLD.path<>NEW.path BEGIN INSERT OR IGNORE INTO source_sync_pending VALUES(NEW.id); END`,
+		`CREATE TRIGGER IF NOT EXISTS source_sync_delete AFTER DELETE ON book_formats BEGIN DELETE FROM source_sync_formats WHERE format_id=OLD.id; DELETE FROM source_sync_paths WHERE format_id=OLD.id; DELETE FROM source_sync_pending WHERE format_id=OLD.id; END`,
 		`CREATE TABLE IF NOT EXISTS source_sync_changes(id INTEGER PRIMARY KEY,book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,old_path TEXT NOT NULL,new_path TEXT NOT NULL)`,
 	} {
-		if _, err := db.Exec(q); err != nil {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	if pathTable == 0 {
+		if _, err := tx.Exec(`INSERT OR IGNORE INTO source_sync_pending SELECT id FROM book_formats`); err != nil {
 			return err
 		}
 	}
 	var hasData int
-	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='data'`).Scan(&hasData); err != nil {
+	if err := tx.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='data'`).Scan(&hasData); err != nil {
 		return err
 	}
 	if hasData > 0 {
-		if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS source_sync_data_format ON data(book,format)`); err != nil {
+		if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS source_sync_data_format ON data(book,format)`); err != nil {
 			return err
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 type SourceChange struct {
@@ -60,6 +84,8 @@ type SourceSyncOptions struct {
 	PreviousPaths               map[string]bool
 	ChangedPaths                []string
 	FullDiscovery               bool
+	Incremental                 bool
+	DirectoryVisited            func(string) error
 	Moves                       []SourceMove
 	RefreshOffset, RefreshLimit int
 }
@@ -140,39 +166,48 @@ func sourceHash(ctx context.Context, path string) (string, error) {
 // snapshot cannot mark formats missing; identity is checked again before commit.
 func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoot string, options ...SourceSyncOptions) (SourceSyncResult, error) {
 	result := SourceSyncResult{Roots: map[string]string{}, CheckedAt: time.Now().Format(time.RFC3339)}
-	rows, err := db.QueryContext(ctx, `SELECT f.id,f.book_id,f.format,f.path,COALESCE(f.hash,''),COALESCE(s.identity,''),COALESCE(s.size,f.size,0),COALESCE(s.mtime,0),COALESCE(s.missing,0) FROM book_formats f LEFT JOIN source_sync_formats s ON s.format_id=f.id`)
-	if err != nil {
-		return result, err
-	}
-	var tracked []sourceTracked
-	for rows.Next() {
-		var t sourceTracked
-		if err = rows.Scan(&t.id, &t.book, &t.format, &t.path, &t.hash, &t.key, &t.size, &t.mtime, &t.missing); err != nil {
-			rows.Close()
-			return result, err
-		}
-		t.physical = t.path
-		if sourcefile.IsReference(t.path) {
-			r, e := sourcefile.Decode(t.path)
-			if e != nil {
-				continue
-			}
-			t.ref = &r
-			t.physical = r.Archive
-		}
-		if filepath.IsAbs(t.physical) && !(libraryRoot != "" && sourceWithin(t.physical, libraryRoot)) {
-			tracked = append(tracked, t)
-		}
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return result, err
-	}
-	limited := len(options) > 0
 	option := SourceSyncOptions{}
+	limited := len(options) > 0
 	if limited {
 		option = options[0]
+	}
+	// Health checks happen before loading any book rows, even for a protected root.
+	health, err := CheckSourceRoots(ctx, db, roots)
+	if err != nil {
+		return result, err
+	}
+	result.Roots = health
+	var healthy []string
+	for _, root := range normalizeSourceRoots(roots) {
+		if health[root] == "ok" || health[root] == "uninitialized" {
+			healthy = append(healthy, root)
+		}
+	}
+	if len(healthy) == 0 {
+		return result, nil
+	}
+	roots = healthy
+	if option.Incremental {
+		var paths []string
+		for _, path := range option.ChangedPaths {
+			for _, root := range healthy {
+				if sourceWithin(path, root) {
+					paths = append(paths, path)
+					break
+				}
+			}
+		}
+		option.ChangedPaths = paths
+	}
+	if option.Incremental && len(option.ChangedPaths) == 0 {
+		return result, nil
+	}
+	if err = refreshSourcePaths(ctx, db); err != nil {
+		return result, err
+	}
+	tracked, err := loadSourceTracked(ctx, db, option, libraryRoot)
+	if err != nil {
+		return result, err
 	}
 	known := map[string]bool{}
 	newMissing := map[string]bool{}
@@ -261,65 +296,87 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 		}
 		e = nil
 		discoverAll := !limited || option.FullDiscovery
-		e = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if walkErr != nil {
-				return walkErr
-			}
-			if d.IsDir() {
-				if path != root && (libraryRoot != "" && sourceWithin(path, libraryRoot)) {
-					return filepath.SkipDir
-				}
-				snap.dirs = append(snap.dirs, path)
-				return nil
-			}
-			if d.Name() == ".talebook-source-health" {
-				return nil
-			}
-			snap.paths = append(snap.paths, path)
-			if limited && !option.FullDiscovery && d.Type()&os.ModeSymlink == 0 {
-				if info, ok := transferred[path]; ok {
-					snap.files[path] = info
-					return nil
-				}
-				if info, ok := cached[path]; ok && !dirty[path] && !refresh[path] {
-					snap.files[path] = info
-					return nil
-				}
-			}
-			candidate := discoverAll || known[path] || (option.PreviousPaths != nil && !option.PreviousPaths[path])
-			if !candidate {
-				for _, changed := range option.ChangedPaths {
-					if filepath.Clean(changed) == root {
+		walkRoots := []string{root}
+		if option.Incremental {
+			walkRoots = nil
+			for _, p := range compactSourcePaths(option.ChangedPaths) {
+				if sourceWithin(p, root) {
+					if _, e := os.Lstat(p); os.IsNotExist(e) {
 						continue
 					}
-					if path == changed || strings.HasPrefix(path, filepath.Clean(changed)+string(filepath.Separator)) {
-						candidate = true
-						break
-					}
+					walkRoots = append(walkRoots, p)
 				}
 			}
-			if !candidate {
-				return nil
-			}
-			result.Inspected++
-			i, e := d.Info()
-			if d.Type()&os.ModeSymlink != 0 {
-				i, e = os.Stat(path)
-				if os.IsNotExist(e) {
+		}
+		for _, walkRoot := range walkRoots {
+			e = filepath.WalkDir(walkRoot, func(path string, d fs.DirEntry, walkErr error) error {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				if walkErr != nil {
+					return walkErr
+				}
+				if d.IsDir() {
+					if path != root && (libraryRoot != "" && sourceWithin(path, libraryRoot)) {
+						return filepath.SkipDir
+					}
+					if option.DirectoryVisited != nil {
+						if err := option.DirectoryVisited(path); err != nil {
+							return err
+						}
+					}
+					snap.dirs = append(snap.dirs, path)
 					return nil
 				}
-			}
+				if d.Name() == ".talebook-source-health" {
+					return nil
+				}
+				snap.paths = append(snap.paths, path)
+				if limited && !option.FullDiscovery && d.Type()&os.ModeSymlink == 0 {
+					if info, ok := transferred[path]; ok {
+						snap.files[path] = info
+						return nil
+					}
+					if info, ok := cached[path]; ok && !dirty[path] && !refresh[path] {
+						snap.files[path] = info
+						return nil
+					}
+				}
+				candidate := discoverAll || known[path] || (option.PreviousPaths != nil && !option.PreviousPaths[path])
+				if !candidate {
+					for _, changed := range option.ChangedPaths {
+						if filepath.Clean(changed) == root {
+							continue
+						}
+						if path == changed || strings.HasPrefix(path, filepath.Clean(changed)+string(filepath.Separator)) {
+							candidate = true
+							break
+						}
+					}
+				}
+				if !candidate {
+					return nil
+				}
+				result.Inspected++
+				i, e := d.Info()
+				if d.Type()&os.ModeSymlink != 0 {
+					i, e = os.Stat(path)
+					if os.IsNotExist(e) {
+						return nil
+					}
+				}
+				if e != nil {
+					return e
+				}
+				if i.Mode().IsRegular() {
+					snap.files[path] = sourceDiskFile{path, sourceFileIdentity(i), i.Size(), i.ModTime().UnixNano()}
+				}
+				return nil
+			})
 			if e != nil {
-				return e
+				break
 			}
-			if i.Mode().IsRegular() {
-				snap.files[path] = sourceDiskFile{path, sourceFileIdentity(i), i.Size(), i.ModTime().UnixNano()}
-			}
-			return nil
-		})
+		}
 		if e != nil {
 			result.Roots[root] = "源目录扫描不完整，暂停删除同步: " + e.Error()
 			continue
@@ -392,7 +449,7 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 					break
 				}
 			}
-			if hasTracked {
+			if hasTracked && !(option.Incremental && previous != "" && sourceRootHasLiveFile(ctx, db, root)) {
 				result.Roots[root] = "空目录与已登记来源不一致，无法建立安全基线"
 				continue
 			}
@@ -424,6 +481,32 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 		result.Files = append(result.Files, snap.paths...)
 		for path, f := range snap.files {
 			allFiles[path] = f
+			byKey[f.key] = append(byKey[f.key], f)
+			bySize[f.size] = append(bySize[f.size], f)
+		}
+	}
+	if option.Incremental {
+		extra, e := relocationSources(ctx, db, allFiles, tracked, libraryRoot)
+		if e != nil {
+			return result, e
+		}
+		tracked = append(tracked, extra...)
+	}
+	if option.Incremental {
+		candidates, e := sourceStoredCandidates(ctx, db, tracked, allFiles, func(path string) bool {
+			for root := range snapshots {
+				if sourceWithin(path, root) {
+					return true
+				}
+			}
+			return false
+		})
+		if e != nil {
+			return result, e
+		}
+		for _, f := range candidates {
+			result.Inspected++
+			allFiles[f.path] = f
 			byKey[f.key] = append(byKey[f.key], f)
 			bySize[f.size] = append(bySize[f.size], f)
 		}
@@ -514,6 +597,9 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 				}
 				if h == t.hash {
 					matches = append(matches, f.path)
+					if len(matches) > 1 {
+						break
+					} // ambiguity is already proven
 				}
 			}
 			if len(matches) == 1 {
@@ -542,7 +628,7 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 		if t.ref != nil || !exists || !healthyPath(t.physical) || t.key == "" || t.hash == "" {
 			continue
 		}
-		if t.key == f.key && t.size == f.size && t.mtime == f.mtime {
+		if sameSourceInode(t.key, f.key) && t.size == f.size && t.mtime == f.mtime {
 			continue
 		}
 		if _, done := refreshedHashes[t.physical]; done {
@@ -562,6 +648,16 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 			continue
 		}
 		refreshedHashes[t.physical] = h
+	}
+	if err = saveSourceCandidates(ctx, db, allFiles, claimed, option, func(path string) bool {
+		for root := range snapshots {
+			if sourceWithin(path, root) {
+				return true
+			}
+		}
+		return false
+	}); err != nil {
+		return result, err
 	}
 	// Revalidate every root after all discovery/hash work. An offline source is
 	// excluded as both a deletion origin and relocation destination.
@@ -587,7 +683,7 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 			return result, err
 		}
 	}
-	state, err := tx.PrepareContext(ctx, `INSERT INTO source_sync_formats(format_id,identity,size,mtime,missing) VALUES(?,?,?,?,?) ON CONFLICT(format_id) DO UPDATE SET identity=excluded.identity,size=excluded.size,mtime=excluded.mtime,missing=excluded.missing`)
+	state, err := tx.PrepareContext(ctx, `INSERT INTO source_sync_formats(format_id,identity,size,mtime,missing) SELECT ?,?,?,?,? FROM book_formats WHERE id=? AND path=? ON CONFLICT(format_id) DO UPDATE SET identity=excluded.identity,size=excluded.size,mtime=excluded.mtime,missing=excluded.missing`)
 	if err != nil {
 		return result, err
 	}
@@ -650,20 +746,22 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 			if hash != "" {
 				value = hash
 			}
-			if _, err = tx.ExecContext(ctx, `UPDATE book_formats SET hash=? WHERE id=?`, value, t.id); err != nil {
+			if _, err = tx.ExecContext(ctx, `UPDATE book_formats SET hash=? WHERE id=? AND path=?`, value, t.id, newPath); err != nil {
 				return result, err
-			}
-		}
-		if missing != t.missing {
-			if missing == 1 {
-				result.Missing++
-			} else {
-				result.Restored++
 			}
 		}
 		if t.key != f.key || t.size != f.size || t.mtime != f.mtime || t.missing != missing {
-			if _, err = state.ExecContext(ctx, t.id, f.key, f.size, f.mtime, missing); err != nil {
-				return result, err
+			updated, e := state.ExecContext(ctx, t.id, f.key, f.size, f.mtime, missing, t.id, newPath)
+			if e != nil {
+				return result, e
+			}
+			n, _ := updated.RowsAffected()
+			if n > 0 && missing != t.missing {
+				if missing == 1 {
+					result.Missing++
+				} else {
+					result.Restored++
+				}
 			}
 		}
 	}

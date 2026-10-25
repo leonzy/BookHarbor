@@ -177,12 +177,12 @@ func FileSHA256(path string) (string, error) {
 // DonePaths 复刻 _load_done_paths：加载已登记且处理完毕的文件路径。
 //
 // 判定条件与扫描第二阶段对已知路径的跳过条件严格一致：
-// NEW 状态行、中断残留的 `fstat:` 临时哈希行都不算 done。
+// NEW 与未完成的临时哈希不算 done；重复跳过保留临时唯一哈希，仍为已完成。
 func DonePaths(db *sql.DB, pathDir string) (map[string]bool, error) {
 	prefix := strings.TrimRight(pathDir, string(filepath.Separator)) + string(filepath.Separator)
 	rows, err := db.Query(`SELECT path FROM scanfiles
-		WHERE path LIKE ? ESCAPE '\' AND status != ? AND hash NOT LIKE 'fstat:%'`,
-		escapeLike(prefix)+"%", userdb.ScanStatusNew)
+		WHERE (path = ? OR (path >= ? AND path < ?)) AND status != ? AND (hash NOT LIKE 'fstat:%' OR status='drop')`,
+		pathDir, prefix, strings.TrimRight(pathDir, string(filepath.Separator))+string(filepath.Separator+1), userdb.ScanStatusNew)
 	if err != nil {
 		return nil, fmt.Errorf("scan: 查询已完成路径失败: %w", err)
 	}
@@ -326,7 +326,7 @@ func (s *Service) registerTasks(tasks []Task, scanID int64) ([]*userdb.ScanFile,
 			existing.ScanID = scanID
 			existing.UpdateTime = s.now()
 			// 只处理 NEW 状态的记录；其余状态若哈希已是真实哈希则跳过。
-			if existing.Status == userdb.ScanStatusNew || strings.HasPrefix(existing.Hash, "fstat:") {
+			if existing.Status == userdb.ScanStatusNew || strings.HasPrefix(existing.Hash, "fstat:") && existing.Status != userdb.ScanStatusDrop {
 				if err := saveScanFile(s.DB, existing); err != nil {
 					return nil, err
 				}
@@ -368,6 +368,8 @@ func (s *Service) processRow(row *userdb.ScanFile) (string, error) {
 // processFileRow keeps the original source reference in the database while
 // inspecting a temporary file materialized from an archive.
 func (s *Service) processFileRow(row *userdb.ScanFile, filePath string) (string, error) {
+	info, _ := os.Stat(filePath)
+	stampSource(row, info)
 	realHash, err := FileSHA256(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {

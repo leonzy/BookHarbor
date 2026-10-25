@@ -2,8 +2,11 @@ package library
 
 import (
 	"context"
+	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -14,11 +17,11 @@ func TestSourceMountIdentityIgnoresContainerParent(t *testing.T) {
 	}
 	first := []byte("1 0 0:11 / / rw - overlay overlay rw\n2 1 8:32 /physical /books rw - f2fs /dev/sdc rw\n")
 	next := []byte("44 0 0:99 / / rw - overlay overlay rw\n55 44 8:32 /physical /books rw - f2fs /dev/sdc rw\n")
-	if sourceMountIdentity("/books", info, first) != sourceMountIdentity("/books", info, next) {
+	if stableSourceMountIdentity("/books", info, first, func(p string) string { return p }) != stableSourceMountIdentity("/books", info, next, func(p string) string { return p }) {
 		t.Fatal("container recreation changed source identity")
 	}
 	nested := append(append([]byte{}, next...), []byte("56 55 8:48 /nested /books/sub rw - ext4 /dev/sdd rw\n")...)
-	if sourceMountIdentity("/books", info, next) == sourceMountIdentity("/books", info, nested) {
+	if stableSourceMountIdentity("/books", info, next, func(p string) string { return p }) == stableSourceMountIdentity("/books", info, nested, func(p string) string { return p }) {
 		t.Fatal("nested mount ignored")
 	}
 }
@@ -54,4 +57,93 @@ func TestSourceLegacyIdentityRequiresExplicitBaseline(t *testing.T) {
 	if result := run(); result.Roots[root] != "ok" || result.Missing != 1 {
 		t.Fatal(result)
 	}
+}
+
+func TestSourceMountIdentityStableAcrossDeviceRenumber(t *testing.T) {
+	info, _ := os.Stat(t.TempDir())
+	first := []byte("2 1 8:32 /physical /books rw - f2fs /dev/sdc rw\n3 2 8:48 /nested /books/sub rw - ext4 /dev/sdd rw\n")
+	next := []byte("22 11 8:48 /physical /books rw - f2fs /dev/sdd rw\n33 22 8:64 /nested /books/sub rw - ext4 /dev/sde rw\n")
+	fs := func(path string) string { return "stable-fs-" + path }
+	a := stableSourceMountIdentity("/books", info, first, fs)
+	b := stableSourceMountIdentity("/books", info, next, fs)
+	if a != b {
+		t.Fatal("volatile device number retained")
+	}
+	different := func(path string) string { return "replacement-" + path }
+	if a == stableSourceMountIdentity("/books", info, next, different) {
+		t.Fatal("replacement filesystem trusted")
+	}
+	lost := []byte("22 11 8:48 /physical /books rw - f2fs /dev/sdd rw\n")
+	if a == stableSourceMountIdentity("/books", info, lost, fs) {
+		t.Fatal("lost nested mount trusted")
+	}
+}
+func TestSourceDeviceRenumberDoesNotRehashUnchangedFile(t *testing.T) {
+	db, root, run := sourceFixture(t)
+	p := filepath.Join(root, "book.txt")
+	sourceWrite(t, p)
+	sourceRegister(t, db, 1, p, "TXT")
+	run()
+	// A sentinel hash must survive a device-number-only change. Reading and
+	// recalculating every source at boot would overwrite it with the body hash.
+	db.Exec(`UPDATE book_formats SET hash='sha256:sentinel'`)
+	var identity string
+	db.QueryRow(`SELECT identity FROM source_sync_formats LIMIT 1`).Scan(&identity)
+	suffix := identity[strings.LastIndex(identity, ":")+1:]
+	db.Exec(`UPDATE source_sync_formats SET identity=?`, "999999:"+suffix)
+	run()
+	var hash string
+	db.QueryRow(`SELECT hash FROM book_formats LIMIT 1`).Scan(&hash)
+	if hash != "sha256:sentinel" {
+		t.Fatal("unchanged file rehashed", hash)
+	}
+}
+
+type renumberedSourceInfo struct {
+	os.FileInfo
+	dev uint64
+}
+
+func (i renumberedSourceInfo) Sys() any {
+	st := *i.FileInfo.Sys().(*syscall.Stat_t)
+	st.Dev = i.dev
+	return &st
+}
+func TestSourceRootIgnoresStatDeviceRenumber(t *testing.T) {
+	info, _ := os.Stat(t.TempDir())
+	data := []byte("2 1 8:32 /physical /books rw - f2fs /dev/sdc rw\n")
+	fs := func(string) string { return "stable-filesystem" }
+	a := stableSourceMountIdentity("/books", renumberedSourceInfo{info, 2080}, data, fs)
+	b := stableSourceMountIdentity("/books", renumberedSourceInfo{info, 2096}, data, fs)
+	if a != b {
+		t.Fatal("st_dev included in stable root identity")
+	}
+}
+
+func TestSourceF2FSUUIDIgnoresDeviceBasedStatfsID(t *testing.T) {
+	uuid, _ := hex.DecodeString("0123456789abcdef0123456789abcdef")
+	a := stableFilesystemIdentity(0xf2f52010, [2]int32{2080, 0}, 2080, uuid)
+	b := stableFilesystemIdentity(0xf2f52010, [2]int32{2096, 0}, 2096, uuid)
+	if a == "" || a != b || !strings.Contains(a, "uuid:01234567") {
+		t.Fatal(a, b)
+	}
+	if stableFilesystemIdentity(0xf2f52010, [2]int32{2096, 0}, 2096, nil) != "" {
+		t.Fatal("volatile F2FS f_fsid trusted")
+	}
+	uuid[0] ^= 0xff
+	if a == stableFilesystemIdentity(0xf2f52010, [2]int32{2096, 0}, 2096, uuid) {
+		t.Fatal("different volume UUID trusted")
+	}
+}
+func TestSourceFilesystemUUIDOnRealMount(t *testing.T) {
+	root := os.Getenv("BOOKHARBOR_TEST_SOURCE_ROOT")
+	if root == "" {
+		t.Skip("opt-in read-only real filesystem integration")
+	}
+	expected := strings.ReplaceAll(os.Getenv("BOOKHARBOR_TEST_SOURCE_UUID"), "-", "")
+	identity := sourceFilesystemIdentity(root)
+	if expected == "" || !strings.Contains(identity, "uuid:"+expected) {
+		t.Fatal("actual UUID not used", identity)
+	}
+	t.Log(identity)
 }

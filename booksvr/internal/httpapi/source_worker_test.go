@@ -130,3 +130,31 @@ func TestSourceSyncWorkerWorksWithAutoImportDisabled(t *testing.T) {
 		return err == nil && count == 0
 	})
 }
+
+func TestSourceBaselineOnlyOnActualHealthRecoveryOrEvents(t *testing.T) {
+	same := map[string]string{"/books": "ok"}
+	unknown := map[string]string{"/books": "uninitialized"}
+	offline := map[string]string{"/books": "源目录不可访问，暂停删除同步"}
+	for _, tc := range []struct {
+		name                                  string
+		initialized, changed, overflow, dirty bool
+		before, after                         map[string]string
+		want                                  bool
+	}{
+		{"idle", true, false, false, false, same, same, false},
+		{"protected-idle", true, false, false, false, offline, offline, false},
+		{"incomplete-initial-baseline-idle", true, false, false, false, unknown, unknown, false},
+		{"incomplete-baseline-changed", true, false, false, true, unknown, unknown, true},
+		{"mount-recovered", true, false, false, false, offline, same, true},
+		{"first-mount-recovered", true, false, false, false, offline, unknown, true},
+		{"overflow", true, false, true, false, same, same, true},
+		{"new-roots", true, true, false, false, same, same, true},
+		{"startup", false, false, false, false, same, same, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sourceNeedsBaseline(tc.initialized, tc.changed, tc.overflow, tc.dirty, tc.before, tc.after); got != tc.want {
+				t.Fatal(got, tc.want)
+			}
+		})
+	}
+}

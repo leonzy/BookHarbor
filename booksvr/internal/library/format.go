@@ -51,11 +51,41 @@ func RegisterFormat(db *sql.DB, bookID int64, format, path string, size, mtime i
 		return fmt.Errorf("check existing format: %w", err)
 	}
 
-	if _, err := db.Exec(
-		`INSERT INTO book_formats (book_id, format, path, size, mtime) VALUES (?, ?, ?, ?, ?)`,
-		bookID, format, abs, size, mtime,
-	); err != nil {
+	// Capture the physical source before it can be renamed immediately after
+	// import. Archive members use their outer archive, not the member size.
+	physical := abs
+	if sourcefile.IsReference(abs) {
+		if ref, e := sourcefile.Decode(abs); e == nil {
+			physical = ref.Archive
+		}
+	}
+	info, _ := os.Stat(physical)
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	inserted, err := tx.Exec(`INSERT INTO book_formats (book_id,format,path,size,mtime) VALUES (?,?,?,?,?)`, bookID, format, abs, size, mtime)
+	if err != nil {
 		return fmt.Errorf("insert format: %w", err)
+	}
+	if info != nil && info.Mode().IsRegular() {
+		var schema int
+		if err = tx.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name='source_sync_formats' AND type='table'`).Scan(&schema); err != nil {
+			return err
+		}
+		if schema > 0 {
+			id, e := inserted.LastInsertId()
+			if e != nil {
+				return e
+			}
+			if _, err = tx.Exec(`INSERT INTO source_sync_formats(format_id,identity,size,mtime,missing) VALUES(?,?,?,?,0) ON CONFLICT(format_id) DO UPDATE SET identity=excluded.identity,size=excluded.size,mtime=excluded.mtime,missing=0`, id, sourceFileIdentity(info), info.Size(), info.ModTime().UnixNano()); err != nil {
+				return err
+			}
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return err
 	}
 	return nil
 }

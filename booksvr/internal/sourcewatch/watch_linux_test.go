@@ -90,6 +90,9 @@ func TestNativeSourceWatchSurvivesDirectoryRename(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("rename event missing")
 	}
+	if err = w.AddDirectory(next); err != nil {
+		t.Fatal(err)
+	}
 	if err = w.SetDirectories([]string{next}); err != nil {
 		t.Fatal(err)
 	}

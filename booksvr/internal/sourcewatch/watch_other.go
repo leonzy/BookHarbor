@@ -18,3 +18,5 @@ func (*Watcher) Overflowed() bool              { return true }
 func (*Watcher) Moves() []Move                 { return nil }
 func (*Watcher) SetDirectories([]string) error { return nil }
 func (*Watcher) Close()                        {}
+
+func (*Watcher) AddDirectory(string) error { return nil }

@@ -154,6 +154,17 @@ func (s *Service) ScanAllWithCallback(ctx context.Context, root string, batchSiz
 				}
 				return checkpoint(true)
 			}
+			if ctx.Value(incrementalScanKey{}) == true {
+				changed, e := s.changedSource(path, info)
+				if e != nil {
+					return e
+				}
+				if changed {
+					delete(done, path)
+				} else {
+					done[path] = true
+				}
+			}
 			if done[path] {
 				result.Skipped++
 				return nil

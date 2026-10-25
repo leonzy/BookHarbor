@@ -72,6 +72,9 @@ type ServeOptions struct {
 	// StartLibraryImport queues a complete scan-and-import task.
 	StartLibraryImport func(int64, string) error
 	CancelImportTask   func() error
+	// QueueSourcePaths coalesces filesystem events for the serialized automatic importer.
+	QueueSourcePaths       func([]string, bool)
+	incrementalImportPaths []string
 	// ImportWatchStatus 返回自动监控状态；为 nil 时返回「关闭」。
 	ImportWatchStatus func() map[string]any
 	// ScanService 返回扫描服务；为 nil 时扫描/导入接口返回服务不可用。

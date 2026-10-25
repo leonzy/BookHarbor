@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"reflect"
 	"sync"
 	"time"
 
@@ -40,6 +43,20 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 	var workMu, statusMu sync.Mutex
 	var activeCancel context.CancelFunc
 	var generation uint64
+	var pendingPaths = map[string]bool{}
+	var pendingFull bool
+	opts.QueueSourcePaths = func(paths []string, full bool) {
+		statusMu.Lock()
+		defer statusMu.Unlock()
+		if full || len(pendingPaths)+len(paths) > 10000 {
+			pendingFull = true
+			pendingPaths = map[string]bool{}
+			return
+		}
+		for _, p := range paths {
+			pendingPaths[p] = true
+		}
+	}
 	var paused bool
 	db.QueryRow(`SELECT paused FROM import_control WHERE id=1`).Scan(&paused)
 	status := map[string]any{"state": "off", "queued": 0, "running": 0, "failed": 0, "last_scan_at": nil, "message": ""}
@@ -251,6 +268,8 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		var next time.Time
+		var autoInitialized bool
+		var autoRoots []string
 		var lastStamp [2]settingsFileStamp
 		for {
 			select {
@@ -269,24 +288,49 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 			if !settingBool(settings, "import_auto_watch_enabled", false) {
 				update("off", "", 0, 0)
 				next = time.Time{}
+				autoInitialized = false
 				continue
 			}
 			stamp := settingsStamp(opts.SettingsPath)
 			if stamp == lastStamp && time.Now().Before(next) {
 				continue
 			}
+			statusMu.Lock()
+			currentRoots := importdir.ConfiguredAllowedRoots(LiveImportDir(opts.ImportDir, opts.SettingsPath))
+			full := !autoInitialized || !reflect.DeepEqual(currentRoots, autoRoots) || pendingFull
+			var paths []string
+			if !full {
+				for p := range pendingPaths {
+					paths = append(paths, p)
+				}
+			}
+			if full || len(paths) > 0 {
+				pendingPaths = map[string]bool{}
+				pendingFull = false
+			}
+			statusMu.Unlock()
 			lastStamp = stamp
+			if !full && len(paths) == 0 {
+				continue
+			}
+			runOpts := opts
+			if !full {
+				runOpts.incrementalImportPaths = paths
+			}
 			interval, _ := scan.WatchInterval(toIntSetting(settings, "import_watch_interval_seconds", 30), 500, 30, 500)
 			update("scanning", "", 1, 0)
 			workMu.Lock()
 			statusMu.Lock()
 			autoCtx, autoCancel := context.WithCancel(ctx)
+			if !full {
+				autoCtx = scan.WithSourceChanges(autoCtx)
+			}
 			if paused {
 				autoCancel()
 			}
 			activeCancel = autoCancel
 			statusMu.Unlock()
-			err := runAutoImport(autoCtx, opts, db, settings, func(p string, n int) error { return scanWith(autoCtx, p, n) }, func(hashes []string, id int64, remove bool, mode string) error {
+			err := runAutoImport(autoCtx, runOpts, db, settings, func(p string, n int) error { return scanWith(autoCtx, p, n) }, func(hashes []string, id int64, remove bool, mode string) error {
 				update("importing", "", 1, 0)
 				return importWith(autoCtx, hashes, id, remove, mode)
 			}, func(phase string) { update(phase, "", 1, 0) })
@@ -296,6 +340,13 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 			statusMu.Unlock()
 			workMu.Unlock()
 			next = time.Now().Add(time.Duration(interval) * time.Second)
+			var unavailable *importRootsUnavailable
+			if err == nil || errors.As(err, &unavailable) {
+				autoInitialized = true
+				autoRoots = append([]string(nil), currentRoots...)
+			} else if !errors.Is(err, context.Canceled) {
+				opts.QueueSourcePaths(paths, full)
+			}
 			if errors.Is(err, context.Canceled) {
 				update("paused", "已停止，已完成结果保留", 0, 0)
 			} else if err != nil {
@@ -334,7 +385,7 @@ func runLibraryImport(ctx context.Context, opts ServeOptions, db *sql.DB, settin
 		dir.ImportMode, dir.SavedImportMode = mode, mode
 	}
 	roots := importdir.ConfiguredAllowedRoots(dir)
-	if service := opts.ScanService(); service != nil {
+	if service := opts.ScanService(); service != nil && opts.incrementalImportPaths == nil {
 		if _, err := service.RecheckCompatibilityFailures(ctx, roots); err != nil {
 			return err
 		}
@@ -390,7 +441,19 @@ func runLibraryImport(ctx context.Context, opts ServeOptions, db *sql.DB, settin
 	}
 	var problems []error
 	scanned := make([]string, 0, len(roots))
-	for _, root := range roots {
+	scanRoots := roots
+	if opts.incrementalImportPaths != nil {
+		scanRoots = nil
+		for _, p := range opts.incrementalImportPaths {
+			for _, r := range roots {
+				if importdir.IsWithin(p, r) {
+					scanRoots = append(scanRoots, p)
+					break
+				}
+			}
+		}
+	}
+	for _, root := range scanRoots {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -404,7 +467,15 @@ func runLibraryImport(ctx context.Context, opts ServeOptions, db *sql.DB, settin
 		if covered {
 			continue
 		}
-		if check := importdir.CheckImportDirectory(root, dir); check.Status == "error" {
+		checkRoot := root
+		if info, e := os.Stat(root); e != nil {
+			if opts.incrementalImportPaths != nil && os.IsNotExist(e) {
+				continue
+			}
+		} else if !info.IsDir() {
+			checkRoot = filepath.Dir(root)
+		}
+		if check := importdir.CheckImportDirectory(checkRoot, dir); check.Status == "error" {
 			problems = append(problems, fmt.Errorf("%s: %s", root, check.Msg))
 			continue
 		}
@@ -428,5 +499,11 @@ func runLibraryImport(ctx context.Context, opts ServeOptions, db *sql.DB, settin
 	if err := drain(); err != nil {
 		return err
 	}
-	return errors.Join(problems...)
+	if len(problems) > 0 {
+		return &importRootsUnavailable{errors.Join(problems...)}
+	}
+	return nil
 }
+
+// An offline root waits for monitor recovery instead of rescanning healthy roots.
+type importRootsUnavailable struct{ error }

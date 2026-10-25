@@ -146,7 +146,11 @@ func TestTrashSnapshotFormatIDsAndCover(t *testing.T) {
 	}
 	var oldID int64
 	db.QueryRow(`SELECT id FROM book_formats WHERE book_id=?`, id).Scan(&oldID)
-	db.Exec(`INSERT INTO source_sync_formats(format_id,identity,size,mtime,missing) VALUES(?,'source',4,1,0)`, oldID)
+	// Registration now captures a baseline immediately. Override it explicitly
+	// so this test continues to verify exact snapshot preservation/remapping.
+	if _, err = db.Exec(`INSERT INTO source_sync_formats(format_id,identity,size,mtime,missing) VALUES(?,'source',4,1,0) ON CONFLICT(format_id) DO UPDATE SET identity='source',size=4,mtime=1,missing=0`, oldID); err != nil {
+		t.Fatal(err)
+	}
 	if err = DeleteBookToTrash(db, id, root); err != nil {
 		t.Fatal(err)
 	}
