@@ -683,11 +683,7 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 			return result, err
 		}
 	}
-	state, err := tx.PrepareContext(ctx, `INSERT INTO source_sync_formats(format_id,identity,size,mtime,missing) SELECT ?,?,?,?,? FROM book_formats WHERE id=? AND path=? ON CONFLICT(format_id) DO UPDATE SET identity=excluded.identity,size=excluded.size,mtime=excluded.mtime,missing=excluded.missing`)
-	if err != nil {
-		return result, err
-	}
-	defer state.Close()
+	var states []sourceStateUpdate
 	fingerprints := map[string]string{}
 	for _, t := range tracked {
 		if !healthyPath(t.physical) {
@@ -751,18 +747,25 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 			}
 		}
 		if t.key != f.key || t.size != f.size || t.mtime != f.mtime || t.missing != missing {
-			updated, e := state.ExecContext(ctx, t.id, f.key, f.size, f.mtime, missing, t.id, newPath)
-			if e != nil {
-				return result, e
-			}
-			n, _ := updated.RowsAffected()
-			if n > 0 && missing != t.missing {
-				if missing == 1 {
-					result.Missing++
-				} else {
-					result.Restored++
-				}
-			}
+			states = append(states, sourceStateUpdate{id: t.id, path: newPath, file: f, missing: missing, previousMissing: t.missing, statOnly: t.key != "" && t.missing == missing})
+		}
+	}
+	result.Missing, result.Restored, err = applySourceStates(ctx, tx, states)
+	if err != nil {
+		return result, err
+	}
+	// Applying a large baseline must not widen the mount-health window.
+	for root, snap := range snapshots {
+		info, e := os.Stat(root)
+		healthy := e == nil && sourceRootIdentity(root, info) == snap.key
+		if healthy && snap.token != "" {
+			b, e := os.ReadFile(filepath.Join(root, ".talebook-source-health"))
+			healthy = e == nil && string(b) == snap.token
+		}
+		if !healthy {
+			result.Missing, result.Restored, result.Moved = 0, 0, 0
+			result.Roots[root] = "提交时源目录不可用，暂停删除同步"
+			return result, fmt.Errorf("提交时源目录不可用，回滚来源状态: %s", root)
 		}
 	}
 	err = tx.Commit()
