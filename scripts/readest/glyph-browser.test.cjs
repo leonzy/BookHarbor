@@ -53,12 +53,48 @@ function fixtureBook() {
           await el.goTo(flat(el.book.toc).filter(x => x.label === '望江南')[2].href);
         });
         await page.waitForFunction(() => document.querySelector('foliate-view').renderer.getContents().some(x => x.doc.querySelector('img[recindex="00012"].readest-inline-glyph')), null, { timeout: 30000 });
-        const real = await view.evaluate(el => el.renderer.getContents().flatMap(x => [...x.doc.querySelectorAll('img.readest-inline-glyph')]).map(n => {
-          const r = n.getBoundingClientRect(); return { w: r.width, h: r.height, nw: n.naturalWidth, nh: n.naturalHeight, font: parseFloat(n.ownerDocument.defaultView.getComputedStyle(n).fontSize) };
-        }));
+        await page.waitForFunction(() => {
+          const images = document.querySelector('foliate-view').renderer.getContents().flatMap(x => [...x.doc.querySelectorAll('img.readest-inline-glyph')]);
+          return images.length > 0 && images.every(n => n.complete && n.naturalWidth > 0);
+        });
+        const real = await view.evaluate(async el => {
+          const images = el.renderer.getContents().flatMap(x => [...x.doc.querySelectorAll('img.readest-inline-glyph')]);
+          await Promise.all(images.map(n => n.ownerDocument.fonts.ready));
+          return images.map(n => {
+            const doc = n.ownerDocument, st = doc.defaultView.getComputedStyle(n), canvas = doc.createElement('canvas');
+            canvas.width = n.naturalWidth; canvas.height = n.naturalHeight;
+            const ctx = canvas.getContext('2d'); ctx.drawImage(n, 0, 0);
+            const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            let top = canvas.height, bottom = -1, transparentPixels = 0, inkPixels = 0;
+            for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
+              const i = (y * canvas.width + x) * 4;
+              if (pixels[i + 3] === 0) transparentPixels++;
+              const coverage = pixels[i + 3] * (255 - (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3) / 255;
+              if (coverage > 40) { top = Math.min(top, y); bottom = Math.max(bottom, y); inkPixels++; }
+            }
+            ctx.font = `${st.fontWeight} ${st.fontSize} ${st.fontFamily}`;
+            const metrics = ctx.measureText('国');
+            // Test-only zero-size baseline probe, removed synchronously. Production
+            // never inserts nodes or rewrites the book's CFI structure.
+            const probe = doc.createElement('span'); probe.style.cssText = 'display:inline-block;width:0;height:0;margin:0;padding:0;vertical-align:baseline;line-height:0';
+            n.after(probe);
+            const r = n.getBoundingClientRect(), textBaseline = probe.getBoundingClientRect().top;
+            const inkCentre = r.top + (top + bottom + 1) / (2 * canvas.height) * r.height;
+            const targetCentre = textBaseline + (metrics.actualBoundingBoxDescent - metrics.actualBoundingBoxAscent) / 2;
+            probe.remove();
+            return { w: r.width, h: r.height, nw: n.naturalWidth, nh: n.naturalHeight, font: parseFloat(st.fontSize), centreError: Math.abs(inkCentre - targetCentre), transparent: n.classList.contains('readest-inline-glyph-transparent'), transparentPixels, inkPixels, filter: st.filter };
+          });
+        });
         assert(real.length > 0);
-        for (const item of real) { assert(Math.abs(item.h - item.font) < 0.2); assert(Math.abs(item.w / item.h - item.nw / item.nh) < 0.01); }
+        for (const item of real) { assert(Math.abs(item.h - item.font * 1.1) < 0.2); assert(Math.abs(item.w / item.h - item.nw / item.nh) < 0.01); assert(item.centreError < Math.max(1.5, item.font * 0.1), `glyph baseline error ${item.centreError}`); assert(item.transparent && item.transparentPixels > 0 && item.inkPixels > 0, 'real white-matte glyph must have transparent background and visible ink'); if (colorScheme === 'dark') assert(item.filter.includes('invert(1)'), 'dark-page ink must stay visible'); }
         console.log(JSON.stringify({ realBook: true, width, glyphs: real }));
+        await view.evaluate(async el => {
+          const section = el.renderer.getContents().find(x => x.doc.querySelector('img[recindex="00014"]'));
+          if (section) await el.renderer.goTo({ index: section.index, anchor: doc => {
+            const paragraph = doc.querySelector('img[recindex="00014"]').closest('p');
+            return paragraph.previousElementSibling || paragraph;
+          } });
+        });
         if (process.env.READEST_SCREENSHOT_DIR) { fs.mkdirSync(process.env.READEST_SCREENSHOT_DIR, { recursive: true }); await page.screenshot({ path: `${process.env.READEST_SCREENSHOT_DIR}/glyph-real-${width}-${colorScheme}.png` }); }
       }
       const bytes = fixtureBook();
@@ -74,16 +110,16 @@ function fixtureBook() {
       await page.waitForFunction(() => document.querySelector('foliate-view')?.renderer?.getContents().some(x => x.doc.querySelector('#wrapped')?.complete && x.doc.querySelector('#cover')?.naturalWidth), null, { timeout: 60000 });
       const inspect = () => page.locator('foliate-view').evaluate(el => {
         const doc = el.renderer.getContents().find(x => x.doc.querySelector('#wrapped')).doc;
-        return [...doc.querySelectorAll('img')].map(n => { const r = n.getBoundingClientRect(); return { id: n.id, glyph: n.classList.contains('readest-inline-glyph'), w: r.width, h: r.height, ratio: n.naturalWidth / n.naturalHeight, font: parseFloat(doc.defaultView.getComputedStyle(n).fontSize) }; });
+        return [...doc.querySelectorAll('img')].map(n => { const r = n.getBoundingClientRect(); return { id: n.id, glyph: n.classList.contains('readest-inline-glyph'), transparent: n.classList.contains('readest-inline-glyph-transparent'), w: r.width, h: r.height, ratio: n.naturalWidth / n.naturalHeight, font: parseFloat(doc.defaultView.getComputedStyle(n).fontSize) }; });
       });
       const original = await inspect();
       if (!baseline) {
-        for (const n of original.filter(x => ['wrapped', 'plain', 'multi', 'nested', 'wide'].includes(x.id))) { assert(n.glyph, `${n.id}: ${JSON.stringify(original)}`); assert(Math.abs(n.h - n.font) < 0.2); assert(Math.abs(n.w / n.h - n.ratio) < 0.01); }
-        for (const n of original.filter(x => ['large', 'cover', 'float', 'link', 'block'].includes(x.id))) assert.equal(n.glyph, false, n.id);
+        for (const n of original.filter(x => ['wrapped', 'plain', 'multi', 'nested', 'wide'].includes(x.id))) { assert(n.glyph, `${n.id}: ${JSON.stringify(original)}`); assert(Math.abs(n.h - n.font * 1.1) < 0.2); assert(Math.abs(n.w / n.h - n.ratio) < 0.01); }
+        for (const n of original.filter(x => ['large', 'cover', 'float', 'link', 'block'].includes(x.id))) { assert.equal(n.glyph, false, n.id); assert.equal(n.transparent, false, n.id); }
         for (const size of [32, 12, 64]) {
           await page.locator('foliate-view').evaluate((el, size) => { const doc = el.renderer.getContents().find(x => x.doc.querySelector('#wrapped')).doc; let style = doc.querySelector('#qa-glyph-zoom'); if (!style) { style = doc.createElement('style'); style.id = 'qa-glyph-zoom'; doc.head.append(style); } style.textContent = `html,body,p{font-size:${size}px!important} font{font-size:${size * 1.25}px!important}`; }, size);
           const changed = await inspect();
-          for (const n of changed.filter(x => x.glyph)) { assert(n.h <= n.font + 0.2); assert(n.h >= Math.min(size, 20) - 0.2); assert(Math.abs(n.w / n.h - n.ratio) < 0.01); }
+          for (const n of changed.filter(x => x.glyph)) { assert(n.h <= n.font * 1.1 + 0.2); assert(n.h >= Math.min(size, 20) - 0.2); assert(Math.abs(n.w / n.h - n.ratio) < 0.01); }
         }
       }
       results.push({ width, colorScheme, images: original }); await context.close();

@@ -99,3 +99,5 @@ node scripts/readest/native-browser.test.cjs
 在 0001–0004 后应用 `0005-inline-glyph-sizing.patch`，再按上文构建并 sync。专用图字类只约束保守识别的小型 MOBI 文中图片；普通图片沿用原规则。新增测试覆盖行内 FONT/SPAN 包装、原图比例、异步加载与插图排除，不改源书。
 
 `scripts/readest/glyph-browser.test.cjs` 用真实样本验证图字，并在测试浏览器中注入生成的最小 PalmDB/MOBI 位图夹具进行正常插图尺寸对比与字号变化检查，不向书库写入夹具。以环境变量 `READEST_BASE_URL` 指定站点、`READEST_GLYPH_BOOK` 指定《宋词鉴赏辞典》样本书号。旧版本运行时设置 `READEST_GLYPH_EXPECT=baseline`、`READEST_GLYPH_RESULT=/path/before.json`；新版本运行时以 `READEST_GLYPH_BASELINE=/path/before.json` 比较。可用 `READEST_SCREENSHOT_DIR` 保留原书截图。该脚本只适用于包含所述“望江南”章节的已知回归样本；通用识别边界由上游补丁的单元测试覆盖。
+
+在 0005 后应用 `0006-inline-glyph-optical-alignment.patch`，横排内嵌图字采用 1.1em 视觉补偿，并将确认的灰阶白底转为透明（保留抗锯齿覆盖率，按文档在内存缓存，失败保留原图）；只校正默认或旧 WebKit baseline-middle 对齐，保留作者的自定义偏移及竖排原规则。图字回归会等待字体加载，用原图笔画边界、字体度量和临时零尺寸基线探针验证视觉中心；探针仅用于测试并同步删除，生产代码不插入正文节点。

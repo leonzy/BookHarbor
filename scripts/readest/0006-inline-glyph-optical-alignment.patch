@@ -1,0 +1,246 @@
+diff --git a/apps/readest-app/src/__tests__/utils/inlineGlyph.test.ts b/apps/readest-app/src/__tests__/utils/inlineGlyph.test.ts
+index b054488..9abdf45 100644
+--- a/apps/readest-app/src/__tests__/utils/inlineGlyph.test.ts
++++ b/apps/readest-app/src/__tests__/utils/inlineGlyph.test.ts
+@@ -52,6 +52,24 @@ describe('MOBI inline glyphs', () => {
+     document.body.append(style);
+     expect(planInlineGlyph(image)).not.toBeNull();
+   });
++  it('calibrates legacy baseline-middle without losing the plan on repeated application', () => {
++    const image = fixture();
++    image.style.verticalAlign = '';
++    const style = document.createElement('style');
++    style.textContent = 'img { vertical-align: -webkit-baseline-middle } .readest-inline-glyph-align { vertical-align: -0.2em }';
++    document.body.append(style);
++    expect(planInlineGlyph(image)?.alignToText).toBe(true);
++    applyImageStyle(document);
++    applyImageStyle(document);
++    expect(image.classList.contains('readest-inline-glyph-align')).toBe(true);
++  });
++  it('keeps explicit author offsets instead of applying the legacy calibration', () => {
++    const image = fixture('白<img recindex="12" style="vertical-align:-0.15em">洲。');
++    expect(planInlineGlyph(image)?.alignToText).toBe(false);
++    applyImageStyle(document);
++    expect(image.classList.contains('readest-inline-glyph-align')).toBe(false);
++    expect(image.style.verticalAlign).toBe('-0.15em');
++  });
+   it.each([
+     ['standalone cover', '<img recindex="12">'],
+     ['caption', '<img recindex="12"><div>插图说明</div>'],
+diff --git a/apps/readest-app/src/__tests__/utils/transparentGlyph.test.ts b/apps/readest-app/src/__tests__/utils/transparentGlyph.test.ts
+new file mode 100644
+index 0000000..40bf99e
+--- /dev/null
++++ b/apps/readest-app/src/__tests__/utils/transparentGlyph.test.ts
+@@ -0,0 +1,70 @@
++import { afterEach, describe, expect, it, vi } from 'vitest';
++import { makeGlyphTransparent, whiteGlyphPixels } from '@/utils/transparentGlyph';
++
++function pixels() {
++  const data = new Uint8ClampedArray(4 * 4 * 4).fill(255);
++  data.set([0, 0, 0, 255], (1 * 4 + 1) * 4);
++  return data;
++}
++afterEach(() => { document.body.innerHTML = ''; vi.restoreAllMocks(); });
++
++describe('transparent glyph white matte', () => {
++  it('removes white while keeping black and antialiased grey coverage', () => {
++    const data = pixels(); data.set([128, 128, 128, 255], (1 * 4 + 2) * 4);
++    const result = whiteGlyphPixels(data, 4, 4)!;
++    expect(result.slice(0, 4)).toEqual(new Uint8ClampedArray([0, 0, 0, 0]));
++    expect(result.slice(20, 24)).toEqual(new Uint8ClampedArray([0, 0, 0, 255]));
++    expect(result.slice(24, 28)).toEqual(new Uint8ClampedArray([0, 0, 0, 127]));
++    expect(data[0]).toBe(255); // source buffer not rewritten
++  });
++  it('reproduces grey antialiasing on white and retains existing alpha', () => {
++    for (const grey of [0, 32, 128, 200, 250, 254, 255]) for (const alpha of [128, 255]) {
++      const data = pixels(); data.set([grey, grey, grey, alpha], 24);
++      const result = whiteGlyphPixels(data, 4, 4)!;
++      const originalOnWhite = grey * alpha / 255 + 255 - alpha;
++      expect(Math.abs(255 - result[27]! - originalOnWhite)).toBeLessThanOrEqual(1);
++    }
++  });
++  it('leaves coloured pictures and dark paper unchanged', () => {
++    const coloured = pixels(); coloured.set([200, 20, 20, 255], 24);
++    expect(whiteGlyphPixels(coloured, 4, 4)).toBeNull();
++    const dark = new Uint8ClampedArray(64);
++    for (let i = 3; i < dark.length; i += 4) dark[i] = 255;
++    dark.set([255, 255, 255, 255], 20);
++    expect(whiteGlyphPixels(dark, 4, 4)).toBeNull();
++  });
++  it('does not process blank or oversized images', () => {
++    expect(whiteGlyphPixels(new Uint8ClampedArray(64).fill(255), 4, 4)).toBeNull();
++    expect(whiteGlyphPixels(new Uint8ClampedArray(400 * 100 * 4), 400, 100)).toBeNull();
++  });
++  it('reuses transient results per document and does not reprocess its own data URL', () => {
++    const context = { drawImage: vi.fn(), getImageData: () => ({ data: pixels() }), putImageData: vi.fn() };
++    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D);
++    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,transient');
++    for (let i = 0; i < 2; i++) {
++      const image = document.createElement('img'); image.src = 'blob:glyph-cache-test';
++      Object.defineProperties(image, { naturalWidth: { value: 4 }, naturalHeight: { value: 4 } });
++      makeGlyphTransparent(image); makeGlyphTransparent(image);
++      expect(image.src).toBe('data:image/png;base64,transient');
++      expect(image.classList.contains('readest-inline-glyph-transparent')).toBe(true);
++    }
++    expect(context.drawImage).toHaveBeenCalledTimes(1);
++  });
++  it('retains the original if canvas cannot be read', () => {
++    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => { throw new Error('tainted'); });
++    const image = document.createElement('img'); image.src = 'blob:glyph-tainted-test';
++    makeGlyphTransparent(image);
++    expect(image.src).toBe('blob:glyph-tainted-test');
++    expect(image.classList.contains('readest-inline-glyph-transparent')).toBe(false);
++  });
++  it('restores the readable original on replacement decode failure', () => {
++    const context = { drawImage: vi.fn(), getImageData: () => ({ data: pixels() }), putImageData: vi.fn() };
++    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as unknown as CanvasRenderingContext2D);
++    vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/png;base64,failing');
++    const image = document.createElement('img'); image.src = 'blob:glyph-error-test';
++    Object.defineProperties(image, { naturalWidth: { value: 4 }, naturalHeight: { value: 4 } });
++    makeGlyphTransparent(image); image.dispatchEvent(new Event('error'));
++    expect(image.src).toBe('blob:glyph-error-test');
++    expect(image.classList.contains('readest-inline-glyph-transparent')).toBe(false);
++  });
++});
+diff --git a/apps/readest-app/src/utils/inlineGlyph.ts b/apps/readest-app/src/utils/inlineGlyph.ts
+index f09108f..6ae2e14 100644
+--- a/apps/readest-app/src/utils/inlineGlyph.ts
++++ b/apps/readest-app/src/utils/inlineGlyph.ts
+@@ -1,6 +1,7 @@
+ import { isInlineFormattingTag } from './inlineTags';
++import { makeGlyphTransparent } from './transparentGlyph';
+ 
+-export type InlineGlyphPlan = { fontScale: number; aspectRatio: number; baseline: boolean };
++export type InlineGlyphPlan = { fontScale: number; aspectRatio: number; baseline: boolean; alignToText: boolean };
+ 
+ // Old MOBI publishers used small raster glyphs with much larger width/height
+ // attributes. Be deliberately conservative: this is not a general image rule.
+@@ -49,15 +50,22 @@ export function planInlineGlyph(img: HTMLImageElement): InlineGlyphPlan | null {
+     fontScale: textSize / parentSize,
+     aspectRatio: ratio,
+     baseline: imageStyle.verticalAlign === '' || imageStyle.verticalAlign === 'baseline',
++    // HTML align=middle maps to WebKit's baseline-middle, not CSS middle:
++    // it centres the bitmap on the baseline and makes CJK glyphs sink. Keep
++    // explicit author offsets, but calibrate default/legacy alignment.
++    alignToText: !img.style.verticalAlign && (img.classList.contains('readest-inline-glyph-align') ||
++      ['', 'baseline', '-webkit-baseline-middle'].includes(imageStyle.verticalAlign)),
+   };
+ }
+ 
+ export function applyInlineGlyph(img: HTMLImageElement, plan: InlineGlyphPlan | null): void {
+   if (!plan) return;
+   img.classList.add('readest-inline-glyph', 'has-text-siblings');
++  img.classList.toggle('readest-inline-glyph-align', plan.alignToText);
+   if (plan.baseline) img.classList.add('has-text-siblings-baseline');
+   // Relative to the actual parent, not a fixed px size: user font changes scale
+   // the image too, including legacy FONT[size] text outside the image wrapper.
+   img.style.fontSize = `${plan.fontScale}em`;
+   img.style.setProperty('--readest-glyph-ratio', String(plan.aspectRatio));
++  makeGlyphTransparent(img);
+ }
+diff --git a/apps/readest-app/src/utils/style.ts b/apps/readest-app/src/utils/style.ts
+index 79acd40..cd8c2ad 100644
+--- a/apps/readest-app/src/utils/style.ts
++++ b/apps/readest-app/src/utils/style.ts
+@@ -307,6 +307,11 @@ const getColorStyles = (
+     p[width][height] img.readest-inline-glyph {
+       mix-blend-mode: ${isDarkMode ? 'screen' : 'multiply'};
+     }
++    p[width][height] img.readest-inline-glyph.readest-inline-glyph-transparent {
++      mix-blend-mode: normal !important;
++      background-color: transparent !important;
++      filter: brightness(0) ${isDarkMode ? 'invert(1)' : ''} !important;
++    }
+     table:has(> colgroup) {
+       table-layout: fixed;
+     }
+@@ -534,9 +539,14 @@ const getPageLayoutStyles = (
+      later, equally specific override. Auto height preserves the intrinsic ratio
+      even when the existing max-width fits a wide glyph bitmap to the line. */
+   p[width][height] img.readest-inline-glyph {
+-    width: ${vertical ? '1em' : 'calc(var(--readest-glyph-ratio) * 1em)'} !important;
++    width: ${vertical ? '1em' : 'calc(var(--readest-glyph-ratio) * 1.1em)'} !important;
+     height: auto !important;
++    aspect-ratio: var(--readest-glyph-ratio);
+   }
++  ${vertical ? '' : `
++  p[width][height] img.readest-inline-glyph-align {
++    vertical-align: -0.2em !important;
++  }`}
+ 
+   /* page break */
+   body.paginated-mode div[style*="page-break-after: always"],
+diff --git a/apps/readest-app/src/utils/transparentGlyph.ts b/apps/readest-app/src/utils/transparentGlyph.ts
+new file mode 100644
+index 0000000..3be0bde
+--- /dev/null
++++ b/apps/readest-app/src/utils/transparentGlyph.ts
+@@ -0,0 +1,67 @@
++// Cache only within a live section document. No persistent book/file cache and
++// no generated Blob URLs that need a separate lifetime/revoke mechanism.
++const documentGlyphs = new WeakMap<Document, Map<string, string | null>>();
++const processedGlyphs = new WeakSet<HTMLImageElement>();
++
++export function whiteGlyphPixels(data: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray | null {
++  if (!width || !height || width > 384 || height > 64 || data.length !== width * height * 4) return null;
++  let border = 0, whiteBorder = 0, ink = 0;
++  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
++    const i = (y * width + x) * 4, alpha = data[i + 3]!;
++    const low = Math.min(data[i]!, data[i + 1]!, data[i + 2]!);
++    const high = Math.max(data[i]!, data[i + 1]!, data[i + 2]!);
++    // Keep coloured glyphs/illustrations and non-white paper unchanged.
++    if (alpha > 16 && high - low > 12) return null;
++    if (alpha > 16 && low < 220) ink++;
++    if (!x || !y || x === width - 1 || y === height - 1) {
++      border++;
++      if (alpha < 16 || low >= 245) whiteBorder++;
++    }
++  }
++  if (!ink || whiteBorder / border < 0.6) return null;
++  const result = new Uint8ClampedArray(data.length);
++  for (let i = 0; i < data.length; i += 4) {
++    const grey = (data[i]! + data[i + 1]! + data[i + 2]!) / 3;
++    // Unmatte against white. Black ink stays opaque, white becomes transparent;
++    // grey edge coverage is retained (compositing on white reproduces the input).
++    result[i + 3] = Math.round(data[i + 3]! * (255 - grey) / 255);
++  }
++  return result;
++}
++
++export function makeGlyphTransparent(img: HTMLImageElement): void {
++  const source = img.currentSrc || img.src;
++  if (!source || processedGlyphs.has(img)) return;
++  let cache = documentGlyphs.get(img.ownerDocument);
++  if (!cache) { cache = new Map(); documentGlyphs.set(img.ownerDocument, cache); }
++  let replacement = cache.get(source);
++  if (replacement === undefined) {
++    try {
++      const canvas = img.ownerDocument.createElement('canvas');
++      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
++      const context = canvas.getContext('2d', { willReadFrequently: true });
++      if (!context) { cache.set(source, null); return; }
++      context.drawImage(img, 0, 0);
++      const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
++      const transparent = whiteGlyphPixels(pixels.data, canvas.width, canvas.height);
++      if (!transparent) { cache.set(source, null); return; }
++      pixels.data.set(transparent); context.putImageData(pixels, 0, 0);
++      replacement = canvas.toDataURL('image/png');
++      cache.set(source, replacement);
++    } catch {
++      // Unsupported/tainted canvas: retain the readable original, never hide it.
++      cache.set(source, null); return;
++    }
++  }
++  if (!replacement) return;
++  processedGlyphs.add(img);
++  const original = img.src, target = replacement;
++  const restore = () => {
++    cache?.set(source, null);
++    if (img.src === target) { img.classList.remove('readest-inline-glyph-transparent'); img.src = original; }
++  };
++  img.addEventListener('error', restore, { once: true });
++  img.addEventListener('load', () => img.removeEventListener('error', restore), { once: true });
++  img.classList.add('readest-inline-glyph-transparent');
++  img.src = target;
++}
