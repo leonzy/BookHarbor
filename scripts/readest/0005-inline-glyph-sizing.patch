@@ -1,0 +1,250 @@
+diff --git a/apps/readest-app/src/__tests__/utils/inlineGlyph.test.ts b/apps/readest-app/src/__tests__/utils/inlineGlyph.test.ts
+new file mode 100644
+index 0000000..b054488
+--- /dev/null
++++ b/apps/readest-app/src/__tests__/utils/inlineGlyph.test.ts
+@@ -0,0 +1,99 @@
++import { afterEach, describe, expect, it } from 'vitest';
++import { applyInlineGlyph, planInlineGlyph } from '@/utils/inlineGlyph';
++import { applyImageStyle } from '@/utils/style';
++
++function fixture(content = '<font style="font-size:20px">肠断白</font><img recindex="12" width="93" height="105"><font style="font-size:20px">洲。</font>') {
++  document.body.innerHTML = `<p width="2em" height="2em" style="font-size:16px">${content}</p>`;
++  const image = document.querySelector('img')!;
++  Object.defineProperties(image, {
++    naturalWidth: { configurable: true, value: 39 }, naturalHeight: { configurable: true, value: 44 },
++    complete: { configurable: true, value: true },
++  });
++  return image;
++}
++afterEach(() => { document.body.innerHTML = ''; });
++
++describe('MOBI inline glyphs', () => {
++  it('matches wrapped prose, follows its font rather than the raw image dimensions, and is idempotent', () => {
++    const image = fixture();
++    const plan = planInlineGlyph(image);
++    expect(plan?.fontScale).toBe(1.25);
++    applyImageStyle(document);
++    expect(image.classList.contains('readest-inline-glyph')).toBe(true);
++    expect(image.style.fontSize).toBe('1.25em');
++    applyImageStyle(document);
++    expect(image.style.fontSize).toBe('1.25em');
++    expect(image.getAttribute('width')).toBe('93'); // no source metadata rewrite
++  });
++  it('accepts direct text and nested inline text, and keeps an author baseline offset', () => {
++    for (const html of ['肠断白<img recindex="12" style="vertical-align:-0.15em">洲。', '<span style="font-size:24px"><b>白<img recindex="12" style="vertical-align:-0.15em">洲。</b></span>']) {
++      const image = fixture(html);
++      // jsdom does not resolve inherited font sizes like a browser does.
++      image.parentElement!.style.fontSize = '24px';
++      const plan = planInlineGlyph(image);
++      expect(plan).not.toBeNull();
++      applyInlineGlyph(image, plan);
++      expect(image.style.verticalAlign).toBe('-0.15em');
++      expect(image.classList.contains('has-text-siblings-baseline')).toBe(false);
++    }
++  });
++  it('handles a multi-character bitmap without prescribing a square width', () => {
++    const image = fixture();
++    Object.defineProperty(image, 'naturalWidth', { value: 87 });
++    applyInlineGlyph(image, planInlineGlyph(image));
++    expect(image.classList.contains('readest-inline-glyph')).toBe(true);
++    expect(image.style.width).toBe('');
++    expect(image.style.height).toBe(''); // CSS uses one constrained axis + auto
++  });
++  it('accepts the reader legacy FONT flow-root text wrapper', () => {
++    const image = fixture('<font style="font-size:20px">白<img recindex="12">洲。</font>');
++    const style = document.createElement('style');
++    style.textContent = 'p > font:only-child { display: flow-root; }';
++    document.body.append(style);
++    expect(planInlineGlyph(image)).not.toBeNull();
++  });
++  it.each([
++    ['standalone cover', '<img recindex="12">'],
++    ['caption', '<img recindex="12"><div>插图说明</div>'],
++    ['figure', '<figure><img recindex="12"><figcaption>配图</figcaption></figure>'],
++    ['linked thumbnail', '查看<a href="/photo"><img recindex="12"></a>照片'],
++    ['floating illustration', '书中<img recindex="12" style="float:right">插图'],
++    ['positioned image', '书中<img recindex="12" style="position:absolute">插图'],
++    ['block image', '书中<img recindex="12" style="display:block">插图'],
++    ['authored block wrapper', '<font style="display:block;font-size:20px">图<img recindex="12">示。</font>'],
++    ['percentage image', '书中<img recindex="12" width="50%">插图'],
++    ['CSS percentage image', '书中<img recindex="12" style="width:50%">插图'],
++    ['non-MOBI image', '书中<img>插图'],
++    ['line-broken plate', '图一<br><img recindex="12"><br>说明'],
++  ])('leaves %s alone', (_, html) => {
++    expect(planInlineGlyph(fixture(html))).toBeNull();
++  });
++  it('rejects large illustrations, large scans and extreme aspect ratios', () => {
++    for (const [width, height] of [[600, 400], [500, 50], [40, 1000], [1000, 1000]]) {
++      const image = fixture();
++      Object.defineProperties(image, { naturalWidth: { value: width }, naturalHeight: { value: height } });
++      expect(planInlineGlyph(image)).toBeNull();
++    }
++  });
++  it('waits for actual image dimensions and handles only that late image', () => {
++    const image = fixture();
++    Object.defineProperties(image, { naturalWidth: { configurable: true, value: 0 }, naturalHeight: { configurable: true, value: 0 }, complete: { value: false } });
++    applyImageStyle(document);
++    expect(image.classList.contains('readest-inline-glyph')).toBe(false);
++    Object.defineProperties(image, { naturalWidth: { value: 39 }, naturalHeight: { value: 44 } });
++    image.dispatchEvent(new Event('load'));
++    expect(image.classList.contains('readest-inline-glyph')).toBe(true);
++    expect(image.style.fontSize).toBe('1.25em');
++  });
++  it('does not reclassify a late responsive image after percentage attributes are converted', () => {
++    const image = fixture('图<img recindex="12" width="50%">示。');
++    Object.defineProperties(image, { naturalWidth: { configurable: true, value: 0 }, naturalHeight: { configurable: true, value: 0 }, complete: { value: false } });
++    applyImageStyle(document);
++    expect(image.hasAttribute('width')).toBe(false);
++    Object.defineProperties(image, { naturalWidth: { value: 39 }, naturalHeight: { value: 44 } });
++    image.dispatchEvent(new Event('load'));
++    expect(image.classList.contains('readest-inline-glyph')).toBe(false);
++    applyImageStyle(document);
++    expect(image.classList.contains('readest-inline-glyph')).toBe(false);
++  });
++});
+diff --git a/apps/readest-app/src/utils/inlineGlyph.ts b/apps/readest-app/src/utils/inlineGlyph.ts
+new file mode 100644
+index 0000000..f09108f
+--- /dev/null
++++ b/apps/readest-app/src/utils/inlineGlyph.ts
+@@ -0,0 +1,63 @@
++import { isInlineFormattingTag } from './inlineTags';
++
++export type InlineGlyphPlan = { fontScale: number; aspectRatio: number; baseline: boolean };
++
++// Old MOBI publishers used small raster glyphs with much larger width/height
++// attributes. Be deliberately conservative: this is not a general image rule.
++export function planInlineGlyph(img: HTMLImageElement): InlineGlyphPlan | null {
++  const paragraph = img.closest('p[width][height]');
++  const win = img.ownerDocument.defaultView;
++  if (!paragraph || !win || !img.hasAttribute('recindex') || img.closest('a, figure, [role="img"]')) return null;
++  if (!img.naturalWidth || !img.naturalHeight || img.naturalHeight > 64 || img.naturalWidth > 384) return null;
++  const ratio = img.naturalWidth / img.naturalHeight;
++  if (ratio < 0.3 || ratio > 8) return null;
++  if (['width', 'height'].some(name => /%|vw|vh|vmin|vmax/i.test(img.getAttribute(name) || ''))) return null;
++  const imageStyle = win.getComputedStyle(img);
++  if (imageStyle.cssFloat && imageStyle.cssFloat !== 'none') return null;
++  if (['absolute', 'fixed', 'sticky'].includes(imageStyle.position)) return null;
++  if (imageStyle.display && !['inline', 'inline-block'].includes(imageStyle.display)) return null;
++  if (['width', 'height'].some(name => /%|vw|vh|vmin|vmax/i.test(img.style.getPropertyValue(name)))) return null;
++
++  // Do not mistake a figure/caption, table, line-broken plate or block wrapper
++  // for prose. FONT/SPAN and nested inline formatting remain valid text runs.
++  for (const element of paragraph.querySelectorAll('*')) {
++    if (element.localName.toLowerCase() === 'img') continue;
++    if (!isInlineFormattingTag(element.tagName)) return null;
++    const style = win.getComputedStyle(element);
++    // Readest itself makes a sole FONT child flow-root to clear old MOBI
++    // paragraphs. It still represents text, unlike an authored block figure.
++    const legacyTextRun = element.localName.toLowerCase() === 'font' && element.parentElement === paragraph &&
++      element.matches(':only-child') && style.display === 'flow-root' && !/(?:^|;)\s*display\s*:/i.test(element.getAttribute('style') || '');
++    if (style.display && !['inline', 'inline-block', 'contents'].includes(style.display) && !legacyTextRun) return null;
++  }
++  const walker = img.ownerDocument.createTreeWalker(paragraph, 4 /* SHOW_TEXT */);
++  let before: Text | null = null;
++  let after: Text | null = null;
++  let text: Node | null;
++  while ((text = walker.nextNode())) {
++    if (!text.textContent?.trim()) continue;
++    const position = img.compareDocumentPosition(text);
++    if (position & 2 /* PRECEDING */) before = text as Text;
++    if (position & 4 /* FOLLOWING */) { after = text as Text; break; }
++  }
++  const neighbour = before || after;
++  if (!neighbour?.parentElement || !/[\u3400-\u9fff\uf900-\ufaff]/u.test((before?.textContent || '') + (after?.textContent || ''))) return null;
++  const textSize = parseFloat(win.getComputedStyle(neighbour.parentElement).fontSize);
++  const parentSize = parseFloat(win.getComputedStyle(img.parentElement!).fontSize);
++  if (!(textSize > 0 && parentSize > 0)) return null;
++  return {
++    fontScale: textSize / parentSize,
++    aspectRatio: ratio,
++    baseline: imageStyle.verticalAlign === '' || imageStyle.verticalAlign === 'baseline',
++  };
++}
++
++export function applyInlineGlyph(img: HTMLImageElement, plan: InlineGlyphPlan | null): void {
++  if (!plan) return;
++  img.classList.add('readest-inline-glyph', 'has-text-siblings');
++  if (plan.baseline) img.classList.add('has-text-siblings-baseline');
++  // Relative to the actual parent, not a fixed px size: user font changes scale
++  // the image too, including legacy FONT[size] text outside the image wrapper.
++  img.style.fontSize = `${plan.fontScale}em`;
++  img.style.setProperty('--readest-glyph-ratio', String(plan.aspectRatio));
++}
+diff --git a/apps/readest-app/src/utils/style.ts b/apps/readest-app/src/utils/style.ts
+index f710a11..79acd40 100644
+--- a/apps/readest-app/src/utils/style.ts
++++ b/apps/readest-app/src/utils/style.ts
+@@ -17,6 +17,7 @@ import {
+ import { createFontCSS, CustomFont } from '@/styles/fonts';
+ import { readStoredAmbientIsDarkMode } from './ambientLight';
+ import { INLINE_FORMATTING_SELECTOR } from './inlineTags';
++import { applyInlineGlyph, planInlineGlyph } from './inlineGlyph';
+ import { getOSPlatform } from './misc';
+ import { SCROLL_WRAPPER_CLASS, SCROLL_WRAPPER_FIT_CLASS } from './scrollable';
+ 
+@@ -302,7 +303,8 @@ const getColorStyles = (
+     *:has(> img.has-text-siblings):not(body) {
+       ${overrideColor ? `background-color: ${bg};` : ''}
+     }
+-    p img.has-text-siblings, span img.has-text-siblings, sup img.has-text-siblings {
++    p img.has-text-siblings, span img.has-text-siblings, sup img.has-text-siblings,
++    p[width][height] img.readest-inline-glyph {
+       mix-blend-mode: ${isDarkMode ? 'screen' : 'multiply'};
+     }
+     table:has(> colgroup) {
+@@ -528,6 +530,13 @@ const getPageLayoutStyles = (
+     width: unset !important;
+     height: unset !important;
+   }
++  /* A text node does not prevent :only-child from matching. Glyphs need a
++     later, equally specific override. Auto height preserves the intrinsic ratio
++     even when the existing max-width fits a wide glyph bitmap to the line. */
++  p[width][height] img.readest-inline-glyph {
++    width: ${vertical ? '1em' : 'calc(var(--readest-glyph-ratio) * 1em)'} !important;
++    height: auto !important;
++  }
+ 
+   /* page break */
+   body.paginated-mode div[style*="page-break-after: always"],
+@@ -1318,6 +1327,8 @@ export const applyScrollbarStyle = (document: Document, hideScrollbar: boolean)
+   }
+ };
+ 
++const responsiveImageOrigins = new WeakSet<HTMLImageElement>();
++
+ export const applyImageStyle = (document: Document) => {
+   const win = document.defaultView ?? window;
+   // Two-phase (read then write): reading getComputedStyle after a class/style
+@@ -1356,10 +1367,16 @@ export const applyImageStyle = (document: Document) => {
+         keepBaseline = valign === '' || valign === 'baseline';
+       }
+     }
+-    return { img, percentWidth, percentHeight, inlineWithText, keepBaseline };
++    // The percentage conversion below removes attributes. Preserve this fact
++    // before writing so a late load cannot reclassify a responsive illustration.
++    const responsiveImage = [widthAttr, heightAttr, img.style.width, img.style.height]
++      .some(value => /%|vw|vh|vmin|vmax/i.test(value || '')) || responsiveImageOrigins.has(img);
++    const glyph = responsiveImage ? null : planInlineGlyph(img);
++    return { img, percentWidth, percentHeight, inlineWithText, keepBaseline, glyph, responsiveImage };
+   });
+ 
+-  for (const { img, percentWidth, percentHeight, inlineWithText, keepBaseline } of plans) {
++  for (const { img, percentWidth, percentHeight, inlineWithText, keepBaseline, glyph, responsiveImage } of plans) {
++    if (responsiveImage) responsiveImageOrigins.add(img);
+     if (!isNaN(percentWidth)) {
+       img.style.width = `${(percentWidth / 100) * window.innerWidth}px`;
+       img.removeAttribute('width');
+@@ -1372,6 +1389,11 @@ export const applyImageStyle = (document: Document) => {
+       img.classList.add('has-text-siblings');
+       if (keepBaseline) img.classList.add('has-text-siblings-baseline');
+     }
++    applyInlineGlyph(img, glyph);
++    if (!responsiveImage && img.hasAttribute('recindex') && !img.complete && !img.naturalWidth) {
++      // A late image load must not trigger a whole-chapter scan per image.
++      img.addEventListener('load', () => applyInlineGlyph(img, planInlineGlyph(img)), { once: true });
++    }
+   }
+   document.querySelectorAll('hr').forEach((hr) => {
+     const computedStyle = window.getComputedStyle(hr);

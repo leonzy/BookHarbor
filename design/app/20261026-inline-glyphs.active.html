@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Talebook 内部方案模板：用于记录原始诉求、目标边界、实现方案、风险与测试结果。" />
+    <link rel="icon" href="data:," />
+    <title>MOBI 正文字形图片缩放</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head><body><div class="page"><header class="hero"><h1>MOBI 正文字形图片缩放</h1><p class="sub">小型字形位图跟随相邻文字字号，保留纵横比与插图原有排版。</p><div class="chips"><span class="chip">2026-10-26</span><span class="chip">app / Readest</span><span class="chip active">ACTIVE</span></div></header><main>
+<section class="card"><h2>原始诉求</h2><p>用户书号 413976《宋词鉴赏辞典》的“蘋”字被当成 93×105px 图片展示；实际原图 39×44px。用户要求跟随周围字号、保持比例、不能影响正常插图与活动导入，测试通过后部署并提交推送。</p></section>
+<section class="card"><h2>决策与边界</h2><p>只对保守判定的旧 MOBI 内联图字施加专属类：recindex 图片、带旧式宽高属性的段落、行内文字上下文、原始小型位图，排除整页图、图注容器、链接图、浮动/定位图、百分比或视口尺寸图及大图。不扩大全局图片缩放。沿用已有 has-text-siblings 逻辑，其余格式、普通插图和封面规则保持原样。</p><p>识别 FONT / SPAN 等行内文字包装；相邻文本的实际字号与图片父容器字号之比写成 em，图片宽度按原图比例乘相邻文字字号计算、竖排按一个字宽，均用 auto 高度；保留最大宽度限制，宽图缩至行宽时高度也同比收缩。专属 CSS 需要覆盖旧 MOBI :only-child 的 !important 尺寸规则；字形图片自身的文字基线/主题处理沿用已有机制。图像异步加载只处理当前图片，不重新遍历整章，保留先读后写批处理。</p></section>
+<section class="card"><h2>实施与部署</h2><p>在固定 Readest 源码与已生效的 0001–0004 后新增 0005 补丁，含检测逻辑与测试；由正式构建及 sync.mjs 更新哈希资源，不手改压缩 JS。不修改书文件、数据库、后端或导入任务；只原子更新 Readest 静态资源，保留旧哈希供已打开的阅读页使用。部署前后核对导入 PID 与 /proc 启动时间。</p><p>影响范围：Readest style / 新增内联图字辅助函数与回归测试、构建来源清单、spec/阅读器.md。限制：保守识别未明确的小图时宁可保留原排版；不使用 OCR，不改变图片所表示的字。</p></section>
+<section class="card" id="tests"><h2>测试结果</h2>
+<table><thead><tr><th>验证</th><th>结果与证据</th></tr></thead><tbody>
+<tr><td>源码与构建</td><td>固定来源 a4fc84077ad4f4c490305961235086f25bd4da12，前三补丁及 0004 保持不变。0005 对独立的前四补丁基线索引正向 git apply --cached --check 成功。pnpm test：4 项契约检查及 17 文件 / 131 项测试全部通过。pnpm typecheck 通过，最终 pnpm build 的 TypeScript 与静态导出通过。以 sync.mjs 同步产物，未手改压缩 JS。</td></tr>
+<tr><td>识别边界</td><td>单元测试覆盖 FONT/SPAN 嵌套、作者基线、重复调用、多字图、延迟加载；封面、独立图、图注、链接图、浮动/定位/块级图、大图、百分比尺寸、非 MOBI 标记及换行图片区域排除。补测百分比被旧逻辑转像素后，异步加载与重复调用仍不会将普通图误认成字形。</td></tr>
+<tr><td>真实原书</td><td>scripts/readest/glyph-browser.test.cjs 实际打开书号 413976 的原始 MOBI，跳至温庭筠“望江南”。原“蘋”自然图 39×44px，旧显示 93×105px，修复后约 17.016×19.188px，与相邻文字 19.2px 相符；双字图 87:44 保持原比例。宽高比误差小于 0.01。桌面 1280×900 与窄屏 412×915、深浅主题共四组通过；截图实际检查。</td></tr>
+<tr><td>普通插图对比与极端字号</td><td>测试浏览器注入生成的最小未压缩 PalmDB/MOBI + PNG 夹具，不写入书库。旧版先保存两视口 / 两主题的尺寸基线，新版本逐一比较独立插图、封面、浮动图、链接图和块级图的宽高，差异小于 0.2px，结果全部保持。单字、双字、嵌套图字及 8 字宽位图通过；模拟 12 / 32 / 64px 正文字号后，尺寸随字号变化、超行宽同比缩小而不挤压。夹具必须为 MOBI：EPUB 的清理器会移除非标准 recindex 属性，不将该测试局限当作产品失败。</td></tr>
+<tr><td>上线复测</td><td>先通过本机回环代理加载最终静态资源、读取真实后端原文件完成同样检查，再只热更新静态资源并在线重跑全部图字回归。线上 MOBI / AZW3 / EPUB 正文、目录、翻页与错误恢复确认回归通过；读取与手动入口均没有转换 POST。</td></tr>
+<tr><td>部署保护</td><td>仅原子替换 8 个初始静态产物及后续边界修复的 5 个产物；哈希资源先到、HTML 最后，保留旧哈希供已打开的页使用。前后 bookharbor 容器始终 9627fbd1f0c7，导入 PID 70 / starttime 6789233，阅读服务 PID 3934 / starttime 14119217，均未重启。最大书号推进至 415836。未修改挂载、设置、数据库、书文件、后端程序或导入队列。</td></tr>
+</tbody></table>
+<p>回滚与收据：/data/maintenance/20261026-inline-glyphs，宿主机位于 /vol2/1000/bookharbor/data/maintenance/20261026-inline-glyphs。没有新建 Docker 容器或镜像，没有复制书籍或生成 EPUB。Go 后端未改，不重跑 Go 构建或启动第二个导入工作者。</p>
+<p>未执行与限制：样本均为横排，竖排的单字宽 / auto 高度分支仅代码检查，未做真实竖排书端到端；保持既有 vertical 判定。未测试真实移动设备、iOS 或 Firefox。Chrome DevTools MCP 未提供，使用 Playwright Chromium 与窄屏仿真。无 Rust 或原生接口变更，未执行原生 Rust 构建。不做 OCR，保留图片本身的字形与分辨率；保守识别不能确认的图片不改。</p>
+</section>
+<section class="card"><h2>interface-review · full</h2>
+<p>默认分支 origin/main 已 fetch，基线 / HEAD 均为 ebc9194bfae3da81b643ac68d858c6f16809aab5，已提交新增 0；检查本次全部未提交源变更及删除侧。依据根 AGENTS.md、app/CLAUDE.md、Readest 包 AGENTS.md，加载 interface-review、better-interface 及六个责任 better-* skill。生成的哈希资源 / vendor / 二进制不逐行评审，改为审查 0005 完整源码并验证产物。无关未跟踪存储迁移方案明确排除。直接消费者覆盖 getStyles、applyImageStyle、FoliateViewer 加载及异步图片、字体缩放、三种格式的阅读链路；不扩展全站其他界面。</p>
+<table><thead><tr><th>责任领域</th><th>证据</th><th>结论</th></tr></thead><tbody>
+<tr><td>Accessibility</td><td>原图 alt、链接、作者基线和正文节点顺序保留；未增加控件，不改键盘导航；阅读恢复与目录回归</td><td>Clear</td></tr>
+<tr><td>Layout</td><td>原书 / 正常插图四组尺寸对比；64px 字号宽图触发行宽约束时比例仍正确；无新增整页图片规则</td><td>Clear</td></tr>
+<tr><td>Writing</td><td>没有新增或改动界面文案</td><td>Not reviewed: no evidence in the change scope</td></tr>
+<tr><td>Typography</td><td>相邻字体 19.2px 与图字约 19.188px；嵌套字体、12 / 32 / 64px 缩放、双字 / 8 字图片自然比例</td><td>Clear</td></tr>
+<tr><td>Colors</td><td>沿用既有图片主题合成，实际检查深浅主题可辨认；无全局调色或插图过滤规则修改</td><td>Clear</td></tr>
+<tr><td>UI</td><td>桌面与窄屏原书截图；无新增动画、弹窗或按钮；纯排版修复，封面和图片交互保留</td><td>Clear</td></tr>
+</tbody></table>
+<h3>发现与处理</h3><p>已关闭本次 Introduced / MEDIUM：固定高度与最大宽度并存会挤压宽图字，改成自然比例目标宽度 + auto 高度，并通过 8 字宽图片与 64px 字号验证。另修复异步百分比图片可能误判的正确性问题：在尺寸写入前以 WeakSet 保留原始响应式属性，异步与重入均排除。检查新增与删除规则后没有待处理 HIGH / MEDIUM / LOW，本次无剩余 actionable interface findings。</p>
+<p>预先存在的源书限制：部分图字无 alt 且为位图，排版修复不能让屏幕阅读器读出缺失的文字，也不能恢复原图之外的细节；未把缺少文字元数据归因于本次改动。</p>
+<h3>考虑后拒绝</h3><table><thead><tr><th>候选</th><th>拒绝原因</th></tr></thead><tbody><tr><td>所有 img 一律设为一字高</td><td>会缩小封面、正常插图与自适应图片，违反用户要求。</td></tr><tr><td>OCR 或把图片替换成猜测的 Unicode 字</td><td>可能改变原文，超出排版修复范围。</td></tr><tr><td>服务器重写 MOBI 或转换 EPUB</td><td>无需改源书或占用额外书库存储，原文件直读保持有效。</td></tr></tbody></table>
+<p><strong>Verdict: Approve</strong>。尺寸修复位置见 scripts/readest/0005-inline-glyph-sizing.patch:205 的专用 selector、:118 的 planInlineGlyph 与 :215 的 responsiveImageOrigins；功能与导入保护证据如上。</p>
+</section></main><footer>BookHarbor · ACTIVE · 2026-10-26</footer></div></body></html>

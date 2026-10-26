@@ -93,3 +93,9 @@ node scripts/readest/native-browser.test.cjs
 ```
 
 增加 `READEST_MOBILE=1` 使用 Android UA / 412px 视窗；可用 `READEST_SCREENSHOT_DIR` 保存截图。该回归读取真实原文件、翻页并跳转章节，比较阅读前后的格式清单，验证未发起转换；错误状态只拦截测试浏览器响应，不改源文件，手动入口仅打开真实确认窗口并通过键盘激活。站点会照常写入阅读历史。
+
+## MOBI 图字缩放补丁
+
+在 0001–0004 后应用 `0005-inline-glyph-sizing.patch`，再按上文构建并 sync。专用图字类只约束保守识别的小型 MOBI 文中图片；普通图片沿用原规则。新增测试覆盖行内 FONT/SPAN 包装、原图比例、异步加载与插图排除，不改源书。
+
+`scripts/readest/glyph-browser.test.cjs` 用真实样本验证图字，并在测试浏览器中注入生成的最小 PalmDB/MOBI 位图夹具进行正常插图尺寸对比与字号变化检查，不向书库写入夹具。以环境变量 `READEST_BASE_URL` 指定站点、`READEST_GLYPH_BOOK` 指定《宋词鉴赏辞典》样本书号。旧版本运行时设置 `READEST_GLYPH_EXPECT=baseline`、`READEST_GLYPH_RESULT=/path/before.json`；新版本运行时以 `READEST_GLYPH_BASELINE=/path/before.json` 比较。可用 `READEST_SCREENSHOT_DIR` 保留原书截图。该脚本只适用于包含所述“望江南”章节的已知回归样本；通用识别边界由上游补丁的单元测试覆盖。
