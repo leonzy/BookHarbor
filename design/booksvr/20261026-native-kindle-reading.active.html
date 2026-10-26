@@ -1,0 +1,173 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kindle 原文件阅读 · WIP</title><link rel="icon" href="data:,"><style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style></head><body><div class="page"><header class="hero"><h1>Kindle 格式直接阅读与手动转换</h1><p class="sub">MOBI / AZW3 优先原文件 Readest 阅读，失败仅给手动选项，不自动生成 EPUB。</p><div class="chips"><span class="chip">2026-10-26</span><span class="chip">booksvr / app</span><span class="chip active">ACTIVE</span></div></header><main class="main-column"><section class="card"><h2>原始诉求与目标</h2><p>用户明确要求直接读 MOBI、AZW3，失败再提供手动转换；不占额外书库存储，不影响正在运行的导入；测试、部署、提交推送。数据现位于 /vol2/1000/bookharbor/data。</p></section><section class="card"><h2>Grill 与决策</h2><p>已明确的授权不再反复询问。EPUB / PDF / TXT 现有路径保留；Kindle 同类 AZW 一并直读。默认仍优先已有 EPUB；只有 Kindle 格式时直接 Readest，显式指定 format 可选择对应源格式。不自动转换，失败提供重试、返回书籍、手动转换入口；手动入口打开既有转换对话框，不发起转换请求。</p><p>原始文件接口继续逐次校验书籍可见性、阅读许可、版本和 Range/HEAD；扩展现有 bootstrap v1 的格式/MIME，不放开任意路径和跨域。DRM/损坏由解析器报错，明确提示转换也不保证可用，不尝试去除 DRM。</p></section><section class="card"><h2>实现与部署方案</h2><p>Go 阅读路由移除 StartForReading，bootstrap/resource 支持 epub/mobi/azw/azw3，并按请求扩展名选择该格式。Readest 来源固定版本及旧补丁不变，新增可复现源码补丁处理原文件传输和失败 UI，通过 sync 更新带哈希产物，禁止手改压缩 JS。</p><p>为保护活动导入，增加显式 reader-only 服务模式：仅三个阅读入口、本地回环监听、打开已有数据库不跑迁移、不启动导入/封面/目录/同步后台任务；其余路由转发现有进程。上线增加独立受 Supervisor 管理的阅读进程并精确切换 Nginx 阅读入口；原进程 PID/起始时间和导入队列保持。正式镜像正常单进程运行即可，不要求该部署旁路。保留回滚文件，备份在新存储目录内，运行二进制置于 /opt/bookharbor-native-reader，以免放宽私有 maintenance 父目录权限。</p></section><section class="card"><h2>影响范围</h2><p>booksvr 阅读路由、资源输出和服务启动参数；app/public/readest 启动器与宿主补丁；spec/阅读器.md、spec/书籍.md；不改变书籍源文件、导入数据或库表。</p></section><section class="card" id="tests"><h2>测试结果</h2>
+<table><thead><tr><th>验证</th><th>实际结果</th></tr></thead><tbody>
+<tr><td>Go 全量与静态检查</td><td>隔离 Linux / Go 1.24 容器：go test -p 1 ./... 的 46 个包全部通过，go vet -p 1 ./... 通过；CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" 成功。新测试覆盖三种 Kindle 格式、EPUB 优先级、显式格式、权限、HEAD/Range/MIME/ETag、过期 revision 返回 412、无自动转换，以及 reader-only 不建库、不迁移、不启动服务工厂。</td></tr>
+<tr><td>Readest 可复现构建</td><td>固定来源 a4fc84077ad4f4c490305961235086f25bd4da12，顺序应用 0001–0004；新增补丁对前三补丁后的独立 Git 索引正向 apply --check 成功。pnpm test：16 文件、112 测试通过；pnpm typecheck 通过；最终 NEXT_PUBLIC_APP_PLATFORM=web pnpm build 的 TypeScript、静态导出通过，再由 sync.mjs 同步，未手改压缩产物。</td></tr>
+<tr><td>宿主与资源工具</td><td>app 目录运行 vitest run test/utils/readestLaunch.spec.ts：8 测试通过，原格式重试保留 format，错误动作无 POST。node --test scripts/readest/layout.test.cjs 通过。preload.test.mjs、sync.test.mjs 在 Linux 上 2 测试通过；Windows 不具备创建文件符号链接权限，未把该环境失败视为通过。</td></tr>
+<tr><td>真实书库端到端</td><td>scripts/readest/native-browser.test.cjs 在 http://leonfn:8850 的桌面 Chromium 和 Android UA / 412×915 仿真各通过一轮。MOBI：101 节、94 项目录；AZW3：34 节、33 项目录；EPUB：12 节、101 项目录。逐本验证真实正文、翻页、章节跳转、HEAD 与 16 字节 Range，阅读前后格式清单一致，转换 POST 为 0。MOBI 单格式走默认入口，AZW3 与 EPUB 多格式走显式选择。PDF / TXT 原有入口各以实际书号验证 302 目标保持正确。</td></tr>
+<tr><td>损坏文件与人工确认</td><td>只拦截浏览器的原文件响应注入损坏字节，不修改源文件或书籍记录。320px / 200% 文字、深浅主题下，失败说明、键盘焦点、可滚动动作与手动转换入口可用；点击后出现真实书籍详情转换对话框，仍无转换 POST。只有确认才转换，由原有接口处理；未向正式书库提交测试转换。</td></tr>
+<tr><td>部署与导入保护</td><td>现有 bookharbor 容器内只将 /read/&lt;id&gt;、reader-bootstrap、read/resource 三条路径切至 loopback 8002 阅读进程；Nginx 检查通过并平滑重载。主进程始终 PID 70，/proc starttime 始终 6789233；实测期间最大书号由 412636 推进到 413547，导入数据继续更新。正常启动使用的二进制以原子替换更新，运行中的导入仍使用原 inode。未修改挂载、源书、库表、队列或已有转换结果。</td></tr>
+<tr><td>存储与清理</td><td>正式数据沿用 /vol2/1000/bookharbor/data；回滚文件与收据在该数据目录的 maintenance/20261026-native-reader。运行二进制位于 /opt/bookharbor-native-reader。两处经真实路径核验的隔离 QA 目录、Go 缓存和临时 golang:1.24-alpine 镜像均已删除；其他服务与镜像未动。</td></tr>
+</tbody></table>
+<p>限制：没有使用真实 DRM 加密样本，不承诺解密或转换成功；损坏状态为明确标注的浏览器故障注入。浏览器只验证 Chromium 与 Android UA 仿真，未覆盖真实 Android 设备、iOS 或 Firefox。Chrome DevTools MCP 未提供，以 Playwright Chromium 的真实页面、DOM、网络和截图替代；不将模拟损坏响应当作成功阅读证据。</p>
+</section>
+<section class="card"><h2>interface-review · full</h2>
+<p>范围：默认分支 origin/main 已 fetch，merge-base / HEAD 均为 acab2c1c44a766f1cda5f6264a98c9353f340dc7；已提交新增 0，审查本次全部本地变更。依据根目录 AGENTS.md、app/CLAUDE.md 与 interface-review / better-interface；加载六个 better-* 责任 skill，逐一读新增与删除侧。生成的哈希资源、vendor、二进制不作源码逐行审查，改读其固定来源补丁并验证实际产物；无关未跟踪存储迁移文档排除。直接消费者覆盖阅读入口、宿主启动器、Readest 原文件/错误状态、详情转换对话框、Candle/PDF/TXT 回退与资源契约；未扩展全站其他界面。</p>
+<table><thead><tr><th>领域</th><th>检查证据</th><th>结论</th></tr></thead><tbody>
+<tr><td>Accessibility</td><td>原生 button / a，持久错误 role=alert，说明与可见标签；Tab / focus、焦点描边、320px / 200% / reduced-motion、手动入口确认</td><td>Clear</td></tr>
+<tr><td>Layout</td><td>加载、无效参数、资源失败、解析失败、成功正文；长内容 flex 容器可滚动，内容不压缩、标签换行</td><td>Clear</td></tr>
+<tr><td>Writing</td><td>简中 / 英语 / 俄语目录新增文案；未许诺损坏/DRM 可转换，按钮说明手动，初始与已知格式失败动作一致</td><td>Clear</td></tr>
+<tr><td>Typography</td><td>沿用 Readest / 宿主字号；标题与描述层级、长语言、放大后换行与完整动作可达</td><td>Clear</td></tr>
+<tr><td>Colors</td><td>测量实际 CSS token 与透明度合成后的 WCAG 对比度：说明文字浅 6.63:1 / 深 6.61:1；最终三动作浅 17.93:1 / 深 12.05:1</td><td>Clear</td></tr>
+<tr><td>UI</td><td>桌面与手机实页截图；沿用按钮、间距、主题，不添加额外动画；成功与错误互斥且恢复动作稳定</td><td>Clear</td></tr>
+</tbody></table>
+<h3>发现与处理</h3><p>已修复两项 Introduced / MEDIUM：scripts/readest/0004-native-kindle-reading.patch:108 对应新增错误状态的居中容器在 320px / 200% 裁掉标题，改为可滚动 flex 与不压缩内容；同补丁 :113 对应新增重试按钮使用现有蓝色主题时浅色对比度 4.19:1，中性主题试验深色 4.08:1，最终限定本页使用描边恢复按钮。重新构建、重新部署并复跑深浅主题和端到端，两个问题均关闭。本次变更无剩余 actionable interface findings，HIGH / MEDIUM / LOW 均为 0。</p>
+<h3>考虑后拒绝</h3><table><thead><tr><th>候选</th><th>拒绝原因</th></tr></thead><tbody><tr><td>错误后自动转换或让重试进入转换</td><td>违背用户明确的人工确认与空间要求；保留重试原格式与独立转换链接。</td></tr><tr><td>全局调整 Readest 主题调色板</td><td>问题仅在新增恢复页，使用现有描边 token 即可达到对比度，避免改变其余阅读界面。</td></tr><tr><td>强制三个动作一行</td><td>窄屏与放大文字会裁切动作名称，使用换行和滚动保持可达。</td></tr></tbody></table>
+<p><strong>Verdict: Approve</strong>。界面证据已实际检查；功能、权限、性能和数据安全另由上述测试与部署收据证明。</p>
+</section></main><footer>BookHarbor · booksvr · ACTIVE · 2026-10-26</footer></div></body></html>

@@ -235,6 +235,6 @@ var registeredRoutes = []Route{
 	{Pattern: "/read-comic/([0-9]+)", Handler: "ComicReaderHandler", Source: "booksvr/internal/httpapi/comic.go", Methods: []string{"GET", "POST"}},
 	{Pattern: "/read-online-comic", Handler: "OnlineComicReader", Source: "booksvr/internal/httpapi/serve.go", Methods: []string{"GET", "POST"}},
 	{Pattern: "/read/([0-9]+)", Handler: "BookRead", Source: "booksvr/internal/httpapi/book.go", Methods: []string{"GET", "POST"}},
-	{Pattern: "/read/resource/([0-9]+\\.epub)", Handler: "BookReaderResource", Source: "booksvr/internal/httpapi/book.go", Methods: []string{"GET", "POST"}},
+	{Pattern: "/read/resource/([0-9]+\\.(?:epub|mobi|azw|azw3))", Handler: "BookReaderResource", Source: "booksvr/internal/httpapi/book.go", Methods: []string{"GET", "HEAD"}},
 	{Pattern: "/static/themes/(.*)", Handler: "StaticFileHandler", Source: "booksvr/internal/httpapi/serve.go", Methods: []string{"GET", "POST"}},
 }

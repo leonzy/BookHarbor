@@ -21,6 +21,7 @@ import (
 
 // serveOptions 是 `booksvr serve` 的解析结果。
 type serveOptions struct {
+	ReaderOnly bool
 	// DBPath 是 Calibre 书库 SQLite 文件路径（metadata.db）。
 	DBPath string
 	// UserDBPath 是 Talebook 自有库路径（calibre-webserver.db）。
@@ -96,6 +97,7 @@ func newServeFlagSet(out io.Writer) *flag.FlagSet {
 	fs.String("tornado-url", "", "未实现路由的兜底代理目标（默认 http://127.0.0.1:8001，可用 BOOKSVR_TORNADO_URL）")
 	fs.String("serve-routes", "", "走 booksvr 本地的路由 pattern 白名单，逗号分隔；all 表示全部（默认空=全部走代理，可用 BOOKSVR_SERVE_ROUTES）")
 	fs.String("cookie-secret", "", "解析 Tornado secure cookie 的密钥（必填，可用 BOOKSVR_COOKIE_SECRET）")
+	fs.Bool("reader-only", false, "仅提供阅读入口，不运行迁移与后台任务（供保留导入进程的并行部署）")
 	fs.Bool("demo-mode", false, "开启演示模式（只读，可用 BOOKSVR_DEMO_MODE）")
 	fs.String("demo-username", "", "演示模式允许登录的账号（可用 BOOKSVR_DEMO_USERNAME）")
 	fs.String("invite-code", "", "访问码；为空表示无需访问码（可用 BOOKSVR_INVITE_CODE）")
@@ -142,6 +144,7 @@ func parseServeOptions(args []string) (*serveOptions, error) {
 	}
 
 	opts := &serveOptions{
+		ReaderOnly:   fs.Lookup("reader-only").Value.String() == "true",
 		DBPath:       pick(fs.Lookup("db").Value.String(), os.Getenv("BOOKSVR_DB")),
 		UserDBPath:   pick(fs.Lookup("user-db").Value.String(), os.Getenv("BOOKSVR_USER_DB")),
 		Addr:         pick(fs.Lookup("addr").Value.String(), os.Getenv("BOOKSVR_ADDR")),
@@ -279,6 +282,7 @@ func runServe(args []string, out io.Writer) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	return httpapi.Serve(ctx, httpapi.ServeOptions{
+		ReaderOnly:   opts.ReaderOnly,
 		DBPath:       opts.DBPath,
 		UserDBPath:   opts.UserDBPath,
 		Addr:         opts.Addr,

@@ -140,7 +140,7 @@ const (
 	rBookUploadDone   = "/api/book/upload/complete"
 	rBookRead         = "/read/([0-9]+)"
 	rBookReaderBoot   = "/api/book/([0-9]+)/reader-bootstrap"
-	rBookReaderRes    = "/read/resource/([0-9]+\\.epub)"
+	rBookReaderRes    = "/read/resource/([0-9]+\\.(?:epub|mobi|azw|azw3))"
 	rBookTxtRead      = "/api/read/txt"
 	rBookTxtInit      = "/api/book/txt/init"
 	rBookSendDevice   = "/api/book/([0-9]+)/send_to_device"

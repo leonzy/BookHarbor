@@ -1,4 +1,6 @@
 {
+  "Convert to EPUB manually": "Преобразовать в EPUB вручную",
+  "The original file could not be opened. You can retry or choose manual conversion. Damaged or DRM-protected files may still fail.": "Не удалось открыть исходный файл. Повторите попытку или выберите преобразование вручную. Повреждённые файлы и файлы с DRM могут не открыться и после преобразования.",
   "On hold": "Отложено",
   "Mark as On hold": "Отметить как отложенное",
   "(detected)": "(обнаружено)",

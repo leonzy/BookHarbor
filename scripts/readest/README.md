@@ -67,3 +67,29 @@ READEST_BASELINE_URL=http://127.0.0.1:39209 READEST_CANDIDATE_URL=http://127.0.0
 ```
 
 基准要求页码和实际章节 iframe 内容均出现；不是只测启动页面消失，也不是完整导航索引耗时。书籍10《西游记》有12个章节文件、101项目录，首屏时0个片段索引，随后11个章节索引补全。上游 main 已另行合入 TB-205 的在线导航跳过策略；这里仍固定来源 SHA 加显式补丁，不将不同策略混入已验证构建。
+
+
+## Kindle 原文件阅读补丁
+
+在补丁 0001、0002、0003 后应用 `0004-native-kindle-reading.patch` 。仅扩展指定同源、同书号、带版本号的原文件资源至 MOBI / AZW / AZW3；按格式校验 MIME，保留 Cookie、HEAD、Range、ETag、字节长度与防跨域/路径伪造校验。MOBI/KF8 使用已有 foliate-js 解析器，浏览器不把原文件导入持久书架，也不在服务端转换。
+
+原文件打开失败时提供重试、返回和手动转换入口；手动转换链接仅打开宿主现有确认对话框，不发送转换请求。DRM 或文件损坏不能保证转换成功。补丁包括严格传输契约与安全恢复链接测试，构建后用 sync.mjs 更新产物和清单，不手改压缩文件。
+
+```bash
+git apply /path/to/BookHarbor/scripts/readest/0004-native-kindle-reading.patch
+NEXT_PUBLIC_APP_PLATFORM=web pnpm build
+pnpm test
+pnpm typecheck
+node /path/to/BookHarbor/scripts/readest/sync.mjs /path/to/readest-reader/out/readest
+```
+
+真实站点回归可通过环境变量指定用户名、密码及实际样本书号（避免把凭证写入脚本）：
+
+```bash
+READEST_BASE_URL=http://localhost:8850 \
+READEST_PASSWORD="$READEST_PASSWORD" \
+READEST_NATIVE_SAMPLES='[{"id":42,"format":"mobi"},{"id":43,"format":"azw3"}]' \
+node scripts/readest/native-browser.test.cjs
+```
+
+增加 `READEST_MOBILE=1` 使用 Android UA / 412px 视窗；可用 `READEST_SCREENSHOT_DIR` 保存截图。该回归读取真实原文件、翻页并跳转章节，比较阅读前后的格式清单，验证未发起转换；错误状态只拦截测试浏览器响应，不改源文件，手动入口仅打开真实确认窗口并通过键盘激活。站点会照常写入阅读历史。

@@ -1,4 +1,6 @@
 {
+  "Convert to EPUB manually": "手动转换为 EPUB",
+  "The original file could not be opened. You can retry or choose manual conversion. Damaged or DRM-protected files may still fail.": "无法直接打开原文件。可以重试，或选择手动转换；文件损坏或受 DRM 保护时，转换也可能失败。",
   "On hold": "搁置中",
   "Mark as On hold": "标记为搁置",
   "(detected)": "(检测到)",

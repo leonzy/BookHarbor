@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"talebook/booksvr/internal/convert"
 	"testing"
@@ -13,71 +12,35 @@ import (
 )
 
 func TestMobiReadingReturnsImmediatelyAndUsesBootstrapContract(t *testing.T) {
-	db := netSchemaDB(t)
-	createCalibreTables(t, db)
-	createFormatTables(t, db)
-	dir := t.TempDir()
-	src := filepath.Join(dir, "source.mobi")
-	if err := os.WriteFile(src, []byte("mobi"), 0600); err != nil {
+	w, path := epubResourceWiring(t)
+	if _, err := w.libraryDB.Exec(`UPDATE book_formats SET format='MOBI' WHERE book_id=1`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO books(id,title,author_sort,path) VALUES(1,'书','作者','')`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`INSERT INTO book_formats(book_id,format,path,size,mtime) VALUES(1,'MOBI',?,4,0)`, src); err != nil {
-		t.Fatal(err)
-	}
-	w := newBookWiring(db, db, map[string]any{}, nil)
-	w.convert = convert.NewService(db, dir)
-	started := make(chan struct{})
-	release := make(chan struct{})
-	finished := make(chan struct{})
-	w.convert.Converter = func(_, dst string) error {
-		close(started)
-		<-release
-		defer close(finished)
-		return os.WriteFile(dst, []byte("epub"), 0600)
-	}
+	w.convert = convert.NewService(w.libraryDB, t.TempDir())
+	started := make(chan struct{}, 1)
+	w.convert.Converter = func(string, string) error { started <- struct{}{}; return nil }
 	cfg := w.Config("")
-	cfg.CanViewBook = func(*Context, int64) bool { return true }
 	srv, err := NewServer(BookRouteSpecs(cfg))
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv.DB = db
-	begin := time.Now()
+	srv.DB = w.db
 	rec := serveReadAsAdmin(t, srv, 1)
-	if time.Since(begin) > time.Second {
-		t.Error("HTTP waited for conversion")
+	if rec.Code != http.StatusFound || !strings.Contains(rec.Header().Get("Location"), "/readest/talebook-launch.html?") {
+		t.Fatalf("not a native launch: %d %s", rec.Code, rec.Body.String())
 	}
-	body := rec.Body.String()
-	for _, want := range []string{"/reader-bootstrap?engine=readest", "data.schema === 'talebook.reader.bootstrap.v1'", "window.location.replace('/read/' + BOOK_ID + window.location.search)", `role="status"`} {
-		if !strings.Contains(body, want) {
-			t.Errorf("missing %s", want)
-		}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(body, "data.epub_ready") || strings.Contains(body, "retries = 180") {
-		t.Error("obsolete timeout contract")
+	pending := serveBootstrap(t, w, "engine=readest")
+	if pending.Code != 200 {
+		t.Fatalf("bootstrap=%d %s", pending.Code, pending.Body.String())
 	}
 	select {
 	case <-started:
-	case <-time.After(3 * time.Second):
-		close(release)
-		t.Fatal("conversion did not start")
+		t.Fatal("reading started a conversion")
+	case <-time.After(50 * time.Millisecond):
 	}
-	if pending := serveBootstrap(t, w, "engine=readest"); pending.Code != 409 {
-		t.Errorf("pending=%d", pending.Code)
-	}
-	close(release)
-	<-finished
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if ready := serveBootstrap(t, w, "engine=readest"); ready.Code == 200 {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("registered EPUB did not become ready")
 }
 
 // 缺陷 10 回归：/read/<id> 必须返回阅读器 **HTML 页面**，不是 JSON。
@@ -115,29 +78,8 @@ func TestBookReadReturnsHTML(t *testing.T) {
 	srv.DB = db
 	rec := serveReadAsAdmin(t, srv, 1)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 (body=%q)", rec.Code, rec.Body.String())
-	}
-	ct := rec.Header().Get("Content-Type")
-	if !strings.Contains(ct, "text/html") {
-		t.Errorf("Content-Type = %q, want text/html（JSON 说明仍是接口而非页面）", ct)
-	}
-	body := rec.Body.String()
-	if !strings.Contains(body, "<!DOCTYPE html>") {
-		t.Errorf("响应不是 HTML 文档: %q", body[:min(200, len(body))])
-	}
-	// 页面必须挂载阅读器并指向书籍资源。
-	if !strings.Contains(body, `id="app"`) {
-		t.Error("缺少阅读器挂载点 #app")
-	}
-	// book_url 在页面里是运行时拼接的（API + "/read/extract/" + BOOK_ID + "/"），
-	// 因此断言拼接片段而非完整 URL。
-	if !strings.Contains(body, `"/read/extract/" + BOOK_ID + "/"`) {
-		t.Error("book_url 未指向 /read/extract/<id>/")
-	}
-	// MOBI 未就绪时应显示转换提示。
-	if !strings.Contains(body, "正在转换为 EPUB") {
-		t.Error("MOBI 书应显示转换中提示")
+	if rec.Code != http.StatusFound || !strings.Contains(rec.Header().Get("Location"), "/readest/talebook-launch.html?") {
+		t.Fatalf("Kindle must redirect to native reader, got %d %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -202,12 +144,12 @@ func TestBookReadUnsupportedFormat(t *testing.T) {
 	}
 }
 
-// TestReaderBootstrapReportsConversionPending 回归：只有 MOBI 时报告转换中。
+// TestReaderBootstrapReportsMissingNativeSource 回归：只有 MOBI 时报告转换中。
 //
 // 旧实现返回 {book_id, epub_ready, ...} 的 Candle 形状，
 // 与 Readest 启动协议（schema/engine/book/resource/navigation）不符，
 // 前端会报「阅读器启动协议不兼容」。现在改为返回 reader.conversion_pending。
-func TestReaderBootstrapReportsConversionPending(t *testing.T) {
+func TestReaderBootstrapReportsMissingNativeSource(t *testing.T) {
 	db := netSchemaDB(t)
 	createCalibreTables(t, db)
 	createFormatTables(t, db)
@@ -233,10 +175,10 @@ func TestReaderBootstrapReportsConversionPending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bookReaderBootstrap: %v", err)
 	}
-	if got["err"] != "reader.conversion_pending" {
+	if got["err"] != "reader.format_unsupported" {
 		t.Errorf("err = %v, want reader.conversion_pending（只有 MOBI，待转 EPUB）", got["err"])
 	}
-	if rec.Code != http.StatusConflict {
+	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 409", rec.Code)
 	}
 }

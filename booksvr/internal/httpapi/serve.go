@@ -30,6 +30,8 @@ import (
 
 // ServeOptions 是 Serve 的装配参数。
 type ServeOptions struct {
+	// ReaderOnly serves reading routes without migrations or background workers.
+	ReaderOnly bool
 	// DBPath 是 Calibre 书库 SQLite 文件路径（metadata.db）。
 	DBPath string
 	// UserDBPath 是 Talebook 自有库路径（calibre-webserver.db）。
@@ -167,7 +169,11 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 		opts.Addr = "127.0.0.1:8000"
 	}
 
-	db, err := openLibraryDB(opts.DBPath)
+	openLibrary, openUser := openLibraryDB, openUserDB
+	if opts.ReaderOnly {
+		openLibrary, openUser = openExistingReaderDB, openExistingReaderDB
+	}
+	db, err := openLibrary(opts.DBPath)
 	if err != nil {
 		return err
 	}
@@ -180,7 +186,7 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 	// 自有库不能跑 library.Migrate：它没有 books 表，扩展表由 userdb 自己管。
 	userDB := db
 	if opts.UserDBPath != "" && opts.UserDBPath != opts.DBPath {
-		userDB, err = openUserDB(opts.UserDBPath)
+		userDB, err = openUser(opts.UserDBPath)
 		if err != nil {
 			return err
 		}
@@ -192,7 +198,7 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 	// 两个句柄都要传：传错任一个都会在运行时报 no such table。
 	//   - 只传 libraryDB → scanfiles 找不到（ScanService.DB 错）
 	//   - 只传 userDB → books 找不到（ScanService.LibraryDB 错）
-	if opts.ServiceFactory != nil {
+	if opts.ServiceFactory != nil && !opts.ReaderOnly {
 		set := opts.ServiceFactory(userDB, db)
 		if set.ScanService != nil {
 			opts.ScanService = set.ScanService
@@ -232,23 +238,27 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 		}
 	}
 
-	stopCovers, err := attachCoverWorker(ctx, db, opts.LibraryRoot)
-	if err != nil {
-		return err
-	}
-	defer stopCovers()
-	stopDirectories := attachDirectoryWorker(ctx, db, opts.LibraryRoot, opts.Out)
-	defer stopDirectories()
-	if opts.ScanService != nil {
-		if service := opts.ScanService(); service != nil {
-			service.DeferCovers = true
-			service.PrepareWorkers = 4
+	if !opts.ReaderOnly {
+		stopCovers, err := attachCoverWorker(ctx, db, opts.LibraryRoot)
+		if err != nil {
+			return err
 		}
+		defer stopCovers()
+		stopDirectories := attachDirectoryWorker(ctx, db, opts.LibraryRoot, opts.Out)
+		defer stopDirectories()
+		if opts.ScanService != nil {
+			if service := opts.ScanService(); service != nil {
+				service.DeferCovers = true
+				service.PrepareWorkers = 4
+			}
+		}
+		var stopImports func()
+		opts, stopImports = attachImportWorker(ctx, opts, userDB)
+		defer stopImports()
+		var stopSources func()
+		opts, stopSources = attachSourceWorker(ctx, opts, db, userDB)
+		defer stopSources()
 	}
-	opts, stopImports := attachImportWorker(ctx, opts, userDB)
-	defer stopImports()
-	opts, stopSources := attachSourceWorker(ctx, opts, db, userDB)
-	defer stopSources()
 	dispatcher, err := newSettingsHandler(opts, db, userDB)
 	if err != nil {
 		return err
@@ -532,6 +542,9 @@ func openLibraryDB(path string) (*sql.DB, error) {
 
 // newServeDispatcher builds immutable route configurations for one settings snapshot.
 func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, error) {
+	if opts.ReaderOnly {
+		return newReaderOnlyDispatcher(opts, db, userDB)
+	}
 	authCfg := AuthConfig{
 		CookieSecret: opts.CookieSecret,
 		Demo:         opts.Demo,

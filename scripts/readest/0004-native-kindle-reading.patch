@@ -1,0 +1,189 @@
+diff --git a/apps/readest-app/public/locales/en/translation.json b/apps/readest-app/public/locales/en/translation.json
+index e00659b..e15bdb0 100644
+--- a/apps/readest-app/public/locales/en/translation.json
++++ b/apps/readest-app/public/locales/en/translation.json
+@@ -1,4 +1,6 @@
+ {
++  "Convert to EPUB manually": "Convert to EPUB manually",
++  "The original file could not be opened. You can retry or choose manual conversion. Damaged or DRM-protected files may still fail.": "The original file could not be opened. You can retry or choose manual conversion. Damaged or DRM-protected files may still fail.",
+   "On hold": "On hold",
+   "Mark as On hold": "Mark as On hold",
+   "LXGW WenKai GB Screen": "LXGW WenKai SC",
+diff --git a/apps/readest-app/public/locales/ru/translation.json b/apps/readest-app/public/locales/ru/translation.json
+index 9340f86..2711b7d 100644
+--- a/apps/readest-app/public/locales/ru/translation.json
++++ b/apps/readest-app/public/locales/ru/translation.json
+@@ -1,4 +1,6 @@
+ {
++  "Convert to EPUB manually": "Преобразовать в EPUB вручную",
++  "The original file could not be opened. You can retry or choose manual conversion. Damaged or DRM-protected files may still fail.": "Не удалось открыть исходный файл. Повторите попытку или выберите преобразование вручную. Повреждённые файлы и файлы с DRM могут не открыться и после преобразования.",
+   "On hold": "Отложено",
+   "Mark as On hold": "Отметить как отложенное",
+   "(detected)": "(обнаружено)",
+diff --git a/apps/readest-app/public/locales/zh-CN/translation.json b/apps/readest-app/public/locales/zh-CN/translation.json
+index 9ca9ef3..02e2719 100644
+--- a/apps/readest-app/public/locales/zh-CN/translation.json
++++ b/apps/readest-app/public/locales/zh-CN/translation.json
+@@ -1,4 +1,6 @@
+ {
++  "Convert to EPUB manually": "手动转换为 EPUB",
++  "The original file could not be opened. You can retry or choose manual conversion. Damaged or DRM-protected files may still fail.": "无法直接打开原文件。可以重试，或选择手动转换；文件损坏或受 DRM 保护时，转换也可能失败。",
+   "On hold": "搁置中",
+   "Mark as On hold": "标记为搁置",
+   "(detected)": "(检测到)",
+diff --git a/apps/readest-app/src/__tests__/services/mokeRemoteSource.test.ts b/apps/readest-app/src/__tests__/services/mokeRemoteSource.test.ts
+index 4b0c6c0..09776dc 100644
+--- a/apps/readest-app/src/__tests__/services/mokeRemoteSource.test.ts
++++ b/apps/readest-app/src/__tests__/services/mokeRemoteSource.test.ts
+@@ -5,6 +5,7 @@ import {
+   MokeRemoteSourceError,
+   mokeRemoteSourceErrorDetail,
+   validateMokeRemoteSource,
++  nativeKindleRecovery,
+ } from '@/services/mokeRemoteSource';
+ 
+ const SERVER = 'https://books.example';
+@@ -217,3 +218,19 @@ describe('Moke online source authorization', () => {
+     expect(mokeRemoteSourceErrorDetail(new Error(SOURCE))).toBeNull();
+   });
+ });
++
++describe('native Kindle source contract', () => {
++  it.each([['mobi','application/x-mobipocket-ebook'],['azw','application/vnd.amazon.ebook'],['azw3','application/vnd.amazon.mobi8-ebook']])('accepts %s with exact matching MIME and local recovery', (format,mime) => {
++    const source = `${SERVER}/read/resource/42.${format}?revision=abc-123`;
++    expect(validateMokeRemoteSource(source, SERVER, '42').mime).toBe(mime);
++    const search = new URLSearchParams({ moke:'1', mokeBookId:'42', file:source }).toString();
++    expect(nativeKindleRecovery(search,SERVER)).toEqual({ back:'/book/42', convert:'/book/42?convert=epub' });
++    expect(nativeKindleRecovery(search,'https://other.example')).toBeNull();
++  });
++  it('rejects unknown extensions, mismatched books and spoofed recovery', () => {
++    for (const source of [`${SERVER}/read/resource/42.pdf?revision=abc`,`${SERVER}/read/resource/43.mobi?revision=abc`,`${SERVER}/read/resource/42.mobi?revision=abc&other=1`]) {
++      expect(() => validateMokeRemoteSource(source,SERVER,'42')).toThrow();
++    }
++    expect(nativeKindleRecovery('moke=1&mokeBookId=42&file=https://evil.example/42.mobi',SERVER)).toBeNull();
++  });
++});
+diff --git a/apps/readest-app/src/app/reader/components/ReaderContent.tsx b/apps/readest-app/src/app/reader/components/ReaderContent.tsx
+index 41419f4..ee364b3 100644
+--- a/apps/readest-app/src/app/reader/components/ReaderContent.tsx
++++ b/apps/readest-app/src/app/reader/components/ReaderContent.tsx
+@@ -34,6 +34,7 @@ import { BOOK_IDS_SEPARATOR } from '@/services/constants';
+ import { emitReaderEvent } from '@/services/mokeBridge';
+ import {
+   mokeRemoteSourceErrorDetail,
++  nativeKindleRecovery,
+   type MokeRemoteSourceErrorDetail,
+ } from '@/services/mokeRemoteSource';
+ import { useAuth } from '@/context/AuthContext';
+@@ -93,6 +94,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
+   const closingBooksRef = useRef<{ bookKeys: string; promise: Promise<void> } | null>(null);
+   const [loading, setLoading] = useState(false);
+   const [errorLoading, setErrorLoading] = useState(false);
++  const nativeRecovery = typeof window !== 'undefined' ? nativeKindleRecovery(window.location.search, window.location.origin) : null;
+   const [remoteSourceError, setRemoteSourceError] = useState<MokeRemoteSourceErrorDetail | null>(
+     null,
+   );
+@@ -151,6 +153,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
+         initViewState(envConfig, id, key, isPrimary).catch((error) => {
+           console.log('Error initializing book', key, error);
+           setErrorLoading(true);
++          if (nativeRecovery) return;
+           eventDispatcher.dispatch('toast', {
+             message: _('Unable to open book'),
+             callback: async () => {
+@@ -198,6 +201,7 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
+         void emitReaderEvent('reader:error', detail as unknown as Record<string, unknown>);
+         return;
+       }
++      if (nativeRecovery) return;
+       eventDispatcher.dispatch('toast', {
+         message: _('Unable to open book'),
+         callback: async () => {
+@@ -518,6 +522,22 @@ const ReaderContent: React.FC<{ ids?: string; settings: SystemSettings }> = ({ i
+     }
+   };
+ 
++  if (nativeRecovery && (errorLoading || remoteSourceError)) {
++    return (
++      <div className='full-height flex flex-col overflow-y-auto px-6 py-8 text-center' role='alert'>
++        <div className='mx-auto my-auto w-full max-w-md shrink-0'>
++          <h1 className='break-words text-xl font-semibold'>{_('Unable to open book')}</h1>
++          <p className='mt-3 break-words opacity-70'>{_('The original file could not be opened. You can retry or choose manual conversion. Damaged or DRM-protected files may still fail.')}</p>
++          <div className='mt-6 flex flex-wrap justify-center gap-3'>
++            <button className='btn btn-outline h-auto min-h-12 max-w-full whitespace-normal py-3' onClick={() => window.location.reload()}>{_('Retry')}</button>
++            <a className='btn btn-outline h-auto min-h-12 max-w-full whitespace-normal py-3' href={nativeRecovery.back}>{_('Go Back')}</a>
++            <a className='btn btn-outline h-auto min-h-12 max-w-full whitespace-normal py-3' href={nativeRecovery.convert}>{_('Convert to EPUB manually')}</a>
++          </div>
++        </div>
++      </div>
++    );
++  }
++
+   if (remoteSourceError) {
+     return (
+       <div className='hero hero-content full-height px-6 text-center'>
+diff --git a/apps/readest-app/src/services/mokeRemoteSource.ts b/apps/readest-app/src/services/mokeRemoteSource.ts
+index 818d568..1406171 100644
+--- a/apps/readest-app/src/services/mokeRemoteSource.ts
++++ b/apps/readest-app/src/services/mokeRemoteSource.ts
+@@ -1,7 +1,7 @@
+ import { isTauriAppPlatform } from '@/services/environment';
+ import type { RemoteFileTransport } from '@/utils/file';
+ 
+-const EPUB_MIME = 'application/epub+zip';
++const SOURCE_MIMES = { epub: 'application/epub+zip', mobi: 'application/x-mobipocket-ebook', azw: 'application/vnd.amazon.ebook', azw3: 'application/vnd.amazon.mobi8-ebook' } as const;
+ const SAFE_REVISION = /^[A-Za-z0-9._~-]{1,128}$/;
+ const SAFE_ETAG = /^[^\r\n]{1,256}$/;
+ const RANGE_HEADER = /^bytes=(\d+)-(\d+)$/;
+@@ -36,7 +36,7 @@ export interface MokeRemoteSourceErrorDetail {
+ 
+ interface MokeRemoteSourceContext {
+   url: string;
+-  mime: typeof EPUB_MIME;
++  mime: string;
+ }
+ 
+ export type MokeRemoteFetch = (url: string, init?: RequestInit) => Promise<Response>;
+@@ -99,6 +99,8 @@ export function validateMokeRemoteSource(
+     throw new MokeRemoteSourceError('online.response_invalid');
+   }
+ 
++  const extension = source.pathname.slice(source.pathname.lastIndexOf('.') + 1) as keyof typeof SOURCE_MIMES;
++  const mime = SOURCE_MIMES[extension];
+   const revisionValues = source.searchParams.getAll('revision');
+   const queryKeys = [...source.searchParams.keys()];
+   if (
+@@ -106,7 +108,7 @@ export function validateMokeRemoteSource(
+     source.username ||
+     source.password ||
+     source.hash ||
+-    source.pathname !== `/read/resource/${bookId}.epub` ||
++    (!mime || source.pathname !== `/read/resource/${bookId}.${extension}`) ||
+     queryKeys.length !== 1 ||
+     queryKeys[0] !== 'revision' ||
+     revisionValues.length !== 1 ||
+@@ -115,7 +117,7 @@ export function validateMokeRemoteSource(
+     throw new MokeRemoteSourceError('online.response_invalid');
+   }
+ 
+-  return { url: source.href, mime: EPUB_MIME };
++  return { url: source.href, mime };
+ }
+ 
+ export function mokeRemoteSourceErrorDetail(error: unknown): MokeRemoteSourceErrorDetail | null {
+@@ -329,3 +331,15 @@ export function createMokeRemoteSourceTransport(
+     },
+   };
+ }
++
++/** Recovery links are generated locally, never taken from a remote failure payload. */
++export function nativeKindleRecovery(search: string, origin: string): { back: string; convert: string } | null {
++  const params = new URLSearchParams(search);
++  const id = params.get('mokeBookId') || '';
++  if (params.get('moke') !== '1' || !/^[1-9][0-9]*$/.test(id)) return null;
++  try {
++    const context = validateMokeRemoteSource(params.get('file') || '', origin, id);
++    if (context.mime === SOURCE_MIMES.epub) return null;
++    return { back: `/book/${id}`, convert: `/book/${id}?convert=epub` };
++  } catch { return null; }
++}

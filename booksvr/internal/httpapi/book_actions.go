@@ -435,11 +435,15 @@ func BookReaderBootstrapHandler(cfg BookConfig) HandlerFunc {
 	}
 }
 
-// BookReaderResourceHandler 实现 /read/resource/<id>.epub。
+// BookReaderResourceHandler 按格式交付同源、授权的阅读原文件。
 func BookReaderResourceHandler(cfg BookConfig) HandlerFunc {
 	return func(ctx *Context) (map[string]any, error) {
 		name := ctx.Param(0)
-		bookID, err := strconv.ParseInt(strings.TrimSuffix(name, ".epub"), 10, 64)
+		if _, ok := readerFormatMIME[strings.TrimPrefix(filepath.Ext(name), ".")]; !ok {
+			http.Error(ctx.Writer, "Not Found", http.StatusNotFound)
+			return nil, nil
+		}
+		bookID, err := strconv.ParseInt(strings.TrimSuffix(name, filepath.Ext(name)), 10, 64)
 		if err != nil {
 			http.Error(ctx.Writer, "Not Found", http.StatusNotFound)
 			return nil, nil
@@ -461,7 +465,7 @@ func BookReaderResourceHandler(cfg BookConfig) HandlerFunc {
 			http.Error(ctx.Writer, "Not Found", http.StatusNotFound)
 			return nil, nil
 		}
-		serveEPUBResource(ctx, path)
+		serveReaderResource(ctx, path, readerFormatMIME[strings.TrimPrefix(filepath.Ext(name), ".")])
 		return nil, nil
 	}
 }
@@ -472,6 +476,10 @@ func BookReaderResourceHandler(cfg BookConfig) HandlerFunc {
 // 且只注册了 GET 路由。Readest 会先发 HEAD 探测（拿 Content-Length 与
 // Accept-Ranges），405 会让它报「Failed to open the book file: online.network」。
 func serveEPUBResource(ctx *Context, path string) {
+	serveReaderResource(ctx, path, "application/epub+zip")
+}
+
+func serveReaderResource(ctx *Context, path, mime string) {
 	logicalSource := path
 	path, release, err := sourcefile.Acquire(sourceContext(ctx), path)
 	if err != nil {
@@ -491,19 +499,24 @@ func serveEPUBResource(ctx *Context, path string) {
 	}
 	defer func() { _ = f.Close() }()
 
-	ctx.Writer.Header().Set("Content-Type", "application/epub+zip")
+	ctx.Writer.Header().Set("Content-Type", mime)
 	ctx.Writer.Header().Set("Accept-Ranges", "bytes")
 	// Readest 用 ETag 做资源变更检测（HEAD 与 GET 各取一次并比对），
 	// 缺失会直接报「Failed to open the book file: online.response_invalid」。
 	// 用 revision（mtime_ns-size 的十六进制）作为 ETag，与 bootstrap
 	// 接口下发的 book.revision 同源，文件一变两者同步失效。
-	if rev := readerResourceRevision(logicalSource); rev != "" {
+	rev := readerResourceRevision(logicalSource)
+	if requested := ctx.Query("revision"); requested != "" && requested != rev {
+		http.Error(ctx.Writer, "阅读原文件已变化，请重新打开书籍", http.StatusPreconditionFailed)
+		return
+	}
+	if rev != "" {
 		ctx.Writer.Header().Set("ETag", `"`+rev+`"`)
 	}
 	// 必须禁止启发式缓存：浏览器会把旧响应（可能没有 ETag）直接复用，
 	// Readest 的 fetch 走默认 cache 模式，拿到陈旧响应就报
 	// online.response_invalid。no-cache 强制带 If-None-Match revalidate。
-	ctx.Writer.Header().Set("Cache-Control", "no-cache")
+	ctx.Writer.Header().Set("Cache-Control", "private, no-cache")
 	// http.ServeContent 自己处理 Range / If-Modified-Since / HEAD。
 	http.ServeContent(ctx.Writer, ctx.Request, filepath.Base(path), info.ModTime(), f)
 }

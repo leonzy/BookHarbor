@@ -28,7 +28,13 @@
   caret-color: CanvasText;
   z-index: 0;
 
+  /* We multiply the font size by --min-font-size, and then scale the text
+   * elements by 1/--min-font-size. This allows us to effectively ignore the
+   * minimum font size enforced by the browser, so that the text layer <span>s
+   * can always match the size of the text in the canvas. */
+
   /* Avoids https://github.com/mozilla/pdf.js/issues/13840 in Chrome */
+  /*#if !MOZCENTRAL*/
   /*#endif*/
 }
 
@@ -49,11 +55,6 @@
   --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
   --min-font-size-inv: calc(1 / var(--min-font-size));
 }
-
-/* We multiply the font size by --min-font-size, and then scale the text
-   * elements by 1/--min-font-size. This allows us to effectively ignore the
-   * minimum font size enforced by the browser, so that the text layer <span>s
-   * can always match the size of the text in the canvas. */
 
 .textLayer > :not(.markedContent),
   .textLayer .markedContent span:not(.markedContent) {
@@ -134,8 +135,6 @@
     /* stylelint-enable declaration-block-no-duplicate-properties */
     background: color-mix(in srgb, AccentColor, transparent 75%);
   }
-
-/*#if !MOZCENTRAL*/
 
 .textLayer br::selection {
     background: transparent;

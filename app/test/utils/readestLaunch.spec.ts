@@ -62,7 +62,7 @@ describe('Talebook Readest launcher', () => {
         expect(target.searchParams.get('moke')).toBe('1');
         expect(target.searchParams.get('mokeBookId')).toBe('1');
         expect(target.searchParams.get('mokeSourceServerUrl')).toBe('http://127.0.0.1:9000');
-        expect(target.searchParams.get('mokeReturnTo')).toBe('/library');
+        expect(target.searchParams.get('mokeReturnTo')).toBe('/book/1');
     });
 
     it('rejects cross-origin, unversioned, and mismatched resources', () => {
@@ -124,3 +124,23 @@ describe('Talebook Readest launcher', () => {
         })).rejects.toMatchObject({ login: true });
     });
 });
+
+for (const format of ['mobi', 'azw3', 'azw']) {
+    it(`launches original ${format} and offers a non-executing conversion link`, async () => {
+        const mime = { mobi: 'application/x-mobipocket-ebook', azw3: 'application/vnd.amazon.mobi8-ebook', azw: 'application/vnd.amazon.ebook' }[format];
+        const payload = { ...bootstrap, book: { ...bootstrap.book, format }, resource: { ...bootstrap.resource, url: `/read/resource/1.${format}?revision=abc-123`, mime } };
+        const launch = buildReadestReaderUrl(payload, { bookId: '1', origin: 'http://127.0.0.1:9000' });
+        expect(new URL(launch.target).searchParams.get('file')).toContain(`/read/resource/1.${format}?revision=abc-123`);
+        expect(launch.fallback).toBe('/book/1?convert=epub');
+        const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ err: 'reader.format_unsupported', msg: '源文件不可用' }), { status:404, headers: { 'Content-Type':'application/json' } }));
+        const fakeWindow = { location: { search:`?bookId=1&format=${format}`, origin:'http://127.0.0.1:9000', replace:vi.fn() } };
+        renderLauncher();
+        expect(await runReadestLauncher({ window:fakeWindow, document, fetchImpl })).toBe(false);
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+        expect(fetchImpl.mock.calls[0][0]).toContain(`&format=${format}`);
+        expect(document.querySelector('[data-action="fallback"]')?.getAttribute('href')).toBe('/book/1?convert=epub');
+        expect(document.querySelector('[data-action="fallback"]')?.textContent).toBe('手动转换为 EPUB');
+        expect(document.querySelector('[data-action="retry"]')?.getAttribute('href')).toBe(`/readest/talebook-launch.html?bookId=1&format=${format}`);
+        expect(fakeWindow.location.replace).not.toHaveBeenCalled();
+    });
+}

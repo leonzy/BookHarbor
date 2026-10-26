@@ -70,7 +70,8 @@ func serveResource(t *testing.T, w *bookWiring, method string, headers map[strin
 	srv.Identify = func(*http.Request) (Identity, error) {
 		return Identity{UserID: 1, IsAdmin: true}, nil
 	}
-	req := httptest.NewRequest(method, "/read/resource/1.epub?revision=x", nil)
+	_, source := w.readerSource(1, "epub")
+	req := httptest.NewRequest(method, "/read/resource/1.epub?revision="+readerResourceRevision(source), nil)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
@@ -188,7 +189,7 @@ func TestReaderResourceSendsETagAndNoCache(t *testing.T) {
 		if etag != `"`+want+`"` {
 			t.Errorf("%s ETag = %q，期望 %q", method, etag, `"`+want+`"`)
 		}
-		if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		if cc := rec.Header().Get("Cache-Control"); cc != "private, no-cache" {
 			t.Errorf("%s Cache-Control = %q，期望 no-cache", method, cc)
 		}
 	}

@@ -476,7 +476,7 @@ func ensureNamedRow(tx *sql.Tx, table, column, name string) (int64, error) {
 //   - 有 EPUB → 直接渲染阅读器（is_ready=true）
 //   - 只有 PDF → 重定向到 PDF 阅读器
 //   - 只有 TXT → 重定向到 /book/<id>/readtxt
-//   - 只有 mobi/azw/azw3 → 触发后台转 EPUB，渲染「转换中」页面
+//   - 只有 mobi/azw/azw3 → Readest 直接读取原文件，不创建转换任务
 func (w *bookWiring) bookReadBook(ctx *Context, bookID int64) (map[string]any, error) {
 	book, err := bookGetOne(w.Config(""), bookID)
 	if err != nil {
@@ -522,6 +522,16 @@ func (w *bookWiring) bookReadBook(ctx *Context, bookID int64) (map[string]any, e
 	w.markReadingIfNeeded(ctx, bookID)
 	w.countDownload(ctx, bookID)
 
+	if requested := strings.ToLower(ctx.Query("format")); requested != "" {
+		if _, ok := readerFormatMIME[requested]; !ok || !has[requested] {
+			http.Error(ctx.Writer, "请求的阅读格式不存在", http.StatusUnsupportedMediaType)
+			return nil, nil
+		}
+		if requested != "epub" {
+			w.redirectReadest(ctx, bookID, requested)
+			return nil, nil
+		}
+	}
 	if has["epub"] {
 		// 阅读器选择，对齐 Python BookRead.get：
 		//   use_readest = requested_reader == "readest"
@@ -549,11 +559,15 @@ func (w *bookWiring) bookReadBook(ctx *Context, bookID int64) (map[string]any, e
 		return nil, nil
 	}
 
-	// 其余格式（mobi/azw/azw3）：触发后台转 EPUB，先渲染「转换中」页面。
-	if w.convert != nil {
-		w.convert.StartForReading(bookID)
+	// Kindle files are delegated directly to Readest; reading never starts conversion.
+	format := ""
+	for _, candidate := range []string{"azw3", "mobi", "azw"} {
+		if has[candidate] {
+			format = candidate
+			break
+		}
 	}
-	w.writeReaderPage(ctx, bookID, book.Title, false)
+	w.redirectReadest(ctx, bookID, format)
 	return nil, nil
 }
 
@@ -724,32 +738,12 @@ func (w *bookWiring) bookReaderBootstrap(ctx *Context, bookID int64) (map[string
 		return map[string]any{"err": "permission"}, nil
 	}
 
-	epubPath := w.epubPath(bookID)
+	format, epubPath := w.readerSource(bookID, ctx.Query("format"))
 	if epubPath == "" {
-		// 有 mobi/azw3 但还没转出 EPUB：返回 409 让前端提示等待；
-		// 否则 404（对齐 Python 的 conversion_pending / format_unsupported）。
-		if w.hasKindleFormat(bookID) {
-			if w.convert == nil || w.convert.Converter == nil {
-				if ctx.Writer != nil {
-					ctx.Writer.WriteHeader(http.StatusServiceUnavailable)
-				}
-				return map[string]any{"err": "reader.converter_unavailable", "msg": "格式转换服务不可用，请下载原文件。"}, nil
-			}
-			if message := w.convert.ReadingError(bookID); message != "" {
-				if ctx.Writer != nil {
-					ctx.Writer.WriteHeader(http.StatusUnprocessableEntity)
-				}
-				return map[string]any{"err": "reader.conversion_failed", "msg": message}, nil
-			}
-			if ctx.Writer != nil {
-				ctx.Writer.WriteHeader(http.StatusConflict)
-			}
-			return map[string]any{"err": "reader.conversion_pending"}, nil
-		}
 		if ctx.Writer != nil {
 			ctx.Writer.WriteHeader(http.StatusNotFound)
 		}
-		return map[string]any{"err": "reader.format_unsupported"}, nil
+		return map[string]any{"err": "reader.format_unsupported", "msg": "原文件不存在或该格式无法直接阅读"}, nil
 	}
 
 	revision := readerResourceRevision(epubPath)
@@ -760,6 +754,10 @@ func (w *bookWiring) bookReaderBootstrap(ctx *Context, bookID int64) (map[string
 		return map[string]any{"err": "reader.format_unsupported"}, nil
 	}
 
+	kind := "authorized-book-url"
+	if format == "epub" {
+		kind = "authorized-epub-url"
+	}
 	return map[string]any{
 		"err":    "ok",
 		"schema": readerBootstrapSchema,
@@ -767,18 +765,18 @@ func (w *bookWiring) bookReaderBootstrap(ctx *Context, bookID int64) (map[string
 		"book": map[string]any{
 			"id":       bookID,
 			"title":    book.Title,
-			"format":   "epub",
+			"format":   format,
 			"revision": revision,
 		},
 		"resource": map[string]any{
-			"kind":  "authorized-epub-url",
-			"url":   fmt.Sprintf("/read/resource/%d.epub?revision=%s", bookID, revision),
-			"mime":  "application/epub+zip",
+			"kind":  kind,
+			"url":   fmt.Sprintf("/read/resource/%d.%s?revision=%s", bookID, format, revision),
+			"mime":  readerFormatMIME[format],
 			"range": true,
 		},
 		"navigation": map[string]any{
 			"back":     fmt.Sprintf("/book/%d", bookID),
-			"fallback": fmt.Sprintf("/read/%d?reader=candle", bookID),
+			"fallback": readerFallback(bookID, format),
 		},
 		"capabilities": readerBootstrapCapabilities(),
 	}, nil
@@ -885,20 +883,68 @@ func (w *bookWiring) bookReadResource(ctx *Context, bookID int64, name string) (
 	if !w.canView(ctx, bookID) {
 		return "", fmt.Errorf("httpapi: 无权查看")
 	}
-	path, err := library.FormatAbsPath(w.libraryDB, bookID, "EPUB", w.libraryRoot)
-	if err != nil {
-		return "", err
+	format := strings.TrimPrefix(strings.ToLower(filepath.Ext(name)), ".")
+	if _, ok := readerFormatMIME[format]; !ok || name != fmt.Sprintf("%d.%s", bookID, format) {
+		return "", fmt.Errorf("httpapi: 非法阅读资源")
 	}
+	_, path := w.readerSource(bookID, format)
 	if path == "" {
-		return "", fmt.Errorf("httpapi: EPUB 文件不存在")
+		return "", fmt.Errorf("httpapi: 原文件不存在")
 	}
 	if _, err := sourcefile.Stat(path); err != nil {
-		return "", fmt.Errorf("httpapi: EPUB 文件不存在: %w", err)
+		return "", err
 	}
+
 	// 资源名做路径穿越防护。
 	clean := filepath.Clean("/" + name)
 	if strings.Contains(clean, "..") {
 		return "", fmt.Errorf("httpapi: 非法资源名")
 	}
 	return path, nil
+}
+
+var readerFormatMIME = map[string]string{
+	"epub": "application/epub+zip",
+	"mobi": "application/x-mobipocket-ebook",
+	"azw":  "application/vnd.amazon.ebook",
+	"azw3": "application/vnd.amazon.mobi8-ebook",
+}
+
+func (w *bookWiring) readerSource(bookID int64, requested string) (string, string) {
+	formats := []string{"epub", "azw3", "mobi", "azw"}
+	if requested != "" {
+		formats = []string{strings.ToLower(requested)}
+	}
+	for _, format := range formats {
+		if _, ok := readerFormatMIME[format]; !ok {
+			continue
+		}
+		var path string
+		if format == "epub" {
+			path = w.epubPath(bookID)
+		} else {
+			path, _ = library.FormatAbsPath(w.libraryDB, bookID, strings.ToUpper(format), w.libraryRoot)
+		}
+		if path != "" {
+			if _, err := sourcefile.Stat(path); err == nil {
+				return format, path
+			}
+		}
+	}
+	return "", ""
+}
+
+func readerFallback(bookID int64, format string) string {
+	if format == "epub" {
+		return fmt.Sprintf("/read/%d?reader=candle", bookID)
+	}
+	return fmt.Sprintf("/book/%d?convert=epub", bookID)
+}
+
+func (w *bookWiring) redirectReadest(ctx *Context, bookID int64, format string) {
+	values := url.Values{"bookId": {strconv.FormatInt(bookID, 10)}}
+	if format != "" {
+		values.Set("format", format)
+	}
+	http.Redirect(ctx.Writer, ctx.Request, "/readest/talebook-launch.html?"+values.Encode(), http.StatusFound)
 }

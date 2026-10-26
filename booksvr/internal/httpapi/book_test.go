@@ -100,7 +100,7 @@ func TestBookRouteSpecsCoverLegacy(t *testing.T) {
 		"/api/recent", "/api/library", "/api/library/directories", "/api/search", "/api/hot",
 		"/api/book/upload", "/api/book/upload/chunk", "/api/book/upload/complete",
 		"/read/([0-9]+)", "/api/book/([0-9]+)/reader-bootstrap",
-		"/read/resource/([0-9]+\\.epub)", "/api/read/txt", "/api/book/txt/init",
+		"/read/resource/([0-9]+\\.(?:epub|mobi|azw|azw3))", "/api/read/txt", "/api/book/txt/init",
 		"/api/book/([0-9]+)/send_to_device", "/api/book/([0-9]+)/mailto",
 		"/api/book/([0-9]+)/setscope", "/api/book/([0-9]+)/media_type",
 		"/api/book/([0-9]+)/delete_format", "/api/book/([0-9]+)/separate",

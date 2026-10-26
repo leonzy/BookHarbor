@@ -1,5 +1,6 @@
 const BOOK_ID_PATTERN = /^[1-9][0-9]*$/;
 const BOOTSTRAP_SCHEMA = 'talebook.reader.bootstrap.v1';
+const FORMAT_MIME = { epub: 'application/epub+zip', mobi: 'application/x-mobipocket-ebook', azw: 'application/vnd.amazon.ebook', azw3: 'application/vnd.amazon.mobi8-ebook' };
 
 export class ReadestLaunchError extends Error {
   constructor(message, { login = false } = {}) {
@@ -25,27 +26,29 @@ export function validateReadestBootstrap(payload, { bookId, origin }) {
   if (payload.schema !== BOOTSTRAP_SCHEMA || payload.engine !== 'readest') {
     throw new ReadestLaunchError('阅读器启动协议不兼容');
   }
-  if (String(payload.book?.id) !== String(bookId) || payload.book?.format !== 'epub') {
+  const format = payload.book?.format;
+  if (String(payload.book?.id) !== String(bookId) || !Object.hasOwn(FORMAT_MIME, format)) {
     throw new ReadestLaunchError('书籍格式或标识不匹配');
   }
   const revision = typeof payload.book?.revision === 'string' ? payload.book.revision : '';
   if (!revision) throw new ReadestLaunchError('书籍版本标识无效');
-  if (payload.resource?.mime !== 'application/epub+zip' || payload.resource?.range !== true) {
-    throw new ReadestLaunchError('EPUB 资源契约不完整');
+  if (payload.resource?.mime !== FORMAT_MIME[format] || payload.resource?.range !== true) {
+    throw new ReadestLaunchError('阅读资源契约不完整');
   }
 
   const resource = new URL(payload.resource?.url || '', origin);
-  if (resource.origin !== origin || resource.pathname !== `/read/resource/${bookId}.epub`) {
-    throw new ReadestLaunchError('EPUB 资源不是受信任的同源地址');
+  if (resource.origin !== origin || resource.username || resource.password || resource.hash || resource.pathname !== `/read/resource/${bookId}.${format}`) {
+    throw new ReadestLaunchError('阅读资源不是受信任的同源地址');
   }
   if (resource.searchParams.get('revision') !== revision) {
-    throw new ReadestLaunchError('EPUB 资源版本与书籍不一致');
+    throw new ReadestLaunchError('阅读资源版本与书籍不一致');
   }
 
   return {
     resource: resource.href,
     back: localNavigationPath(payload.navigation?.back, `/book/${bookId}`),
-    fallback: localNavigationPath(payload.navigation?.fallback, `/read/${bookId}?reader=candle`),
+    fallback: format === 'epub' ? localNavigationPath(payload.navigation?.fallback, `/read/${bookId}?reader=candle`) : `/book/${bookId}?convert=epub`,
+    format,
   };
 }
 
@@ -70,8 +73,9 @@ export function buildReadestReaderUrl(bootstrap, { bookId, origin }) {
   return { target: target.href, ...validated };
 }
 
-export async function fetchReadestBootstrap({ bookId, origin, fetchImpl = fetch }) {
-  const response = await fetchImpl(`/api/book/${bookId}/reader-bootstrap?engine=readest`, {
+export async function fetchReadestBootstrap({ bookId, origin, format, fetchImpl = fetch }) {
+  const query = format && Object.hasOwn(FORMAT_MIME, format) ? `&format=${format}` : '';
+  const response = await fetchImpl(`/api/book/${bookId}/reader-bootstrap?engine=readest${query}`, {
     credentials: 'same-origin',
     headers: { Accept: 'application/json' },
     redirect: 'follow',
@@ -101,12 +105,20 @@ function configureActions(document, bookId, navigation = {}) {
   const fallback = document.querySelector('[data-action="fallback"]');
   const retry = document.querySelector('[data-action="retry"]');
   if (back) back.href = navigation.back || `/book/${bookId}`;
-  if (fallback) fallback.href = navigation.fallback || `/read/${bookId}?reader=candle`;
-  if (retry) retry.href = `/readest/talebook-launch.html?bookId=${encodeURIComponent(bookId)}`;
+  if (fallback) {
+    const native = ['mobi', 'azw', 'azw3'].includes(navigation.format);
+    fallback.href = native ? `/book/${bookId}?convert=epub` : navigation.fallback || `/read/${bookId}?reader=candle`;
+    fallback.textContent = native ? '手动转换为 EPUB' : '改用 Candle';
+  }
+  if (retry) {
+    const format = Object.hasOwn(FORMAT_MIME, navigation.format) ? `&format=${navigation.format}` : '';
+    retry.href = `/readest/talebook-launch.html?bookId=${encodeURIComponent(bookId)}${format}`;
+  }
 }
 
 export async function runReadestLauncher({ window, document, fetchImpl = fetch }) {
   const bookId = parseReadestBookId(window.location.search);
+  const format = new URLSearchParams(window.location.search).get('format') || undefined;
   const status = document.querySelector('[data-launch-status]');
   const actions = document.querySelector('[data-launch-actions]');
   const login = document.querySelector('[data-action="login"]');
@@ -125,9 +137,9 @@ export async function runReadestLauncher({ window, document, fetchImpl = fetch }
     return false;
   }
 
-  configureActions(document, bookId);
+  configureActions(document, bookId, { format });
   try {
-    const payload = await fetchReadestBootstrap({ bookId, origin: window.location.origin, fetchImpl });
+    const payload = await fetchReadestBootstrap({ bookId, origin: window.location.origin, format, fetchImpl });
     const launch = buildReadestReaderUrl(payload, { bookId, origin: window.location.origin });
     configureActions(document, bookId, launch);
     window.location.replace(launch.target);
@@ -135,7 +147,7 @@ export async function runReadestLauncher({ window, document, fetchImpl = fetch }
   } catch (error) {
     const launchError = error instanceof ReadestLaunchError
       ? error
-      : new ReadestLaunchError('连接阅读器失败，请重试或改用 Candle');
+      : new ReadestLaunchError('连接阅读器失败，请重试或返回书籍页');
     showError(launchError.message);
     if (login) login.hidden = !launchError.login;
     return false;

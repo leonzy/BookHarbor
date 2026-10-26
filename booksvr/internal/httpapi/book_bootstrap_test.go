@@ -220,7 +220,7 @@ func TestReaderBootstrapNoEpub(t *testing.T) {
 }
 
 // TestReaderBootstrapConversionPending 回归：只有 mobi 时 409 conversion_pending。
-func TestReaderBootstrapConversionPending(t *testing.T) {
+func TestReaderBootstrapMissingNativeSource(t *testing.T) {
 	db := netSchemaDB(t)
 	createCalibreTables(t, db)
 	createFormatTables(t, db)
@@ -238,14 +238,14 @@ func TestReaderBootstrapConversionPending(t *testing.T) {
 	w.convert.Converter = func(string, string) error { return nil }
 	rec := serveBootstrap(t, w, "engine=readest")
 
-	if rec.Code != http.StatusConflict {
+	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d，期望 409", rec.Code)
 	}
 	var got map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got["err"] != "reader.conversion_pending" {
+	if got["err"] != "reader.format_unsupported" {
 		t.Errorf("err = %v，期望 reader.conversion_pending", got["err"])
 	}
 }
