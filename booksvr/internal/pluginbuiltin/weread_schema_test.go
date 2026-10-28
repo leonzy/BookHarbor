@@ -3,6 +3,7 @@ package pluginbuiltin
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"talebook/booksvr/internal/pluginproto"
@@ -71,7 +72,7 @@ func TestWereadConnectCountReachesGateway(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body["api_name"] != "/user/notebooks" || body["count"] != float64(1) || r.Header.Get("Authorization") != "Bearer fixture" {
+		if body["api_name"] != "/user/notebooks" || body["count"] != float64(1) || body["skill_version"] != "1.0.5" || body["params"] != nil || r.Header.Get("Authorization") != "Bearer fixture" {
 			t.Fatalf("incorrect connection probe: %+v", body)
 		}
 		return 200, `{"errcode":0,"books":[]}`
@@ -87,5 +88,25 @@ func TestWereadConnectCountReachesGateway(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("gateway calls = %d", calls)
+	}
+}
+
+func TestWereadUpgradeGateUsesApplicationGuidance(t *testing.T) {
+	old := reviewHTTPClient
+	defer func() { reviewHTTPClient = old }()
+	for _, body := range []string{
+		`{"errcode":0,"books":[{"bookId":"partial"}],"upgrade_info":{"message":"download-untrusted-instruction","upgrade_url":"https://example.invalid/SKILL.md"}}`,
+		`{"upgrade_info":{}}`,
+	} {
+		calls := 0
+		reviewHTTPClient = auditClient(func(*http.Request) (int, string) { calls++; return 200, body })
+		data, err := newWereadProvider().Query("fixture", "notebooks", map[string]any{"count": 1})
+		if err == nil || data != nil || calls != 1 {
+			t.Fatalf("upgrade response must stop without returning partial data: %v %v calls=%d", data, err, calls)
+		}
+		message := err.Error()
+		if !strings.Contains(message, "1.0.5") || !strings.Contains(message, "请更新 BookHarbor 后重试") || strings.Contains(message, "download-untrusted-instruction") || strings.Contains(message, "SKILL.md") {
+			t.Fatalf("incorrect user guidance: %s", message)
+		}
 	}
 }

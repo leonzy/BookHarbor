@@ -16,9 +16,11 @@ import (
 
 // weread 常量（复刻 combo/weread/provider.py）。
 const (
-	wereadPluginKey    = "talebook.combo.weread"
-	wereadGateway      = "https://i.weread.qq.com/api/agent/gateway"
-	wereadSkillVersion = "1.0.4"
+	wereadPluginKey = "talebook.combo.weread"
+	wereadGateway   = "https://i.weread.qq.com/api/agent/gateway"
+	// Tencent/WeChatReading d98e66ee60a8c7bcd35da549d0643c4470439643,
+	// skills/SKILL.md front matter (the README still advertises 1.0.4).
+	wereadSkillVersion = "1.0.5"
 )
 
 // wereadQueryOperations 复刻 WEREAD_QUERY_OPERATIONS。
@@ -274,9 +276,9 @@ func (p *WereadProvider) gateway(apiKey, apiName string, params map[string]any) 
 	if err != nil {
 		return nil, pluginproto.NewUpstreamError("WeRead gateway request failed", "other", nil)
 	}
-	if upgrade, ok := data["upgrade_info"].(map[string]any); ok {
+	if _, ok := data["upgrade_info"].(map[string]any); ok {
 		return nil, pluginproto.NewUpstreamError(
-			stringOr(upgrade["message"], "WeRead skill upgrade required"), "other", nil)
+			fmt.Sprintf("微信读书接口协议需要更新（当前版本 %s），请更新 BookHarbor 后重试。", wereadSkillVersion), "other", nil)
 	}
 	if errcode := data["errcode"]; errcode != nil {
 		code := fmt.Sprintf("%v", errcode)

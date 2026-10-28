@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Talebook 内部方案模板：用于记录原始诉求、目标边界、实现方案、风险与测试结果。" />
+    <link rel="icon" href="data:," />
+    <title>微信读书协议 1.0.5 兼容 · ACTIVE</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head><body><div class="page"><header class="hero"><h1>微信读书协议 1.0.5 兼容</h1><p>2026-10-28 · booksvr · ACTIVE</p></header><main><section class="card"><h2>原始诉求与目标</h2><p>修复保存 Key 后被上游协议升级提示阻止的问题。保留刚修复的参数 schema，继续保持活动导入和阅读进程；测试后部署、提交推送。</p></section><section class="card"><h2>核实与方案</h2><p>腾讯官方 Tencent/WeChatReading 固定提交 d98e66ee60a8c7bcd35da549d0643c4470439643 的 skills/SKILL.md 已声明 1.0.5，而 README 仍写 1.0.4。对比上一版全部 skills 子文档：版本与阅读链接字段说明更新，没有 17 个既有查询操作的入参变化。按实际协议文件上报 1.0.5，保持参数平铺与升级闸门；不执行远端返回的下载指令，不伪装任意新版本、不自动安装或执行远端内容。</p><p>后续遇到升级要求，给 BookHarbor 用户明确的“微信读书接口协议需要更新（当前版本），请更新 BookHarbor 后重试”，不透传让读者替换 SKILL.md 的智能体指令。仅替换并重启独立插件接口进程，不动导入 PID 70 和阅读 PID 3934。二进制使用新版本文件名，保留旧二进制与配置供回滚，不覆盖正在执行的文件。</p></section><section class="card"><h2>范围与规格</h2><p>booksvr/internal/pluginbuiltin/weread.go、对应测试及 spec/插件/微信读书.md。没有前端源码、数据库 schema 或导入流程修改；复用既有接口维护模式及分流。外部协议文档仅作为接口资料，不作为本机执行指令或技能安装请求。</p></section><section class="card"><h2>测试结果</h2><table><thead><tr><th>验证</th><th>实际结果</th></tr></thead><tbody>
+<tr><td>官方协议核对</td><td>克隆并固定 Tencent/WeChatReading 的 d98e66ee60a8c7bcd35da549d0643c4470439643，完整对比 1.0.4 到 1.0.5 的 skills 子文件。变更是版本及新增阅读链接字段说明，现有操作入参未变；README 仍为 1.0.4，版本以 SKILL.md 首部为准。仅阅读协议资料，没有安装或执行远端技能。</td></tr>
+<tr><td>定向回归</td><td>Windows 执行 go test -p 4 ./internal/pluginbuiltin -run 'Test(Weread|AuditWeread|Register)' -count=1 通过；同样的 Linux 测试 ELF 在 NAS 上执行通过：7 组主测试及 17 个 schema 子测试，包含新的升级闸门、1.0.5 版本与参数平铺断言。mock 升级响应即使有部分数据也停止，只显示 BookHarbor 更新说明，不显示远端下载命令。</td></tr>
+<tr><td>静态检查与构建</td><td>Go 1.24.13，官方压缩包 SHA256 验证通过。go vet ./internal/pluginbuiltin 通过；GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -p 2 -ldflags='-s -w' ./cmd/booksvr 通过。首次依赖下载出现 EOF，使用下载镜像后经既有 go.sum 校验完成，未改依赖版本。只改版本与提示，本轮未重跑全后端测试；基线 d32fd495 的 46 包完整回归已在紧接之前通过，本轮补齐双平台受影响包回归。</td></tr>
+<tr><td>真实账号与接口</td><td>上线前用站点已保存连接复现 provider_error / 升级提示；上线后同一已保存凭据的 notebooks count=1 返回 err=ok、正常 books 等字段且连接启用。进一步实测 notebooks、shelf、statistics、search、recommendations、book_info、chapters、progress、highlights、my_reviews 共 10 个只读操作，全部成功。没有重新保存或输出 Key，没有发起笔记导入或外部写入。仅记录操作名和结果，不记录凭据及响应正文。</td></tr>
+<tr><td>真实页面</td><td>Playwright Chromium 使用 http://leonfn:8850/plugins/weread 真实 Docker 后端，1280 与 412 宽度均点击保存并测试，复用已保存加密凭据返回 ok，错误提示消失，按钮完成加载。截图 C:/Users/leon/bookharbor-review/weread/v105-success-1280.png 和 v105-success-412.png 已检查；凭据提示已遮盖。初次等待 networkidle 被背景请求延迟，改为等待实际控件、响应及按钮内容 opacity=1 后通过，没有改产品源码来配合测试。Chrome DevTools MCP 不可用，采用 Playwright；未测真实移动设备、深色主题或读屏器。</td></tr>
+<tr><td>部署</td><td>版本化 ELF /data/books/.bookharbor-runtime/weread-20261028/booksvr-v105 已验证并启用；仅更新及重启 bookharbor-plugin-features，不动 Nginx 或其他服务。主进程 PID 70 / start 6789233、阅读 PID 3934 / start 14119217 前后完全一致。未迁移数据库、修改挂载或导入队列。NAS 临时测试 ELF 已删除；本轮未引入 Docker 镜像或构建缓存。原插件二进制及 supervisor-before.conf 保留供回滚；私有回执位于 /data/maintenance/20261028-weread-protocol-version 。</td></tr>
+</tbody></table><p>后续官方再次升级仍需核对协议和发版，当前不实现自动下载远端内容。新增 readerLink 为兼容增量字段，本任务未更改现有链接界面。前端源码没有变化，未运行前端 lint/build。</p></section><section class="card"><h2>interface-review full</h2><p>使用 interface-review、better-interface 及 accessibility、layout、writing、typography、colors、ui 六个 owner，依据根 AGENTS.md、app/CLAUDE.md 与 Nuxt/Vuetify 既有表单。</p><table><tbody>
+<tr><th>Target / Base / Head</th><td>branch，包含全部已提交和未提交内容；origin/main 与 HEAD 都是 d32fd49518412fc7a402cdb26f5e724cf36e2ada，0 个超前提交，4 个本地文件。</td></tr>
+<tr><th>排除与扩展</th><td>排除用户原有未跟踪 design/docker/20261025-storage-migration.active.html 。没有前端产物或锁文件变化。扩展 gateway → Query / ExecuteFeature → UserPluginFeatureHandler → app/pages/plugins/weread.vue 的 query 与错误 v-alert，以及连接按钮 busy/finally。没有扩大为全站审计。</td></tr></tbody></table>
+<table><thead><tr><th>Domain</th><th>覆盖与结论</th></tr></thead><tbody>
+<tr><td>Accessibility</td><td>Not reviewed: no evidence in the change scope；没有标签、焦点、键盘或 ARIA 变化。实际主流程按钮可用，不声称读屏器验证。</td></tr>
+<tr><td>Layout</td><td>Not reviewed: no evidence in the change scope；布局和断点未改，桌面及窄屏仅作主流程验证。</td></tr>
+<tr><td>Writing</td><td>Clear。booksvr/internal/pluginbuiltin/weread.go:281 将智能体下载技能指令改为产品协议更新说明，给出当前协议版本和更新 BookHarbor 后重试的动作，不误指 API Key。消费方 app/pages/plugins/weread.vue:577 保留错误展示和输入，不新增词条；真实成功连接时错误消失。</td></tr>
+<tr><td>Typography</td><td>Not reviewed: no evidence in the change scope；字体及排版规则未改。</td></tr>
+<tr><td>Colors</td><td>Not reviewed: no evidence in the change scope；没有颜色或主题变化，不作对比度声明。</td></tr>
+<tr><td>UI</td><td>Not reviewed: no evidence in the change scope；没有图标、样式或动效修改。</td></tr></tbody></table>
+<p>No actionable interface findings in this change。没有 Introduced 或 Regression 的 HIGH / MEDIUM / LOW 问题。正确性及外部兼容验证见测试表，不混入界面发现。</p>
+<h3>Considered but rejected</h3><ul><li>继续透传上游“替换本地 SKILL.md”：用户在 BookHarbor 页面操作，不清楚要替换哪个项目文件，改为产品更新说明。</li><li>把升级要求改成 Key 无效或忽略提示继续显示部分结果：会误导用户重填凭据或误认为操作完成；保留升级闸门和独立错误状态。</li></ul>
+<h3>Verification</h3><p>git diff --name-status HEAD 与 git ls-files --others --exclude-standard → 上述 4 文件和排除项；git symbolic-ref refs/remotes/origin/HEAD → origin/main；git rev-parse HEAD origin/main → 同一基线；git rev-list --count origin/main..HEAD → 0。读取完整新增文档、改动两侧及消费者，删除侧升级指令有明确替代文案；git diff --check 通过。审查只读，没有写入 .git。真实 UI 与限制见测试表。</p><p><strong>Verdict: Approve</strong></p></section></main></div></body></html>
