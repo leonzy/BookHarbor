@@ -16,9 +16,9 @@ import (
 
 // weread 常量（复刻 combo/weread/provider.py）。
 const (
-	wereadPluginKey     = "talebook.combo.weread"
-	wereadGateway       = "https://i.weread.qq.com/api/agent/gateway"
-	wereadSkillVersion  = "1.0.4"
+	wereadPluginKey    = "talebook.combo.weread"
+	wereadGateway      = "https://i.weread.qq.com/api/agent/gateway"
+	wereadSkillVersion = "1.0.4"
 )
 
 // wereadQueryOperations 复刻 WEREAD_QUERY_OPERATIONS。
@@ -27,23 +27,23 @@ var wereadQueryOperations = map[string]struct {
 	Required []string
 	Params   map[string]string
 }{
-	"search":              {"/store/search", []string{"keyword"}, map[string]string{"keyword": "text", "scope": "scope", "maxIdx": "index", "count": "count"}},
-	"book_info":           {"/book/info", []string{"bookId"}, map[string]string{"bookId": "id"}},
-	"chapters":            {"/book/chapterinfo", []string{"bookId"}, map[string]string{"bookId": "id"}},
-	"progress":            {"/book/getprogress", []string{"bookId"}, map[string]string{"bookId": "id"}},
-	"shelf":               {"/shelf/sync", nil, map[string]string{}},
-	"statistics":          {"/readdata/detail", nil, map[string]string{"mode": "mode", "baseTime": "timestamp"}},
-	"notebooks":           {"/user/notebooks", nil, map[string]string{"count": "count", "lastSort": "timestamp"}},
-	"highlights":          {"/book/bookmarklist", []string{"bookId"}, map[string]string{"bookId": "id"}},
-	"my_reviews":          {"/review/list/mine", []string{"bookid"}, map[string]string{"bookid": "id", "synckey": "index", "count": "count"}},
-	"popular_highlights":  {"/book/bestbookmarks", []string{"bookId"}, map[string]string{"bookId": "id", "chapterUid": "index", "synckey": "index"}},
-	"underline_stats":     {"/book/underlines", []string{"bookId", "chapterUid"}, map[string]string{"bookId": "id", "chapterUid": "index", "synckey": "index"}},
-	"highlight_reviews":   {"/book/readreviews", []string{"bookId", "chapterUid", "reviews"}, map[string]string{"bookId": "id", "chapterUid": "index", "reviews": "reviews"}},
-	"review_detail":       {"/review/single", []string{"reviewId"}, map[string]string{"reviewId": "id", "commentsCount": "small_count", "commentsDirection": "direction", "likesCount": "small_count", "likesDirection": "direction", "synckey": "index"}},
-	"public_reviews":      {"/review/list", []string{"bookId"}, map[string]string{"bookId": "id", "reviewListType": "review_type", "count": "count", "maxIdx": "index", "synckey": "index"}},
-	"recommendations":     {"/book/recommend", nil, map[string]string{"count": "count", "maxIdx": "index"}},
-	"similar":             {"/book/similar", []string{"bookId"}, map[string]string{"bookId": "id", "count": "count", "maxIdx": "index", "sessionId": "id"}},
-	"friends_reading":     {"/discover/interact/type3", nil, map[string]string{"count": "count", "maxIdx": "index", "synckey": "index"}},
+	"search":             {"/store/search", []string{"keyword"}, map[string]string{"keyword": "text", "scope": "scope", "maxIdx": "index", "count": "count"}},
+	"book_info":          {"/book/info", []string{"bookId"}, map[string]string{"bookId": "id"}},
+	"chapters":           {"/book/chapterinfo", []string{"bookId"}, map[string]string{"bookId": "id"}},
+	"progress":           {"/book/getprogress", []string{"bookId"}, map[string]string{"bookId": "id"}},
+	"shelf":              {"/shelf/sync", nil, map[string]string{}},
+	"statistics":         {"/readdata/detail", nil, map[string]string{"mode": "mode", "baseTime": "timestamp"}},
+	"notebooks":          {"/user/notebooks", nil, map[string]string{"count": "count", "lastSort": "timestamp"}},
+	"highlights":         {"/book/bookmarklist", []string{"bookId"}, map[string]string{"bookId": "id"}},
+	"my_reviews":         {"/review/list/mine", []string{"bookid"}, map[string]string{"bookid": "id", "synckey": "index", "count": "count"}},
+	"popular_highlights": {"/book/bestbookmarks", []string{"bookId"}, map[string]string{"bookId": "id", "chapterUid": "index", "synckey": "index"}},
+	"underline_stats":    {"/book/underlines", []string{"bookId", "chapterUid"}, map[string]string{"bookId": "id", "chapterUid": "index", "synckey": "index"}},
+	"highlight_reviews":  {"/book/readreviews", []string{"bookId", "chapterUid", "reviews"}, map[string]string{"bookId": "id", "chapterUid": "index", "reviews": "reviews"}},
+	"review_detail":      {"/review/single", []string{"reviewId"}, map[string]string{"reviewId": "id", "commentsCount": "small_count", "commentsDirection": "direction", "likesCount": "small_count", "likesDirection": "direction", "synckey": "index"}},
+	"public_reviews":     {"/review/list", []string{"bookId"}, map[string]string{"bookId": "id", "reviewListType": "review_type", "count": "count", "maxIdx": "index", "synckey": "index"}},
+	"recommendations":    {"/book/recommend", nil, map[string]string{"count": "count", "maxIdx": "index"}},
+	"similar":            {"/book/similar", []string{"bookId"}, map[string]string{"bookId": "id", "count": "count", "maxIdx": "index", "sessionId": "id"}},
+	"friends_reading":    {"/discover/interact/type3", nil, map[string]string{"count": "count", "maxIdx": "index", "synckey": "index"}},
 }
 
 // wereadExtraFeatures 复刻 WEREAD_EXTRA_FEATURES（17 个只读操作）。
@@ -55,9 +55,29 @@ func wereadExtraFeatures() map[string]any {
 	}
 	sort.Strings(ops)
 	for _, op := range ops {
+		spec := wereadQueryOperations[op]
+		properties := map[string]any{}
+		for name, kind := range spec.Params {
+			fieldType := "integer"
+			switch kind {
+			case "text", "id", "mode":
+				fieldType = "string"
+			case "reviews":
+				fieldType = "array"
+			}
+			field := map[string]any{"type": fieldType}
+			if kind == "reviews" {
+				field["items"] = map[string]any{"type": "object"}
+			}
+			properties[name] = field
+		}
+		required := make([]any, 0, len(spec.Required))
+		for _, name := range spec.Required {
+			required = append(required, name)
+		}
 		out[op] = map[string]any{
 			"mode": "read", "required_scopes": []any{"profile.read"},
-			"schema": map[string]any{"type": "object", "properties": map[string]any{}},
+			"schema": map[string]any{"type": "object", "properties": properties, "required": required},
 		}
 	}
 	return out
@@ -444,10 +464,10 @@ func (p *WereadProvider) fetchPage(apiKey string, cursor map[string]any) (
 		bookmarks = marks["updated"]
 	}
 	payload := []any{map[string]any{
-		"book": book,
-		"chapters": marks["chapters"],
+		"book":      book,
+		"chapters":  marks["chapters"],
 		"bookmarks": bookmarks,
-		"reviews": reviewPage["reviews"],
+		"reviews":   reviewPage["reviews"],
 	}}
 	items, err := parseWereadExport(payload)
 	if err != nil {

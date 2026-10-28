@@ -8,6 +8,16 @@ import (
 	"testing"
 )
 
+func TestServePluginFeaturesOnlyFlag(t *testing.T) {
+	opts, err := parseServeOptions([]string{"-db=" + writeTempDB(t), "-cookie-secret=test", "-plugin-features-only", "-addr=127.0.0.1:8003"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !opts.PluginFeaturesOnly || opts.ReaderOnly || opts.Addr != "127.0.0.1:8003" {
+		t.Fatalf("incorrect maintenance mode: %+v", opts)
+	}
+}
+
 // writeTempDB 建一个空的临时 SQLite 文件，仅用于「文件存在」校验。
 func writeTempDB(t *testing.T) string {
 	t.Helper()

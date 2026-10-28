@@ -32,6 +32,8 @@ import (
 type ServeOptions struct {
 	// ReaderOnly serves reading routes without migrations or background workers.
 	ReaderOnly bool
+	// PluginFeaturesOnly serves authenticated feature calls without background workers.
+	PluginFeaturesOnly bool
 	// DBPath 是 Calibre 书库 SQLite 文件路径（metadata.db）。
 	DBPath string
 	// UserDBPath 是 Talebook 自有库路径（calibre-webserver.db）。
@@ -170,7 +172,7 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 	}
 
 	openLibrary, openUser := openLibraryDB, openUserDB
-	if opts.ReaderOnly {
+	if opts.ReaderOnly || opts.PluginFeaturesOnly {
 		openLibrary, openUser = openExistingReaderDB, openExistingReaderDB
 	}
 	db, err := openLibrary(opts.DBPath)
@@ -198,7 +200,7 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 	// 两个句柄都要传：传错任一个都会在运行时报 no such table。
 	//   - 只传 libraryDB → scanfiles 找不到（ScanService.DB 错）
 	//   - 只传 userDB → books 找不到（ScanService.LibraryDB 错）
-	if opts.ServiceFactory != nil && !opts.ReaderOnly {
+	if opts.ServiceFactory != nil && !opts.ReaderOnly && !opts.PluginFeaturesOnly {
 		set := opts.ServiceFactory(userDB, db)
 		if set.ScanService != nil {
 			opts.ScanService = set.ScanService
@@ -238,7 +240,7 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 		}
 	}
 
-	if !opts.ReaderOnly {
+	if !opts.ReaderOnly && !opts.PluginFeaturesOnly {
 		stopCovers, err := attachCoverWorker(ctx, db, opts.LibraryRoot)
 		if err != nil {
 			return err
@@ -542,6 +544,9 @@ func openLibraryDB(path string) (*sql.DB, error) {
 
 // newServeDispatcher builds immutable route configurations for one settings snapshot.
 func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, error) {
+	if opts.PluginFeaturesOnly {
+		return newPluginFeaturesOnlyDispatcher(opts, db, userDB)
+	}
 	if opts.ReaderOnly {
 		return newReaderOnlyDispatcher(opts, db, userDB)
 	}
