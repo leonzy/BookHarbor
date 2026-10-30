@@ -1,6 +1,8 @@
 package pluginruntime
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"talebook/booksvr/internal/pluginiface"
@@ -526,3 +528,52 @@ func TestToStringSlice(t *testing.T) {
 }
 
 var _ = pluginiface.Provider(nil)
+
+func TestCapabilityConnectionsRetainScopedSecretReferenceWithoutExposingIt(t *testing.T) {
+	rt, inst, _ := newRuntimeWithPlugin(t, "demo", nil)
+	owner := int64(7)
+	if _, e := rt.DB.Exec(`UPDATE plugin_definitions SET auth_schema=? WHERE plugin_key='talebook.demo'`, `{"type":"object","properties":{"token":{"type":"string"}}}`); e != nil {
+		t.Fatal(e)
+	}
+	saved, e := rt.SaveConnection(inst.ID, "user", owner, map[string]any{"token": "scoped-test-token"}, "personal", map[string]any{}, nil, "", DefaultConnectionRole)
+	if e != nil {
+		t.Fatal(e)
+	}
+	conns, e := rt.ConnectionsFor("metadata.lookup", &owner)
+	if e != nil {
+		t.Fatal(e)
+	}
+	found := false
+	for _, conn := range conns {
+		if conn.ID == saved.ID {
+			found = true
+			if !conn.SecretID.Valid {
+				t.Fatal("capability query dropped the stored credential reference")
+			}
+			secrets, e := rt.LoadSecrets(conn)
+			if e != nil || secrets["token"] != "scoped-test-token" {
+				t.Fatal("stored credentials were not loaded", e)
+			}
+			data, e := json.Marshal(conn)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if strings.Contains(string(data), "secret_id") || strings.Contains(string(data), "scoped-test-token") {
+				t.Fatal("credential data exposed in JSON")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("owner connection missing")
+	}
+	other := int64(8)
+	others, e := rt.ConnectionsFor("metadata.lookup", &other)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, conn := range others {
+		if conn.ID == saved.ID {
+			t.Fatal("another reader received a private connection")
+		}
+	}
+}

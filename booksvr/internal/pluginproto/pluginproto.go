@@ -5,8 +5,10 @@ package pluginproto
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -70,6 +72,7 @@ func newManifestError(code, message string) *ManifestError {
 
 // UpstreamError 复刻 UpstreamError。
 type UpstreamError struct {
+	RetryAfter *float64
 	Code       string
 	Retryable  bool
 	ErrorType  string
@@ -103,11 +106,16 @@ func NewUpstreamAuthError(message string, errorType string, statusCode *int) *Up
 
 // NewUpstreamRateLimitError 复刻 UpstreamRateLimitError。
 func NewUpstreamRateLimitError(message string, retryAfter any) *UpstreamError {
+	var seconds *float64
+	if n, e := strconv.ParseFloat(fmt.Sprint(retryAfter), 64); e == nil && n >= 0 && !math.IsNaN(n) && !math.IsInf(n, 0) {
+		seconds = &n
+	}
+
 	if message == "" {
 		message = "Upstream rate limit exceeded"
 	}
 	return &UpstreamError{
-		Code: "provider_rate_limited", Retryable: true,
+		Code: "provider_rate_limited", Retryable: true, RetryAfter: seconds,
 		ErrorType: "other", Message: message,
 	}
 }

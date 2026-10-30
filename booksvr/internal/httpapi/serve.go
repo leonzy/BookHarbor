@@ -744,7 +744,8 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 	specs = append(specs, AdminRouteSpecs(newAdminConfig(opts, userDB, db))...)
 
 	specs = append(specs, BookRouteSpecs(bookCfg)...)
-	specs = append(specs, RouteSpec{Pattern: "/api/admin/metadata/enrichment", Methods: []string{"GET"}, Auth: true, Admin: true, Handler: MetadataEnrichmentStatus(db, opts)})
+	specs = append(specs, RouteSpec{Pattern: "/api/admin/metadata/enrichment", Methods: []string{"GET"}, Auth: true, Admin: true, Handler: MetadataEnrichmentStatus(db, opts, userDB)})
+	specs = append(specs, metadataSourceRoutes(db, userDB, opts)...)
 
 	audioRoot := opts.AudiobookRoot
 	if audioRoot == "" && opts.LibraryRoot != "" {

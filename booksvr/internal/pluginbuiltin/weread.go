@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"talebook/booksvr/internal/plugindomain"
+	"talebook/booksvr/internal/pluginiface"
 	"talebook/booksvr/internal/pluginproto"
 )
 
@@ -882,10 +883,9 @@ func firstOfAny(values ...any) any {
 type pluginifaceCoverResultAlias = pluginifaceCoverResult
 
 // pluginifaceCoverResult 复刻封面结果。
-type pluginifaceCoverResult = struct {
-	Extension string
-	Content   []byte
-}
+type pluginifaceCoverResult = pluginiface.CoverResult
+
+var _ pluginiface.MetadataProvider = (*WereadProvider)(nil)
 
 // 编译期引用保持。
 var _ = url.Values{}

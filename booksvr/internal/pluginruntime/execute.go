@@ -90,11 +90,12 @@ func isRetryable(err error) bool {
 	return false
 }
 
-// retryAfterOf 取错误的 retry_after（秒）。
-//
-// Go 侧 UpstreamError 未保留 retry_after 字段（Python 的限流错误才有），
-// 因此这里恒返回 nil，退避走指数路径。
+// retryAfterOf returns the safe upstream waiting interval, preserved by redaction.
 func retryAfterOf(err error) *float64 {
+	var upstream *pluginproto.UpstreamError
+	if asError(err, &upstream) {
+		return upstream.RetryAfter
+	}
 	return nil
 }
 

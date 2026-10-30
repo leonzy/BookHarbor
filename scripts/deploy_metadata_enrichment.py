@@ -97,7 +97,7 @@ stdout_logfile_backups=2
             print(remote(["docker", "exec", args.container, *command]), flush=True)
         route = """
     # File-first metadata and protected edits, independent from running imports.
-    location ~ ^/api/(?:book/[0-9]+(?:/(?:edit|refer))?|admin/plugins/[a-z0-9.-]+/metadata/search|admin/metadata/enrichment)$ {
+    location ~ ^/api/(?:book/[0-9]+(?:/(?:edit|refer))?|admin/plugins/[a-z0-9.-]+/metadata/search|admin/metadata/enrichment(?:/sources/[0-9]+)?)$ {
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -142,6 +142,8 @@ for attempt in range(20):
 p=Path('/etc/nginx/conf.d/talebook.conf');old=p.read_text();marker='    location ~ ^/(api|get|read|read-comic|opds|auth|books|media)/ {'
 assert old.count(marker)==1
 new=old.replace('book/[0-9]+/(?:edit|refer)', 'book/[0-9]+(?:/(?:edit|refer))?')
+# Upgrade the previously managed regex too; an existing 8004 location is not sufficient.
+new=new.replace('admin/metadata/enrichment)$ {','admin/metadata/enrichment(?:/sources/[0-9]+)?)$ {')
 if 'proxy_pass http://127.0.0.1:8004;' not in new:new=new.replace(marker,ROUTE+marker)
 if 'location ^~ /_i18n/' not in new:
  static='    location ^~ /_nuxt/ {';assert new.count(static)==1;new=new.replace(static,LOCALE_GUARD+static)
@@ -234,7 +236,7 @@ c.commit();c.close()
         print(inside(rollback), flush=True)
         raise
     receipt = {"revision": args.revision, "binary": target, "sha256": digest, "preserved_processes": after,
-               "mode": "metadata-only", "local_interval_seconds": 1, "network_interval_seconds": 30}
+               "mode": "metadata-only", "local_interval_seconds": 1, "network_interval_seconds": 0,"source_default_interval_seconds":5,"network_max_concurrency":4}
     print(inside("from pathlib import Path;Path(" + repr(maintenance + "/receipt.json") + ").write_text(" + repr(json.dumps(receipt, indent=2)) + ")"), flush=True)
     print(json.dumps(receipt, indent=2), flush=True)
 

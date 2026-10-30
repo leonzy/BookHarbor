@@ -46,7 +46,7 @@ func TestMetadataWorkerFileThenNetworkAndUserLocks(t *testing.T) {
 	if err != nil || b.ISBN != "9780141439518" || b.Authors[0] != "Selected author" {
 		t.Fatal(b, err)
 	}
-	if err := worker.network(context.Background()); err != nil {
+	if err := runMetadataNetwork(t, worker); err != nil {
 		t.Fatal(err)
 	}
 	b, err = bookGetOne(w.Config(""), 1)
@@ -164,7 +164,7 @@ func TestMetadataNetworkToggleAndFailureBackoff(t *testing.T) {
 	if err := worker.local(context.Background(), 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := worker.network(context.Background()); err != nil {
+	if err := runMetadataNetwork(t, worker); err != nil {
 		t.Fatal(err)
 	}
 	var status string
@@ -174,12 +174,12 @@ func TestMetadataNetworkToggleAndFailureBackoff(t *testing.T) {
 	}
 	w.settings["auto_fill_meta"] = true
 	provider.fail = true
-	if err := worker.network(context.Background()); err != nil {
+	if err := runMetadataNetwork(t, worker); err != nil {
 		t.Fatal(err)
 	}
 	var next int64
 	var attempts int
-	if err := w.libraryDB.QueryRow(`SELECT next_at,attempts,last_error FROM metadata_enrichment_jobs WHERE book_id=1`).Scan(&next, &attempts, &status); err != nil || next <= worker.now().Unix() || attempts != 1 || status == "" {
+	if err := w.libraryDB.QueryRow(`SELECT next_at,attempts,last_error FROM metadata_source_jobs WHERE book_id=1`).Scan(&next, &attempts, &status); err != nil || next <= worker.now().Unix() || attempts != 1 || status == "" {
 		t.Fatal(next, attempts, status, err)
 	}
 }
@@ -233,7 +233,7 @@ func TestMetadataCoverOptionPreservesExistingArtwork(t *testing.T) {
 			if err := worker.local(context.Background(), 1); err != nil {
 				t.Fatal(err)
 			}
-			if err := worker.network(context.Background()); err != nil {
+			if err := runMetadataNetwork(t, worker); err != nil {
 				t.Fatal(err)
 			}
 			after, err := os.ReadFile(cover)

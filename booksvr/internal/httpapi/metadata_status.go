@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func MetadataEnrichmentStatus(db *sql.DB, opts ServeOptions) HandlerFunc {
+func MetadataEnrichmentStatus(db *sql.DB, opts ServeOptions, userDB ...*sql.DB) HandlerFunc {
 	return func(ctx *Context) (map[string]any, error) {
 		var total, checked, latest, applied, retries int64
 		if e := db.QueryRow(`SELECT count(*) FROM books`).Scan(&total); e != nil {
@@ -35,7 +35,7 @@ func MetadataEnrichmentStatus(db *sql.DB, opts ServeOptions) HandlerFunc {
 		if e != nil {
 			return nil, e
 		}
-		if e = db.QueryRow(`SELECT count(*) FROM metadata_enrichment_jobs j JOIN books b ON b.id=j.book_id WHERE j.status='network_pending' AND j.attempts>0`).Scan(&retries); e != nil {
+		if e = db.QueryRow(`SELECT count(DISTINCT s.book_id) FROM metadata_source_jobs s JOIN books b ON b.id=s.book_id JOIN metadata_enrichment_jobs j ON j.book_id=s.book_id WHERE s.phase<>'done' AND s.attempts>0 AND j.status IN ('network_pending','partial')`).Scan(&retries); e != nil {
 			return nil, e
 		}
 		if e = db.QueryRow(`SELECT count(DISTINCT w.book_id) FROM metadata_enrichment_writes w JOIN books b ON b.id=w.book_id WHERE w.origin LIKE 'network:%'`).Scan(&applied); e != nil {
@@ -55,6 +55,22 @@ func MetadataEnrichmentStatus(db *sql.DB, opts ServeOptions) HandlerFunc {
 		if remaining < 0 {
 			remaining = 0
 		}
-		return map[string]any{"err": "ok", "total_books": total, "files_checked": checked, "files_remaining": remaining, "counts": counts, "network_retries": retries, "network_applied_books": applied, "last_activity_at": latest, "worker_active": expires > time.Now().Unix() && !strings.HasPrefix(owner, "maintenance:") && !strings.HasPrefix(owner, "deployment:"), "network_enabled": settingBool(settings, "auto_fill_meta", false), "local_interval_seconds": 1, "network_interval_seconds": 30, "overwrite_existing": false}, nil
+		var refresh, written int64
+		if e = db.QueryRow(`SELECT count(*) FROM metadata_enrichment_jobs WHERE status='file_retry' AND last_error='TXT 简介规则更新，等待限速文件复核'`).Scan(&refresh); e != nil {
+			return nil, e
+		}
+		counts["file_refresh"] = refresh
+		if e = db.QueryRow(`SELECT count(DISTINCT w.book_id) FROM metadata_enrichment_writes w JOIN books b ON b.id=w.book_id`).Scan(&written); e != nil {
+			return nil, e
+		}
+		var udb *sql.DB
+		if len(userDB) > 0 {
+			udb = userDB[0]
+		}
+		sources, e := metadataSourceStatus(db, udb, opts, ctx)
+		if e != nil {
+			return nil, e
+		}
+		return map[string]any{"err": "ok", "total_books": total, "files_checked": checked, "files_remaining": remaining, "counts": counts, "network_retries": retries, "network_applied_books": applied, "last_activity_at": latest, "worker_active": expires > time.Now().Unix() && !strings.HasPrefix(owner, "maintenance:") && !strings.HasPrefix(owner, "deployment:"), "network_enabled": settingBool(settings, "auto_fill_meta", false), "local_interval_seconds": 1, "network_interval_seconds": 0, "source_default_interval_seconds": 5, "network_max_concurrency": metadataSourceConcurrency, "sources": sources, "written_books": written, "overwrite_existing": false}, nil
 	}
 }

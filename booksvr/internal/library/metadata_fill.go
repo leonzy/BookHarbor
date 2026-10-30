@@ -12,6 +12,11 @@ import (
 // EnsureMetadataSchema is additive and independent of expensive library migrations.
 func EnsureMetadataSchema(db *sql.DB) error {
 	for _, stmt := range []string{
+		`CREATE TABLE IF NOT EXISTS metadata_source_jobs(book_id INTEGER NOT NULL,connection_id INTEGER NOT NULL,phase TEXT NOT NULL DEFAULT 'search',priority INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0,record TEXT NOT NULL DEFAULT '{}',matched INTEGER NOT NULL DEFAULT 0,last_error TEXT NOT NULL DEFAULT '',PRIMARY KEY(book_id,connection_id))`,
+		`CREATE INDEX IF NOT EXISTS metadata_source_summary ON metadata_source_jobs(connection_id,phase,matched)`,
+		`CREATE INDEX IF NOT EXISTS metadata_source_due ON metadata_source_jobs(connection_id,priority,next_at,book_id) WHERE phase<>'done'`,
+		`CREATE TABLE IF NOT EXISTS metadata_source_limits(connection_id INTEGER PRIMARY KEY,interval_seconds INTEGER NOT NULL DEFAULT 5,next_at INTEGER NOT NULL DEFAULT 0,failures INTEGER NOT NULL DEFAULT 0,last_error TEXT NOT NULL DEFAULT '',seed_cursor INTEGER NOT NULL DEFAULT 0,requests INTEGER NOT NULL DEFAULT 0,last_request_at INTEGER NOT NULL DEFAULT 0)`,
+		`CREATE TABLE IF NOT EXISTS metadata_source_pending(book_id INTEGER PRIMARY KEY,version INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE IF NOT EXISTS metadata_enrichment_writes(id INTEGER PRIMARY KEY,book_id INTEGER NOT NULL,field TEXT NOT NULL,origin TEXT NOT NULL,previous_value TEXT NOT NULL,written_value TEXT NOT NULL,created_at INTEGER NOT NULL DEFAULT(unixepoch()))`,
 		`CREATE INDEX IF NOT EXISTS metadata_enrichment_writes_book ON metadata_enrichment_writes(book_id,id)`,
 		`CREATE TABLE IF NOT EXISTS metadata_field_locks(book_id INTEGER NOT NULL,field TEXT NOT NULL,PRIMARY KEY(book_id,field))`,
@@ -63,6 +68,14 @@ func ProtectHistoricalMetadataEdits(db *sql.DB, id int64) error {
 // FillMissingMetadata rechecks values after obtaining the SQLite write lock. No
 // extraction, network operation or sleep runs inside this short transaction.
 func FillMissingMetadata(db *sql.DB, id int64, m importmeta.Metadata, origin ...string) ([]string, error) {
+	return fillMissingMetadata(db, id, m, nil, origin...)
+}
+
+// FillMissingMetadataGuarded rejects stale network results after taking the write lock.
+func FillMissingMetadataGuarded(db *sql.DB, id int64, m importmeta.Metadata, expected map[string]string, origin string) ([]string, error) {
+	return fillMissingMetadata(db, id, m, expected, origin)
+}
+func fillMissingMetadata(db *sql.DB, id int64, m importmeta.Metadata, expected map[string]string, origin ...string) ([]string, error) {
 	tx, err := db.Begin()
 	if err != nil {
 		return nil, err
@@ -99,6 +112,17 @@ func FillMissingMetadata(db *sql.DB, id int64, m importmeta.Metadata, origin ...
 		before, err = metadataSnapshot(tx, id)
 		if err != nil {
 			return nil, err
+		}
+	}
+	if expected != nil {
+		current, e := metadataSnapshot(tx, id)
+		if e != nil {
+			return nil, e
+		}
+		for key, want := range expected {
+			if current[key] != want {
+				return nil, nil
+			}
 		}
 	}
 	changed := []string{}
@@ -261,6 +285,7 @@ func FillMissingMetadata(db *sql.DB, id int64, m importmeta.Metadata, origin ...
 
 func metadataSnapshot(tx *sql.Tx, id int64) (map[string]string, error) {
 	queries := map[string]string{
+		"title":       `SELECT title FROM books WHERE id=?`,
 		"authors":     `SELECT a.name FROM authors a JOIN books_authors_link l ON l.author=a.id WHERE l.book=? ORDER BY l.id`,
 		"tags":        `SELECT t.name FROM tags t JOIN books_tags_link l ON l.tag=t.id WHERE l.book=? ORDER BY t.id`,
 		"author_sort": `SELECT coalesce(author_sort,'') FROM books WHERE id=?`,
@@ -300,4 +325,18 @@ func metadataSnapshot(tx *sql.Tx, id int64) (map[string]string, error) {
 		out[field] = string(b)
 	}
 	return out, nil
+}
+
+// MetadataIdentity captures only the fields used to establish a network match.
+func MetadataIdentity(db *sql.DB, id int64) (map[string]string, error) {
+	tx, e := db.Begin()
+	if e != nil {
+		return nil, e
+	}
+	defer tx.Rollback()
+	all, e := metadataSnapshot(tx, id)
+	if e != nil {
+		return nil, e
+	}
+	return map[string]string{"title": all["title"], "authors": all["authors"], "isbn": all["isbn"]}, nil
 }

@@ -2377,7 +2377,7 @@
     "remaining": "Not checked",
     "complete": "Key information complete",
     "waiting": "Waiting for online lookup",
-    "retrying": "Of these, awaiting retry",
+    "retrying": "Source retries pending",
     "applied": "Enriched online",
     "review": "Needs review",
     "unreadable": "Source unavailable",
@@ -2386,10 +2386,32 @@
     "paused": "Worker paused or awaiting start",
     "onlineOn": "Automatic online lookup on",
     "onlineOff": "Automatic online lookup off",
-    "rate": "One low-priority worker; online requests at least 30 seconds apart; manual edits and existing information preserved.",
+    "rate": "Each source has its own rate limit and backoff, with at most 4 concurrent requests. Manual edits and existing information are preserved.",
     "lastActivity": "Last processed: {time}",
     "loadError": "Could not load progress. Please retry.",
-    "partial": "Processed, some fields missing"
+    "partial": "Processed, some fields missing",
+    "sources": "Source progress and request intervals",
+    "sourceHelp": "Each source defaults to at least 5 seconds between requests, including search, details and covers. Other sources continue while one waits.",
+    "sourceCounts": "{requests} requests · {processed} books processed · {matched} matched",
+    "interval": "{name} interval (seconds)",
+    "saveInterval": "Save interval for {name}",
+    "intervalSaved": "Interval saved for {name}",
+    "intervalInvalid": "Enter a whole number from 1 to 3600 seconds",
+    "intervalError": "Unable to save. Try again.",
+    "fileRefresh": "Waiting for file metadata refresh",
+    "filled": "Information added",
+    "unavailableReasons": {
+      "no_sources": "No enabled text sources configured; automatic enrichment is skipped",
+      "not_connected": "Metadata service is not connected; automatic enrichment is skipped",
+      "unavailable": "Source definition is unavailable"
+    },
+    "intervalLabel": "Interval (seconds)",
+    "sourceSettings": "Request interval settings for {name}",
+    "sourceFailureReasons": {
+      "request_failed": "Source request failed; retrying with backoff while other sources continue",
+      "provider_rate_limited": "Source rate limit reached; waiting before retrying while other sources continue",
+      "provider_unauthorized": "Source authentication failed. Check its credentials in plugin settings."
+    }
   },
   "bookStorage": {
     "title": "Storage locations",

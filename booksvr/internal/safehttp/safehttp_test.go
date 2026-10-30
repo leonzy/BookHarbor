@@ -1079,3 +1079,19 @@ func TestDefaultResolver(t *testing.T) {
 	// 用一个必然失败的主机名，只验证不 panic。
 	_, _ = DefaultResolver("invalid.invalid.invalid.example", 80)
 }
+
+func TestRetryAfterAcceptsSecondsAndHTTPDate(t *testing.T) {
+	if parseRetryAfter("1800") != float64(1800) {
+		t.Fatal("numeric delay lost")
+	}
+	value := parseRetryAfter(time.Now().Add(90 * time.Second).UTC().Format(http.TimeFormat))
+	seconds, ok := value.(float64)
+	if !ok || seconds < 88 || seconds > 91 {
+		t.Fatal(value)
+	}
+	for _, v := range []string{"NaN", "+Inf", "bad"} {
+		if parseRetryAfter(v) != nil {
+			t.Fatal(v)
+		}
+	}
+}

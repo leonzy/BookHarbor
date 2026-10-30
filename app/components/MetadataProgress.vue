@@ -57,6 +57,10 @@
             <p class="text-caption mb-1">
                 {{ t('metadataProgress.rate') }}
             </p>
+            <MetadataSourceLimits
+                :sources="state.sources || []"
+                @saved="load"
+            />
             <p
                 v-if="state.last_activity_at"
                 class="text-caption"
@@ -76,6 +80,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useNuxtApp } from 'nuxt/app';
+import MetadataSourceLimits from '@/components/MetadataSourceLimits.vue';
 const { t } = useI18n();
 const { $backend } = useNuxtApp();
 const state = ref(null);
@@ -89,10 +94,10 @@ const counters = computed(() => {
     const value = state.value;
     const counts = value.counts || {};
     return [
-        ['remaining', value.files_remaining], ['complete', counts.complete], ['partial', counts.partial],
+        ['remaining', value.files_remaining], ['filled', value.written_books], ['complete', counts.complete], ['partial', counts.partial],
         ['waiting', counts.network_pending], ['retrying', value.network_retries],
         ['applied', value.network_applied_books], ['review', counts.needs_review],
-        ['unreadable', counts.file_retry], ['protected', counts.protected],
+        ['fileRefresh', counts.file_refresh], ['unreadable', Math.max(0, (counts.file_retry || 0) - (counts.file_refresh || 0))], ['protected', counts.protected],
     ].map(([key, count]) => ({ key, value: Number(count || 0) }));
 });
 async function load() {

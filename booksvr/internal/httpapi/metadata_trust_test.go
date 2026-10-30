@@ -49,6 +49,7 @@ func TestMetadataProgressCountsSparseIDsAndDeletedJobs(t *testing.T) {
 	worker.saveJob(1, "network_pending", "retry", time.Hour)
 	worker.saveJob(9999, "complete", "deleted book", 0)
 	w.libraryDB.Exec(`UPDATE metadata_enrichment_jobs SET attempts=1 WHERE book_id=1`)
+	w.libraryDB.Exec(`INSERT INTO metadata_source_jobs(book_id,connection_id,attempts,next_at) VALUES(1,1,1,9999999999)`)
 	result, e := MetadataEnrichmentStatus(w.libraryDB, ServeOptions{Settings: map[string]any{"auto_fill_meta": true}})(adminCtx(1))
 	if e != nil {
 		t.Fatal(e)
@@ -60,6 +61,11 @@ func TestMetadataProgressCountsSparseIDsAndDeletedJobs(t *testing.T) {
 	}
 	if result["network_enabled"] != true {
 		t.Fatal(result)
+	}
+	w.libraryDB.Exec(`UPDATE metadata_enrichment_jobs SET status='protected' WHERE book_id=1`)
+	protected, e := MetadataEnrichmentStatus(w.libraryDB, ServeOptions{})(adminCtx(1))
+	if e != nil || protected["network_retries"] != int64(0) {
+		t.Fatal("protected books counted as pending network retries", protected, e)
 	}
 }
 func TestStoragePathsPerFormatWithoutReadingSources(t *testing.T) {

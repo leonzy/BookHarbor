@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="BookHarbor 独立来源并行补全、限速、断点恢复与真实站点验证。" />
+    <link rel="icon" href="data:," />
+    <title>元数据来源独立限速与并发调度 · ACTIVE</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+      .hero,.card { overflow-wrap:anywhere; min-width:0; }
+    </style>
+  </head>
+  <body><div class="page"><header class="hero"><h1>元数据来源独立限速与并发调度</h1><p>2026-10-30 · booksvr · ACTIVE · 用户要求所有来源可同时检索，分别控制频率</p></header><main>
+<section class="card"><h2>原始诉求与目标</h2><p>取消单本最多两个来源、全局30秒一轮的限制。各已启用且配置可用的元数据来源独立推进、独立限速、独立退避。保留人工编辑和版本校验，不中断导入及阅读。</p></section>
+<section class="card"><h2>方案与决策</h2><p>新增按书籍和连接划分的持久任务队列，阶段为搜索、详情、封面、完成。每个来源至多一个在途请求，全局至多4个；请求间隔默认5秒，按来源连接可配置1至3600秒。每个调用都经过限速，不只限制搜索。间隔从请求结束后计算，并向上取整到秒；停用、忽略结果和正常退出同样保存冷却时钟，失败退避不缩短已配置的间隔。文件提取与网络协调器分别使用独立循环并共享单实例租约，协调器不等待网络，也不等待文件解析；后台关闭时不再接纳或应用网络结果。</p><p>每轮最多为每来源预填100本已有待联网书，新增文件处理通过小型入队表追加；联网队列以初始化上界区分新入库与历史书籍，优先服务新入库，使用连接、优先级、到期时间的索引寻址；使用队列与游标索引，不加载全库，不重置文件游标。成功的匹配按来源立即补缺；来源错误独立指数退避，最多3次；限流时保留并遵守上游 Retry-After（数字秒或 HTTP 日期，安全上限7天；未提供时至少等待5分钟），鉴权失败单独提示并延长等待。限速单位为插件的搜索、详情、封面能力调用；第三方插件内部的子请求继续受其客户端超时与主机并发保护。空结果结束该来源该书的本轮检索，不反复浪费额度。结果写入前重读现有书籍，并在事务内核对书名、作者和ISBN的预期快照，避免并发编辑或其他来源已改变版本后混填。</p><p>无书源的 Legado 暂不入队；没有接入能力的 Calibre 检索不重复占用网络。其余启用来源均参与。实测发现微信读书 GetCover 使用本地匿名结构别名而非协议类型，导致整个 MetadataProvider 分派失败；改用正式协议类型并加入编译期断言与无凭据分派测试。另修复能力连接查询漏读 secret_id，导致已保存凭据未传入来源的问题；只携带凭据引用并保留用户过滤，JSON不暴露引用或密钥。仅将已确认属于本地接口契约或缺失凭据引用的微信读书失败任务重新排队，先备份队列与限速行。来源间隔通过进度页各来源设置与管理员 API 校验，存储于来源调度状态表；进度页更新限速说明并区分来源不可读与待重新提取。真实界面审查发现窄屏保存按钮与既有置顶浮钮相叠、俄文标签截断；来源表单预留64px操作边距，窄屏将输入与保存分行，桌面扩大配置列后复查。</p></section>
+<section class="card"><h2>影响范围与回滚</h2><p>booksvr metadata worker、library补全表与事务保护、插件平台配置、元数据进度API及前端显示；spec/元数据.md 与 spec/插件/元数据源.md。表结构仅追加。回滚独立元数据服务ELF和前端，不删除队列；导入主进程与阅读器保持运行。</p></section>
+<section class="card" id="tests"><h2>测试结果</h2><div class="table-wrap" role="region" aria-label="测试结果" tabindex="0"><table><thead><tr><th>验证层</th><th>实际命令或页面</th><th>结果</th></tr></thead><tbody>
+<tr><td>完整 Go 回归</td><td>bookharbor-meta-linux-qa.py；bookharbor-meta-run-linux.py --isolated</td><td>47/47 包通过；独立 QA 容器无生产挂载，UID1000、GOMAXPROCS1、nice19、ionice idle。覆盖扫描、挂载保护、权限、阅读和元数据。</td></tr>
+<tr><td>后续修复回归</td><td>bookharbor-independent-httpapi-qa.py；bookharbor-independent-feature-qa.py；bookharbor-independent-weread-qa.py；bookharbor-independent-runtime-qa.py</td><td>HTTP 完整及定向测试、pluginbuiltin 与 pluginruntime 完整 Linux 测试通过。包含多于两个来源并行、四并发上限、慢源隔离、新书优先、限速持久化、错误退避、停用不写入、部分完成不误排队、接口契约和凭据引用。</td></tr>
+<tr><td>最终整体验证</td><td>bookharbor-independent-final-batch.py</td><td>最终最新版47/47包全部通过；全部最新测试ELF一次打包传入隔离容器，顺序执行，所有包退出码0。</td></tr>
+<tr><td>静态检查</td><td>go vet ./...；eslint 全库</td><td>Go vet 通过；前端0错误、570条既有警告，本次两个组件0警告。</td></tr>
+<tr><td>前端</td><td>node node_modules/vitest/vitest.mjs run test/components/MetadataSourceLimits.spec.ts test/components/MetadataProgress.spec.ts；nuxt generate</td><td>6/6 测试通过，生产 SPA 构建通过。保存请求明确序列化为 JSON；轮询不覆盖未保存输入；改动输入后清除旧成功/错误提示。</td></tr>
+<tr><td>部署脚本</td><td>bookharbor-meta-python-qa.py</td><td>107/107 测试通过，新增已有旧路由升级、全新配置与失败回滚组合；不停止主导入或阅读服务。</td></tr>
+<tr><td>规格与方案</td><td>python scripts/check_spec.py；python scripts/check_design_docs.py；git diff --check</td><td>25篇规格通过，diff检查通过；最终方案门禁通过：213份方案。</td></tr>
+<tr><td>真实浏览器</td><td>http://leonfn:8850/admin/settings/plugins#metadata-progress；bookharbor-independent-browser.cjs</td><td>1280中文浅色、412中文深色、320俄文浅色通过；七猫间隔5→7→5持久化，其余来源不变；键盘保存、非法输入聚焦、草稿保留、无横向溢出、标签不截断、浮钮不遮挡保存。正文/控件对比度最低16.07:1，深色18.73:1；无页面异常。</td></tr>
+<tr><td>实际后台</td><td>来源队列、plugin_runs 后台调用审计、metadata_enrichment_writes</td><td>8个可用来源均有实际调用；七猫、番茄、百科、豆瓣、新华书店、NeoDB 与微信读书正常推进，Open Library 偶发失败独立退避。实测联网写入从15本增长至88本（快照值，持续变化）。2个未配置来源明确标出且不消耗名额。</td></tr>
+<tr><td>运行保护</td><td>deploy_metadata_enrichment.py；与既有脚本相同发布程序的静态前端单独更新</td><td>活动ELF SHA256 b520b26e408332d3cd33b195fa387bcfc8b3ac029f0ce7e101a8ccf41b441741。导入PID70/start6789233、阅读PID3934/start14119217全部保持；纯前端更新也保持元数据PID50027/start51143478。不清库、不重置文件游标、不复制书籍。</td></tr>
+</tbody></table></div>
+<p>测试过程发现并修复：旧Nginx管理路由未升级、前端请求体未序列化JSON、微信读书匿名封面类型不满足正式接口、能力连接查询未携带凭据引用。修复后分别补回归并在真实站点重测，不将首次失败记录当成通过。Windows 原生文件事件相关旧用例存在平台限制，Linux完整回归作为正式依据。可选 Open Library 外网专用测试未启用，本次以真实后台来源调用审计替代。</p>
+<p>备份与操作回执在 /data/maintenance/20261030-independent-metadata-sources（目录0700、文件0600）；已确认本地契约失败的5条任务及缺失凭据引用导致的1条任务单独重新排队，均未修改书籍元数据或源文件。截图与报告在 C:/Users/leon/bookharbor-review/independent-sources。</p></section>
+<section class="card"><h2>界面审查：interface-review full</h2>
+<h3>范围与覆盖（Scope and Coverage）</h3><p>目标 branch；git symbolic-ref --quiet --short refs/remotes/origin/HEAD 为 origin/main；git merge-base origin/main HEAD 为9975bf0b3ae457c7a8e723b94bbde2d29c1ba0c5；git rev-list --count origin/main..HEAD 为0。git diff --name-only HEAD 与 git ls-files --others --exclude-standard 共35项，未排除语义文件或测试。用户已有未跟踪的存储方案仅只读核对，不改动、不提交。无fetch、checkout、stash或Git引用写入。技术栈Nuxt4/Vue3/Vuetify，保留现有主题与间距体系。</p><p>扩展最多五个消费者：插件中心、设置页别名、元数据进度组件、来源频率表单、书籍页元数据检索入口；未继续扩展其余插件详情页和所有书籍卡片。Go错误类型与凭据查询的业务正确性由包级回归承担。</p>
+<div class="table-wrap" role="region" aria-label="领域覆盖" tabindex="0"><table><thead><tr><th>领域</th><th>证据</th><th>结论</th></tr></thead><tbody>
+<tr><td>Accessibility</td><td>命名输入和保存按钮、原生表单、键盘保存、非法输入聚焦、稳定status区域、实际遮挡命中检查。</td><td>Clear，首次操作区遮挡已修复。</td></tr>
+<tr><td>Layout</td><td>1280/412/320实际渲染、横向几何、浮钮保留边距、窄屏分行。</td><td>Clear。</td></tr>
+<tr><td>Writing</td><td>区分已核查、实际写入、匹配、待复查和不可读；3语言新增文案；来源用具体插件名。</td><td>Clear。</td></tr>
+<tr><td>Typography</td><td>俄文完整浮动标签、主题字体、长名称换行、可见输入字号。</td><td>Clear，首次俄文标签截断已修复。</td></tr>
+<tr><td>Colors</td><td>深浅色真实正文、标签和保存控件测量，最低16.07:1。</td><td>Clear，无新颜色体系。</td></tr>
+<tr><td>UI</td><td>保存/失败/编辑/轮询状态；5→7→5；输入编辑清除旧确认；真实JSON请求与API结果。</td><td>Clear。</td></tr>
+</tbody></table></div>
+<h3>问题（Findings）</h3><p>首次审查的 Introduced/HIGH 操作遮挡及 Introduced/MEDIUM 标签截断均通过操作区保留边距与窄屏布局修复；重新执行 full 审查和真实命中、标签完整性检查均通过。No actionable interface findings in this change.</p>
+<h3>考虑但拒绝（Considered but Rejected）</h3><ul><li>删除全站置顶浮钮：扩大到无关页面，改为当前表单预留操作通道。</li><li>轮询直接覆盖所有输入：会丢失未保存配置，保留草稿并处理保存响应与旧轮询响应竞争。</li><li>不设总并发上限：会放大外部请求与后台资源占用；每源独立推进，总体四并发。</li></ul>
+<h3>验证与结论（Verification / Verdict）</h3><p>已读整个分支增删两侧；旧两来源/全局30秒限制被持久来源队列替代，凭据所有者、人工保护、ISBN与作者匹配及已有封面保护均保留。Chrome DevTools MCP未提供，使用Playwright Chromium连接真实Docker后端；未使用mock作为产品验收。无残留HIGH/MEDIUM；结论：Approve。</p></section>
+</main><footer>BookHarbor · ACTIVE · 2026-10-30</footer></div></body></html>

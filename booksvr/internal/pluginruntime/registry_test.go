@@ -2,6 +2,7 @@ package pluginruntime
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"talebook/booksvr/internal/plugindomain"
@@ -399,5 +400,13 @@ func TestDefaultCounts(t *testing.T) {
 func TestConnectionRoles(t *testing.T) {
 	if BuiltinConnectionRole != "builtin" || DefaultConnectionRole != "default" {
 		t.Errorf("roles = %q / %q", BuiltinConnectionRole, DefaultConnectionRole)
+	}
+}
+
+func TestRedactedRateLimitPreservesSafeRetryDelay(t *testing.T) {
+	e := pluginproto.NewUpstreamRateLimitError("token=secret-value", 1800.0)
+	got := RedactedException(e, map[string]any{"api_key": "secret-value"}).(*pluginproto.UpstreamError)
+	if got.RetryAfter == nil || *got.RetryAfter != 1800 || retryAfterOf(got) == nil || *retryAfterOf(got) != 1800 || strings.Contains(got.Message, "secret-value") {
+		t.Fatal(got)
 	}
 }

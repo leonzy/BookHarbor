@@ -116,7 +116,7 @@ func (r *Runtime) PluginKeyOf(connection *userdb.PluginConnection) (string, erro
 // 凭据——既绕过了 health 与审计，也把凭据解密泄漏到了运行时边界之外。
 func (r *Runtime) ConnectionsFor(capability string, userID *int64) ([]*userdb.PluginConnection, error) {
 	query := `SELECT c.id, c.installation_id, c.owner_type, c.owner_id, c.role, c.name,
-			c.config, c.scopes, c.health, c.enabled, c.cursor, c.lease_token, c.lease_until
+			c.secret_id, c.config, c.scopes, c.health, c.enabled, c.cursor, c.lease_token, c.lease_until
 		FROM plugin_connections c
 		JOIN plugin_installations i ON i.id = c.installation_id
 		JOIN plugin_definitions d ON d.id = i.definition_id
@@ -406,7 +406,7 @@ type rowScanner interface {
 // scanConnection 从一行读取连接。
 //
 // 列顺序必须与 ConnectionsFor 的 SELECT 一致：
-// id, installation_id, owner_type, owner_id, role, name, config, scopes,
+// id, installation_id, owner_type, owner_id, role, name, secret_id, config, scopes,
 // health, enabled, cursor, lease_token, lease_until
 func scanConnection(row rowScanner) (*userdb.PluginConnection, error) {
 	var (
@@ -419,7 +419,7 @@ func scanConnection(row rowScanner) (*userdb.PluginConnection, error) {
 		leaseUntil sql.NullString
 	)
 	err := row.Scan(&c.ID, &c.InstallationID, &c.OwnerType, &c.OwnerID, &c.Role,
-		&c.Name, &config, &scopes, &health, &c.Enabled, &cursor,
+		&c.Name, &c.SecretID, &config, &scopes, &health, &c.Enabled, &cursor,
 		&leaseToken, &leaseUntil)
 	if err != nil {
 		return nil, err

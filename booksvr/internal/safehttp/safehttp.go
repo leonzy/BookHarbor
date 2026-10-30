@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -827,11 +828,18 @@ func parseRetryAfter(value string) any {
 	if value == "" {
 		return nil
 	}
-	f, err := strconv.ParseFloat(value, 64)
-	if err != nil {
+	f, e := strconv.ParseFloat(value, 64)
+	if e != nil {
+		when, e := http.ParseTime(value)
+		if e != nil {
+			return nil
+		}
+		f = time.Until(when).Seconds()
+	}
+	if math.IsNaN(f) || math.IsInf(f, 0) {
 		return nil
 	}
-	return f
+	return max(0, f)
 }
 
 // drain 读取并关闭响应体，便于连接复用。

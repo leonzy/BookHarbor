@@ -58,7 +58,7 @@ func TestTrustedLiveAutomaticOpenLibrary(t *testing.T) {
 	if e != nil || before.Publisher != "" || before.ISBN != "9780141439518" {
 		t.Fatal(before, e)
 	}
-	if e = worker.network(context.Background()); e != nil {
+	if e = runMetadataNetwork(t, worker); e != nil {
 		t.Fatal(e)
 	}
 	after, e := bookGetOne(w.Config(""), 1)

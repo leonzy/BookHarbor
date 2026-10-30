@@ -557,3 +557,15 @@ func TestAsStringAndContains(t *testing.T) {
 		t.Error("contains 错误")
 	}
 }
+
+func TestRateLimitRetainsOnlyFiniteNonnegativeRetryAfter(t *testing.T) {
+	e := NewUpstreamRateLimitError("limited", 1800.5)
+	if e.RetryAfter == nil || *e.RetryAfter != 1800.5 {
+		t.Fatal(e)
+	}
+	for _, v := range []any{nil, -1, "bad", "NaN", "+Inf"} {
+		if NewUpstreamRateLimitError("limited", v).RetryAfter != nil {
+			t.Fatal(v)
+		}
+	}
+}

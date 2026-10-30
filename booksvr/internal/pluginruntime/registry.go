@@ -138,7 +138,11 @@ func RedactedException(err error, secrets map[string]any) error {
 	if asError(err, &upstreamErr) {
 		switch upstreamErr.Code {
 		case "provider_rate_limited":
-			return pluginproto.NewUpstreamRateLimitError(message, nil)
+			var delay any
+			if upstreamErr.RetryAfter != nil {
+				delay = *upstreamErr.RetryAfter
+			}
+			return pluginproto.NewUpstreamRateLimitError(message, delay)
 		case "provider_unauthorized":
 			return pluginproto.NewUpstreamAuthError(message, upstreamErr.ErrorType, upstreamErr.StatusCode)
 		default:
