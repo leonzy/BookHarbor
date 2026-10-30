@@ -30,6 +30,7 @@ import (
 
 // ServeOptions 是 Serve 的装配参数。
 type ServeOptions struct {
+	MetadataOnly bool
 	// ReaderOnly serves reading routes without migrations or background workers.
 	ReaderOnly bool
 	// PluginFeaturesOnly serves authenticated feature calls without background workers.
@@ -172,7 +173,7 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 	}
 
 	openLibrary, openUser := openLibraryDB, openUserDB
-	if opts.ReaderOnly || opts.PluginFeaturesOnly {
+	if opts.ReaderOnly || opts.PluginFeaturesOnly || opts.MetadataOnly {
 		openLibrary, openUser = openExistingReaderDB, openExistingReaderDB
 	}
 	db, err := openLibrary(opts.DBPath)
@@ -200,7 +201,7 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 	// 两个句柄都要传：传错任一个都会在运行时报 no such table。
 	//   - 只传 libraryDB → scanfiles 找不到（ScanService.DB 错）
 	//   - 只传 userDB → books 找不到（ScanService.LibraryDB 错）
-	if opts.ServiceFactory != nil && !opts.ReaderOnly && !opts.PluginFeaturesOnly {
+	if opts.ServiceFactory != nil && !opts.ReaderOnly && !opts.PluginFeaturesOnly && !opts.MetadataOnly {
 		set := opts.ServiceFactory(userDB, db)
 		if set.ScanService != nil {
 			opts.ScanService = set.ScanService
@@ -240,7 +241,7 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 		}
 	}
 
-	if !opts.ReaderOnly && !opts.PluginFeaturesOnly {
+	if !opts.ReaderOnly && !opts.PluginFeaturesOnly && !opts.MetadataOnly {
 		stopCovers, err := attachCoverWorker(ctx, db, opts.LibraryRoot)
 		if err != nil {
 			return err
@@ -260,6 +261,13 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 		var stopSources func()
 		opts, stopSources = attachSourceWorker(ctx, opts, db, userDB)
 		defer stopSources()
+	}
+	if !opts.ReaderOnly && !opts.PluginFeaturesOnly {
+		stopMetadata, err := startMetadataWorker(ctx, opts, db, userDB)
+		if err != nil {
+			return err
+		}
+		defer stopMetadata()
 	}
 	dispatcher, err := newSettingsHandler(opts, db, userDB)
 	if err != nil {
@@ -544,6 +552,9 @@ func openLibraryDB(path string) (*sql.DB, error) {
 
 // newServeDispatcher builds immutable route configurations for one settings snapshot.
 func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, error) {
+	if opts.MetadataOnly {
+		return newMetadataOnlyDispatcher(opts, db, userDB)
+	}
 	if opts.PluginFeaturesOnly {
 		return newPluginFeaturesOnlyDispatcher(opts, db, userDB)
 	}
@@ -731,6 +742,7 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 	specs = append(specs, AdminRouteSpecs(newAdminConfig(opts, userDB, db))...)
 
 	specs = append(specs, BookRouteSpecs(bookCfg)...)
+	specs = append(specs, RouteSpec{Pattern: "/api/admin/metadata/enrichment", Methods: []string{"GET"}, Auth: true, Admin: true, Handler: MetadataEnrichmentStatus(db)})
 
 	audioRoot := opts.AudiobookRoot
 	if audioRoot == "" && opts.LibraryRoot != "" {

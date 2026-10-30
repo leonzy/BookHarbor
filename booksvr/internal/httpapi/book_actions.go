@@ -4,7 +4,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
+	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -226,9 +229,47 @@ func BookSaveMetaHandler(cfg BookConfig) HandlerFunc {
 
 // BookReferHandler 实现 /api/book/<id>/refer。
 func BookReferHandler(cfg BookConfig) HandlerFunc {
-	return bookDelegate(cfg, func(c BookConfig) func(*Context, int64, map[string]any) (map[string]any, error) {
+	post := bookDelegate(cfg, func(c BookConfig) func(*Context, int64, map[string]any) (map[string]any, error) {
 		return c.Refer
 	}, "来源引用未接线")
+	return func(ctx *Context) (map[string]any, error) {
+		if ctx.Request.Method != http.MethodGet {
+			contentType, _, _ := mime.ParseMediaType(ctx.Request.Header.Get("Content-Type"))
+			if contentType == "application/x-www-form-urlencoded" {
+				body, err := io.ReadAll(io.LimitReader(ctx.Request.Body, (1<<20)+1))
+				if err != nil || len(body) > 1<<20 {
+					return map[string]any{"err": "params.invalid", "msg": "请求参数格式错误"}, nil
+				}
+				values, err := url.ParseQuery(string(body))
+				if err != nil || len(values) == 0 {
+					return map[string]any{"err": "params.invalid", "msg": "请求参数格式错误"}, nil
+				}
+				id, err := strconv.ParseInt(ctx.Param(0), 10, 64)
+				if err != nil {
+					return map[string]any{"err": "params.book.invalid", "msg": "书籍已不存在"}, nil
+				}
+				if cfg.Refer == nil {
+					return map[string]any{"err": "not_wired", "msg": "来源引用未接线"}, nil
+				}
+				args := map[string]any{}
+				for key, vals := range values {
+					if len(vals) > 0 {
+						args[key] = vals[0]
+					}
+				}
+				return cfg.Refer(ctx, id, args)
+			}
+			return post(ctx)
+		}
+		id, err := strconv.ParseInt(ctx.Param(0), 10, 64)
+		if err != nil {
+			return map[string]any{"err": "params.book.invalid", "msg": "书籍已不存在"}, nil
+		}
+		if cfg.Refer == nil {
+			return map[string]any{"err": "not_wired", "msg": "来源引用未接线"}, nil
+		}
+		return cfg.Refer(ctx, id, map[string]any{})
+	}
 }
 
 // BookSendDeviceHandler 实现 /api/book/<id>/send_to_device。
@@ -576,7 +617,7 @@ func BookDetailHandler(cfg BookConfig) HandlerFunc {
 		d["publisher_url"] = cfg.CDNURL + "/publisher/" + val(book.Publisher, UnknownText)
 		// 权限字段（Python 的 BookFormatter.get_permissions）。
 		d["is_public"] = true
-		d["is_owner"] = cfg.IsBookOwner != nil && cfg.IsBookOwner(ctx, bookID)
+		d["is_owner"] = !ctx.Identity.IsGuest() && (ctx.Identity.IsAdmin || (cfg.IsBookOwner != nil && cfg.IsBookOwner(ctx, bookID)))
 		// 别名（Python 的 AliasService.get_book_aliases）。
 		// 未接线时返回空数组，与 Python 无别名时的行为一致。
 		aliases := []string{}

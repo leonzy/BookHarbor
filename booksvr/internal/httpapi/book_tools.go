@@ -2,9 +2,12 @@ package httpapi
 
 import (
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"talebook/booksvr/internal/booktools"
 	"talebook/booksvr/internal/library"
@@ -211,6 +214,16 @@ func (w *bookWiring) bookRefer(ctx *Context, bookID int64, args map[string]any) 
 
 	if ctx.Request != nil && ctx.Request.Method == "POST" {
 		return w.applyBookReference(ctx, book, args)
+	}
+	// Explicit lookup also tries the original file before reaching the network.
+	if err := library.EnsureMetadataSchema(w.libraryDB); err != nil {
+		return nil, err
+	}
+	worker := &metadataWorker{w: w, now: time.Now, logger: log.New(io.Discard, "", 0)}
+	if err := worker.local(sourceContext(ctx), bookID); err == nil {
+		if refreshed, e := bookGetOne(w.Config(""), bookID); e == nil && refreshed != nil {
+			book = refreshed
+		}
 	}
 	return w.searchBookReferences(ctx, book)
 }

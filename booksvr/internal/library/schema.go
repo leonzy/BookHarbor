@@ -115,6 +115,9 @@ func Migrate(db *sql.DB) error {
 	if err := migrateBookSizes(db); err != nil {
 		return err
 	}
+	if err := EnsureMetadataSchema(db); err != nil {
+		return err
+	}
 	return migrateBookDirectoryIndex(db)
 }
 

@@ -513,6 +513,32 @@ func TestBookScopedHandlerPrivate(t *testing.T) {
 
 // ---- BookDetail ----
 
+func TestBookDetailAdministratorManagementPermission(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		userID int64
+		admin  bool
+		want   bool
+	}{{"admin", 1, true, true}, {"reader", 1, false, false}, {"guest", 0, false, false}} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newBookFixture(t)
+			insertBook(t, f.DB, 10, "三体")
+			if test.userID != 0 {
+				bookSeedReader(t, f.DB, test.userID, "reader")
+			}
+			ctx := pluginCtx(t, f.DB, http.MethodGet, "/api/book/10", "", test.userID, test.admin)
+			ctx.Params = []string{"10"}
+			resp, err := BookDetailHandler(f.Cfg)(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := resp["book"].(map[string]any)["is_owner"]; got != test.want {
+				t.Fatalf("is_owner=%v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestBookDetailHandler(t *testing.T) {
 	f := newBookFixture(t)
 	insertBook(t, f.DB, 10, "三体")

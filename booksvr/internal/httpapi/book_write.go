@@ -345,6 +345,9 @@ func (w *bookWiring) removeFormat(bookID int64, format string) error {
 
 // updateBookMeta 写入书籍元数据（标题 + 可选字段）。
 func (w *bookWiring) updateBookMeta(bookID int64, title string, args map[string]any) error {
+	if err := library.EnsureMetadataSchema(w.libraryDB); err != nil {
+		return err
+	}
 	tx, err := w.libraryDB.Begin()
 	if err != nil {
 		return err
@@ -382,6 +385,13 @@ func (w *bookWiring) updateBookMeta(bookID int64, title string, args map[string]
 		}
 	}
 	if err := updateAdditionalBookMeta(tx, bookID, args); err != nil {
+		return err
+	}
+	fields := []string{"title"}
+	for key := range args {
+		fields = append(fields, key)
+	}
+	if err := library.LockMetadata(tx, bookID, fields); err != nil {
 		return err
 	}
 

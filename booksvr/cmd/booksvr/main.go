@@ -33,6 +33,7 @@ const usage = `booksvr - Talebook library storage layer
 
 子命令:
   serve               启动 HTTP 后端（已实现路由本地服务，其余代理回 Tornado）
+  metadata-inspect    只读检查源文件的内嵌及版权页元数据
   import-calibre      把 Calibre 书库单向只读迁移到三层模型，输出迁移报告
   repair-covers       补齐已有图书封面（仅保存压缩图片）
   import-pending      处理一批已扫描记录（运维与隔离验证）
@@ -68,6 +69,8 @@ func Run(args []string) error {
 		return runBootstrap(args[2:], os.Stdout)
 	case "serve":
 		return runServe(args[2:], os.Stdout)
+	case "metadata-inspect":
+		return runMetadataInspect(args[2:], os.Stdout)
 	case "import-calibre":
 		return runImportCalibre(args[2:], os.Stdout)
 	case "repair-covers":

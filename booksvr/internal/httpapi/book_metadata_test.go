@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"talebook/booksvr/internal/library"
@@ -84,9 +85,10 @@ func TestBookReferencesStreamCandidatesAndPartialFailures(t *testing.T) {
 	registerReference(t, w, &referenceProvider{key: "talebook.test.failed-reference", fail: true})
 	ctx := adminCtx(1)
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/book/1/refer?stream=1", nil)
+	ctx.Params = []string{"1"}
 	recorder := httptest.NewRecorder()
 	ctx.Writer = recorder
-	result, err := w.bookRefer(ctx, 1, map[string]any{})
+	result, err := BookReferHandler(w.Config(""))(ctx)
 	if err != nil || result != nil {
 		t.Fatalf("result=%v err=%v", result, err)
 	}
@@ -126,8 +128,10 @@ func TestBookReferenceApplyFallbackPreservesOriginalPath(t *testing.T) {
 	w, provider, path := referenceFixture(t)
 	provider.missingDetail = true
 	ctx := adminCtx(1)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/book/1/refer", nil)
-	result, err := w.bookRefer(ctx, 1, map[string]any{"provider_key": provider.key, "provider_value": "record-1", "only_meta": "yes"})
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/book/1/refer", strings.NewReader("provider_key="+provider.key+"&provider_value=record-1&only_meta=yes"))
+	ctx.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8")
+	ctx.Params = []string{"1"}
+	result, err := BookReferHandler(w.Config(""))(ctx)
 	if err != nil || result["err"] != "ok" {
 		t.Fatalf("result=%v err=%v", result, err)
 	}

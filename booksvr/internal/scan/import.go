@@ -18,6 +18,7 @@ import (
 	"talebook/booksvr/internal/epubmeta"
 	"talebook/booksvr/internal/importmeta"
 	"talebook/booksvr/internal/library"
+	"talebook/booksvr/internal/localmeta"
 	"talebook/booksvr/internal/media"
 	"talebook/booksvr/internal/mobimeta"
 	"talebook/booksvr/internal/userdb"
@@ -266,14 +267,8 @@ func (s *Service) importRowPrepared(row *userdb.ScanFile, userID int64, mode str
 	return status, bookID, err
 }
 
-// importMetadata 复刻 _do_import 的元数据提取（scan.py:354-391）。
-//
-// 分发规则与 Python 一致：
-//   - 受管文档（djvu/uvz）：只用文件名；
-//   - 漫画容器（cbz/zip/cbr/rar）：文件名 + 「佚名」；
-//   - 其余格式：先尝试解析内嵌元数据（epub/mobi/azw/azw3），
-//     解析不到再退回文件名 + 「佚名」；
-//   - txt/pdf 非结构化，无论解析结果如何都强制用文件名 + 「佚名」。
+// importMetadata reads embedded fields, labelled copyright/text, then filenames.
+// Managed documents and comics retain filename-only metadata.
 //
 // 返回 (元数据, 文件是否已消失)。
 func (s *Service) importMetadata(fpath, format string) (importmeta.Metadata, bool) {
@@ -287,16 +282,22 @@ func (s *Service) importMetadata(fpath, format string) (importmeta.Metadata, boo
 		return importmeta.FilenameMetadata(fpath), false
 	}
 
-	mi, ok := embeddedMetadata(fpath, fmtLower)
-	if !ok {
-		mi = importmeta.FilenameMetadata(fpath)
-	}
+	mi, _ := embeddedMetadata(fpath, fmtLower)
+	return localmeta.Supplement(context.Background(), fpath, fmtLower, mi), false
+}
 
-	// txt/pdf 非结构化，Calibre 识别不准，强制回退到文件名。
-	if fmtLower == "txt" || fmtLower == "pdf" {
-		mi = importmeta.FilenameMetadata(fpath)
+// ReadMetadata is shared by imports and the rate-limited historical enrichment.
+func ReadMetadata(ctx context.Context, path, format string) (importmeta.Metadata, error) {
+	physical, release, err := sourcefile.Acquire(ctx, path)
+	if err != nil {
+		return importmeta.Metadata{}, err
 	}
-	return mi, false
+	defer release()
+	if _, err := os.Stat(physical); err != nil {
+		return importmeta.Metadata{}, err
+	}
+	mi, _ := embeddedMetadata(physical, strings.ToLower(format))
+	return localmeta.Supplement(ctx, physical, format, mi), nil
 }
 
 // embeddedMetadata 按格式分派到对应的内嵌元数据解析器。
@@ -350,7 +351,12 @@ func docMetadata(fpath string, extract func([]byte) (*docmeta.Metadata, error)) 
 
 // mobiMetadata 从 MOBI/AZW/AZW3 文件读取元数据；失败时返回 ok=false。
 func mobiMetadata(fpath string) (importmeta.Metadata, bool) {
-	data, err := os.ReadFile(fpath)
+	f, err := os.Open(fpath)
+	if err != nil {
+		return importmeta.Metadata{}, false
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, 2<<20))
 	if err != nil {
 		return importmeta.Metadata{}, false
 	}
@@ -379,11 +385,7 @@ func mobiMetadata(fpath string) (importmeta.Metadata, bool) {
 
 // epubMetadata 从 EPUB 文件读取元数据；失败时返回 ok=false。
 func epubMetadata(fpath string) (importmeta.Metadata, bool) {
-	data, err := os.ReadFile(fpath)
-	if err != nil {
-		return importmeta.Metadata{}, false
-	}
-	meta, err := epubmeta.Extract(data)
+	meta, err := epubmeta.ExtractFile(fpath)
 	if err != nil || meta == nil {
 		return importmeta.Metadata{}, false
 	}
@@ -474,6 +476,9 @@ func (s *Service) importNewBook(mi importmeta.Metadata, fpath, format string, us
 	bookID, err := library.ImportBook(s.LibraryDB, library.BookMeta{
 		Title:     mi.Title,
 		Author:    author,
+		Authors:   mi.Authors,
+		ISBN:      mi.ISBN,
+		Language:  mi.Language,
 		Publisher: mi.Publisher,
 		Pubdate:   mi.Pubdate,
 		Tags:      mi.Tags,
@@ -778,6 +783,9 @@ func (s *Service) addExternalIndexRecord(mi importmeta.Metadata, fpath, format s
 	bookID, err := library.ImportBook(s.LibraryDB, library.BookMeta{
 		Title:     mi.Title,
 		Author:    author,
+		Authors:   mi.Authors,
+		ISBN:      mi.ISBN,
+		Language:  mi.Language,
 		Publisher: mi.Publisher,
 		Pubdate:   mi.Pubdate,
 		Tags:      mi.Tags,

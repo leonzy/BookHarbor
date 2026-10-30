@@ -121,8 +121,10 @@ func TestExtractISBNVariants(t *testing.T) {
 	}{
 		{"带连字符的13位", "978-7-5366-9293-0", "9787536692930"},
 		{"带urn前缀", "urn:isbn:9787536692930", "9787536692930"},
-		{"10位含X", "0-306-40615-X", "030640615X"},
-		{"10位小写x", "030640615x", "030640615x"},
+		{"10位含X", "0-8044-2957-X", "080442957X"},
+		{"10位小写x", "080442957x", "080442957X"},
+		{"错误校验位", "030640615X", ""},
+		{"UUID不能按数字截取", "urn:uuid:aa0306406152bb", ""},
 		{"非ISBN", "not-an-isbn", ""},
 		{"空", "", ""},
 	}
@@ -146,6 +148,7 @@ func TestExtractPicksFirstValidISBN(t *testing.T) {
 	opf := `<?xml version="1.0"?><package xmlns:dc="http://purl.org/dc/elements/1.1/">
 		<metadata>
 			<dc:identifier>urn:uuid:12345678-1234-1234-1234-123456789012</dc:identifier>
+			<dc:identifier>9787536692931</dc:identifier>
 			<dc:identifier>9787536692930</dc:identifier>
 			<dc:identifier>0306406152</dc:identifier>
 		</metadata></package>`

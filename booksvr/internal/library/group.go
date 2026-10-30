@@ -10,6 +10,9 @@ import (
 type BookMeta struct {
 	Title      string
 	Author     string
+	Authors    []string
+	ISBN       string
+	Language   string
 	Publisher  string
 	Pubdate    string
 	Translator string

@@ -6,13 +6,7 @@ import (
 	"testing"
 )
 
-// TestImportMetadataDispatchByFormat 验证 importMetadata 的分发规则与
-// Python scan.py:354-391 一致。
-//
-// 关键规则：
-//   - txt/pdf 非结构化，强制用文件名 + 「佚名」；
-//   - 漫画容器（cbz/zip/cbr/rar）与受管文档（djvu/uvz）不解析内嵌元数据；
-//   - 其余格式解析失败时退回文件名。
+// Unsupported or malformed input retains the conservative filename fallback.
 func TestImportMetadataDispatchByFormat(t *testing.T) {
 	svc := newImportService(t, importTestDB(t), importLibraryDB(t))
 	dir := t.TempDir()
@@ -53,10 +47,8 @@ func TestImportMetadataDispatchByFormat(t *testing.T) {
 	}
 }
 
-// TestImportMetadataTxtIgnoresEmbedded 验证 txt 即使内容像 EPUB 也强制用文件名。
-//
-// Python 对 txt/pdf 无条件覆盖 title/authors，Go 侧必须一致。
-func TestImportMetadataTxtIgnoresEmbedded(t *testing.T) {
+// A binary ZIP named .txt must not be parsed as text or as a structured EPUB.
+func TestImportMetadataTxtDoesNotParseBinaryAsEpub(t *testing.T) {
 	svc := newImportService(t, importTestDB(t), importLibraryDB(t))
 	dir := t.TempDir()
 
@@ -76,6 +68,34 @@ func TestImportMetadataTxtIgnoresEmbedded(t *testing.T) {
 	}
 	if len(mi.Authors) != 1 || mi.Authors[0] != "佚名" {
 		t.Errorf("txt 应强制用「佚名」，得到 %v", mi.Authors)
+	}
+}
+
+func TestImportCopyrightTXTActuallyPersistsMetadataWithoutCopy(t *testing.T) {
+	db, lib := importTestDB(t), importLibraryDB(t)
+	for _, stmt := range []string{`CREATE TABLE identifiers(id INTEGER PRIMARY KEY,book INTEGER,type TEXT,val TEXT)`, `CREATE TABLE publishers(id INTEGER PRIMARY KEY,name TEXT)`, `CREATE TABLE books_publishers_link(id INTEGER PRIMARY KEY,book INTEGER,publisher INTEGER)`} {
+		if _, err := lib.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := newImportService(t, db, lib)
+	dir := t.TempDir()
+	path := writeBook(t, dir, "文件名.txt", []byte("书名：微神集 月牙集\n作者：老舍\n出版社：人民文学出版社\nISBN：9787020091621\n正文"))
+	seedReadyRow(t, db, path, "copyright-isbn")
+	result, err := s.Import(nil, 1, false, ModeIndex)
+	if err != nil || result.Indexed != 1 {
+		t.Fatal(result, err)
+	}
+	var title, author, publisher, isbn string
+	if err = lib.QueryRow(`SELECT b.title,a.name,p.name,i.val FROM books b JOIN books_authors_link al ON al.book=b.id JOIN authors a ON a.id=al.author JOIN books_publishers_link pl ON pl.book=b.id JOIN publishers p ON p.id=pl.publisher JOIN identifiers i ON i.book=b.id`).Scan(&title, &author, &publisher, &isbn); err != nil {
+		t.Fatal(err)
+	}
+	if title != "微神集 月牙集" || author != "老舍" || publisher != "人民文学出版社" || isbn != "9787020091621" {
+		t.Fatal(title, author, publisher, isbn)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatal("source directory changed", entries, err)
 	}
 }
 

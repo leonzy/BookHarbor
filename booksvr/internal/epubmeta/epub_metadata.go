@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"talebook/booksvr/internal/epubpath"
+	"talebook/booksvr/internal/localmeta"
 )
 
 // SummaryLimit 是 description 的截断长度。
@@ -62,6 +63,20 @@ func Extract(archiveBytes []byte) (*Metadata, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidContainer, err)
 	}
+	return extractReader(reader)
+}
+
+// ExtractFile only reads the package entries, not the full book or illustrations.
+func ExtractFile(path string) (*Metadata, error) {
+	r, err := zip.OpenReader(path)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return extractReader(&r.Reader)
+}
+
+func extractReader(reader *zip.Reader) (*Metadata, error) {
 
 	containerData, err := readEntry(reader, "META-INF/container.xml")
 	if err != nil {
@@ -100,8 +115,8 @@ func Extract(archiveBytes []byte) (*Metadata, error) {
 	identifiers := texts("identifier")
 	isbn := ""
 	for _, value := range identifiers {
-		cleaned := nonISBNChars.ReplaceAllString(value, "")
-		if isbnRe.MatchString(cleaned) {
+		cleaned := localmeta.ISBN(value)
+		if cleaned != "" {
 			isbn = cleaned
 			break
 		}

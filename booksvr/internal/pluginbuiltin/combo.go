@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"talebook/booksvr/internal/localmeta"
 	"time"
 
 	"talebook/booksvr/internal/plugindomain"
@@ -316,6 +317,15 @@ func openLibraryFieldDecisions(current, candidate map[string]any, lockedFields [
 
 // SearchBooks 复刻 search_books。
 func (p *OpenLibraryProvider) SearchBooks(query plugindomain.MetadataQuery, context map[string]any) ([]plugindomain.BookMetadata, error) {
+	if isbn := localmeta.ISBN(query.ISBN); isbn != "" {
+		record, err := p.exactISBN(isbn)
+		if err != nil {
+			return nil, err
+		}
+		if record != nil {
+			return []plugindomain.BookMetadata{*record}, nil
+		}
+	}
 	value := query.ISBN
 	if value == "" {
 		value = query.Title
@@ -325,7 +335,7 @@ func (p *OpenLibraryProvider) SearchBooks(query plugindomain.MetadataQuery, cont
 		return nil, nil
 	}
 	payload, err := reviewHTTPJSON("GET", "https://openlibrary.org/search.json", nil,
-		url.Values{"q": {value}, "limit": {"20"}}, nil, 30)
+		url.Values{"q": {value}, "limit": {"20"}, "fields": {"key,title,author_name,isbn,publisher,first_publish_year,cover_i"}}, nil, 30)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +348,12 @@ func (p *OpenLibraryProvider) SearchBooks(query plugindomain.MetadataQuery, cont
 		}
 		isbn := ""
 		if isbns, ok := item["isbn"].([]any); ok && len(isbns) > 0 {
-			isbn = stringOr(isbns[0], "")
+			for _, raw := range isbns {
+				if v := localmeta.ISBN(stringOr(raw, "")); v != "" {
+					isbn = v
+					break
+				}
+			}
 		}
 		records = append(records, plugindomain.NewBookMetadata(map[string]any{
 			"title":          stringOr(item["title"], ""),
@@ -351,11 +366,59 @@ func (p *OpenLibraryProvider) SearchBooks(query plugindomain.MetadataQuery, cont
 	return records, nil
 }
 
+// Books API returns the requested edition rather than a work's arbitrary ISBN.
+func (p *OpenLibraryProvider) exactISBN(isbn string) (*plugindomain.BookMetadata, error) {
+	payload, err := reviewHTTPJSON("GET", "https://openlibrary.org/api/books", nil, url.Values{"bibkeys": {"ISBN:" + isbn}, "format": {"json"}, "jscmd": {"data"}}, nil, 30)
+	if err != nil {
+		return nil, err
+	}
+	book, ok := payload["ISBN:"+isbn].(map[string]any)
+	if !ok || stringOr(book["title"], "") == "" {
+		return nil, nil
+	}
+	names := func(value any) []string {
+		var out []string
+		if list, ok := value.([]any); ok {
+			for _, raw := range list {
+				if obj, ok := raw.(map[string]any); ok {
+					if name := stringOr(obj["name"], ""); name != "" {
+						out = append(out, name)
+					}
+				}
+			}
+		}
+		return out
+	}
+	key := "isbn:" + isbn
+	if raw := stringOr(book["key"], ""); openLibraryKeyRe.MatchString(raw) {
+		key = raw
+	} else if parsed, e := url.Parse(stringOr(book["url"], "")); e == nil {
+		parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+		if len(parts) >= 2 {
+			candidate := "/" + strings.Join(parts[:2], "/")
+			if openLibraryKeyRe.MatchString(candidate) {
+				key = candidate
+			}
+		}
+	}
+	cover := ""
+	if image, ok := book["cover"].(map[string]any); ok {
+		cover = stringOr(image["large"], stringOr(image["medium"], ""))
+	}
+	record := plugindomain.NewBookMetadata(map[string]any{"title": book["title"], "authors": names(book["authors"]), "publisher": firstOf(names(book["publishers"])), "isbn": isbn, "published": book["publish_date"], "tags": names(book["subjects"]), "cover_url": cover, "provider_key": "talebook.combo.open-library", "provider_value": key})
+	return &record, nil
+}
+
 var openLibraryKeyRe = regexp.MustCompile(`^/(?:works/OL[0-9]+W|books/OL[0-9]+M)$`)
 var openLibraryAuthorRe = regexp.MustCompile(`^/authors/OL[0-9]+A$`)
 
 // GetMetadata retrieves the selected work or edition instead of returning an empty candidate.
 func (p *OpenLibraryProvider) GetMetadata(externalID string, context map[string]any) (*plugindomain.BookMetadata, error) {
+	if strings.HasPrefix(externalID, "isbn:") {
+		if isbn := localmeta.ISBN(strings.TrimPrefix(externalID, "isbn:")); isbn != "" {
+			return p.exactISBN(isbn)
+		}
+	}
 	if !openLibraryKeyRe.MatchString(externalID) {
 		return nil, pluginproto.NewUpstreamError("Open Library 书籍标识无效", "other", nil)
 	}

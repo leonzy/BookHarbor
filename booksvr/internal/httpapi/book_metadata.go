@@ -78,7 +78,17 @@ func (w *bookWiring) searchBookReferences(ctx *Context, book *library.BookData) 
 		outcome := referenceOutcome{connection: connection, key: key, name: stringOf(provider.Manifest()["name"])}
 		pending[connection.ID] = outcome
 		go func(outcome referenceOutcome) {
-			outcome.value, outcome.err = runtime.Read(outcome.connection, "search_books", []any{referenceQuery(book)}, pluginruntime.CallOptions{Timeout: &timeout, RequestedBy: &user, RequiredScopes: []string{"books.read"}})
+			bounded := *outcome.connection
+			bounded.Config = map[string]any{}
+			for k, v := range outcome.connection.Config {
+				bounded.Config[k] = v
+			}
+			limit := pluginruntime.EffectiveTimeout(outcome.connection, timeout)
+			if limit > timeout {
+				limit = timeout
+			}
+			bounded.Config["timeout_seconds"] = limit
+			outcome.value, outcome.err = runtime.Read(&bounded, "search_books", []any{referenceQuery(book)}, pluginruntime.CallOptions{Timeout: &timeout, RequestedBy: &user, RequiredScopes: []string{"books.read"}})
 			results <- outcome
 		}(outcome)
 	}

@@ -28,6 +28,9 @@ func ImportBook(db *sql.DB, meta BookMeta) (int64, error) {
 
 	now := time.Now().UTC().Format("2006-01-02 15:04:05+00:00")
 	authorSort := strings.TrimSpace(meta.Author)
+	if authorSort == "" && len(meta.Authors) > 0 {
+		authorSort = strings.Join(meta.Authors, " & ")
+	}
 
 	res, err := tx.Exec(`
 		INSERT INTO books (title, author_sort, path, timestamp, pubdate, series_index, has_cover, last_modified)
@@ -41,7 +44,17 @@ func ImportBook(db *sql.DB, meta BookMeta) (int64, error) {
 		return 0, fmt.Errorf("library: 获取新书 id 失败: %w", err)
 	}
 
-	if a := strings.TrimSpace(meta.Author); a != "" {
+	authors := meta.Authors
+	if len(authors) == 0 {
+		authors = []string{meta.Author}
+	}
+	seenAuthors := map[string]bool{}
+	for _, raw := range authors {
+		a := strings.TrimSpace(raw)
+		if a == "" || seenAuthors[a] {
+			continue
+		}
+		seenAuthors[a] = true
 		authorID, err := findOrCreateItem(tx, "authors", "name", a)
 		if err != nil {
 			return 0, err
@@ -49,6 +62,20 @@ func ImportBook(db *sql.DB, meta BookMeta) (int64, error) {
 		if _, err := tx.Exec(
 			`INSERT INTO books_authors_link (book, author) VALUES (?, ?)`, bookID, authorID); err != nil {
 			return 0, fmt.Errorf("library: 关联作者失败: %w", err)
+		}
+	}
+	if meta.ISBN != "" {
+		if _, err := tx.Exec(`INSERT INTO identifiers(book,type,val) VALUES(?,'isbn',?)`, bookID, meta.ISBN); err != nil {
+			return 0, err
+		}
+	}
+	if meta.Language != "" {
+		id, err := findOrCreateItem(tx, "languages", "lang_code", meta.Language)
+		if err != nil {
+			return 0, err
+		}
+		if _, err = tx.Exec(`INSERT INTO books_languages_link(book,lang_code,item_order) VALUES(?,?,0)`, bookID, id); err != nil {
+			return 0, err
 		}
 	}
 
