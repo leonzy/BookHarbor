@@ -5,6 +5,7 @@ go 1.22
 require (
 	github.com/dop251/goja v0.0.0-20240220182346-e401ed450204
 	golang.org/x/crypto v0.31.0
+	golang.org/x/image v0.23.0
 	golang.org/x/net v0.33.0
 	golang.org/x/sys v0.28.0
 	modernc.org/sqlite v1.34.5

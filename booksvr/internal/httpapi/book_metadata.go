@@ -27,7 +27,7 @@ type referenceOutcome struct {
 }
 
 func referenceQuery(book *library.BookData) map[string]any {
-	return map[string]any{"title": book.Title, "authors": book.Authors, "isbn": book.ISBN, "publisher": book.Publisher}
+	return map[string]any{"title": localmeta.FilenameTitle(book.Title), "authors": book.Authors, "isbn": book.ISBN, "publisher": book.Publisher}
 }
 
 // Search uses the same audited registry as plugin management. NDJSON preserves

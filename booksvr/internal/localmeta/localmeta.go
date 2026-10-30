@@ -109,7 +109,8 @@ func FromText(text string) importmeta.Metadata {
 		}
 		return r
 	}, text)
-	text = strings.ReplaceAll(text, "\r", "\n")
+	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
+	m.Comments = synopsis(text)
 	matches := labels.FindAllStringSubmatchIndex(text, -1)
 	for i, p := range matches {
 		end := len(text)
@@ -536,7 +537,7 @@ func Supplement(ctx context.Context, path, format string, m importmeta.Metadata)
 		}
 		m.Publisher = ""
 	}
-	if m.ISBN == "" || MissingAuthors(m.Authors) || m.Publisher == "" {
+	if m.ISBN == "" || MissingAuthors(m.Authors) || m.Publisher == "" || (strings.EqualFold(format, "txt") && m.Comments == "") {
 		switch strings.ToLower(format) {
 		case "epub":
 			Merge(&m, FromText(epubText(path)))
@@ -559,7 +560,7 @@ func Supplement(ctx context.Context, path, format string, m importmeta.Metadata)
 	// Filename is last, and only explicit labels supply author/ISBN hints.
 	Merge(&m, FromText(name))
 	if m.Title == "" {
-		m.Title = name
+		m.Title = FilenameTitle(name)
 	}
 	if MissingAuthors(m.Authors) {
 		m.Authors = []string{importmeta.AnonymousAuthor}

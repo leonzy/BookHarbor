@@ -220,7 +220,7 @@ func (w *bookWiring) bookRefer(ctx *Context, bookID int64, args map[string]any) 
 		return nil, err
 	}
 	worker := &metadataWorker{w: w, now: time.Now, logger: log.New(io.Discard, "", 0)}
-	if err := worker.local(sourceContext(ctx), bookID); err == nil {
+	if err := worker.local(sourceContext(ctx), bookID, true); err == nil {
 		if refreshed, e := bookGetOne(w.Config(""), bookID); e == nil && refreshed != nil {
 			book = refreshed
 		}

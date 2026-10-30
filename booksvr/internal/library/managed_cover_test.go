@@ -2,6 +2,7 @@ package library
 
 import (
 	"bytes"
+	"encoding/base64"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -126,5 +127,38 @@ func TestDeletingManagedBookMovesArtworkToTrash(t *testing.T) {
 	}
 	if data, err := os.ReadFile(filepath.Join(dst, trashCoverFile)); err != nil || string(data) != "artwork" {
 		t.Fatalf("trash lost artwork: %v", err)
+	}
+}
+
+// Synthetic solid-color fixtures generated for this test, not book artwork.
+func TestManagedCoverAcceptsWebPVariants(t *testing.T) {
+	for _, fixture := range []string{
+		"UklGRh4AAABXRUJQVlA4TBEAAAAvCAADAAfQuQZVtf+BiOh/AAA=",
+		"UklGRjgAAABXRUJQVlA4ICwAAADwAQCdASoJAA0AAUAmJaACdLoB+AAETAAA/uveL/yU1/jblq/687nOmwAAAA==",
+	} {
+		db := newQueryDB(t)
+		root := t.TempDir()
+		data, err := base64.StdEncoding.DecodeString(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := ReplaceCover(db, root, 1, data); err != nil || !ok {
+			t.Fatal(ok, err)
+		}
+		got, err := os.ReadFile(ManagedCoverPath(root, 1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		config, kind, err := image.DecodeConfig(bytes.NewReader(got))
+		if err != nil || kind != "jpeg" || config.Width != 9 || config.Height != 13 {
+			t.Fatal(config, kind, err)
+		}
+		if _, err := ReplaceCover(db, root, 1, data[:15]); err == nil {
+			t.Fatal("truncated WebP accepted")
+		}
+		after, _ := os.ReadFile(ManagedCoverPath(root, 1))
+		if !bytes.Equal(got, after) {
+			t.Fatal("invalid replacement damaged cover")
+		}
 	}
 }

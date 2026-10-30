@@ -255,3 +255,45 @@ func TestMetadataCoverOptionPreservesExistingArtwork(t *testing.T) {
 		})
 	}
 }
+
+func TestExplicitReferenceRefreshesLocalSynopsisAndKeepsLocks(t *testing.T) {
+	w, _, path := referenceFixture(t)
+	worker := testMetadataWorker(t, w)
+	if err := worker.saveJob(1, "network_pending", "previously checked", 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("【内容简介】\n新提取的简介。\n\n相关设定\n忽略"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.local(context.Background(), 1, true); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	if err := w.libraryDB.QueryRow(`SELECT text FROM comments WHERE book=1`).Scan(&got); err != nil || got != "新提取的简介。" {
+		t.Fatal(got, err)
+	}
+	if err := w.updateBookMeta(1, "Selected title", map[string]any{"comments": ""}); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.local(context.Background(), 1, true); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	w.libraryDB.QueryRow(`SELECT count(*) FROM comments WHERE book=1 AND trim(text)<>''`).Scan(&count)
+	if count != 0 {
+		t.Fatal("manual clear overwritten")
+	}
+}
+
+func TestFilenameTitleUsedForLookupWithoutChangingDisplay(t *testing.T) {
+	book := library.BookData{Title: "《星海之旅》（校对版全本）作者：作者甲", Authors: []string{"作者甲"}}
+	if referenceQuery(&book)["title"] != "星海之旅" || !referenceRelevant(book, map[string]any{"title": "星海之旅", "authors": []string{"作者甲"}}) {
+		t.Fatal(book)
+	}
+	if matchingMetadata(book, []map[string]any{{"title": "星海之旅", "authors": []string{"作者甲"}}}) == nil {
+		t.Fatal("exact filename title/author rejected")
+	}
+	if book.Title != "《星海之旅》（校对版全本）作者：作者甲" {
+		t.Fatal("display title overwritten")
+	}
+}

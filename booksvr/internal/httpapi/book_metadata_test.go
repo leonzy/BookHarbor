@@ -222,3 +222,35 @@ func TestBookReferenceRejectsUnknownSelectionAndConflictingFlags(t *testing.T) {
 		t.Fatal("invalid request changed metadata")
 	}
 }
+
+func TestBookDetailCoverRevisionChangesOnReplacement(t *testing.T) {
+	w, _, _ := referenceFixture(t)
+	var previous string
+	for _, c := range []color.RGBA{{R: 255, A: 255}, {B: 255, A: 255}} {
+		var encoded bytes.Buffer
+		img := image.NewRGBA(image.Rect(0, 0, 9, 13))
+		for y := 0; y < 13; y++ {
+			for x := 0; x < 9; x++ {
+				img.Set(x, y, c)
+			}
+		}
+		if err := jpeg.Encode(&encoded, img, nil); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := library.ReplaceCover(w.libraryDB, w.libraryRoot, 1, encoded.Bytes()); err != nil {
+			t.Fatal(err)
+		}
+		ctx := adminCtx(1)
+		ctx.Params = []string{"1"}
+		result, err := BookDetailHandler(w.Config(""))(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		book := result["book"].(map[string]any)
+		url := stringOf(book["img"])
+		if !strings.Contains(url, "cover_revision=") || url == previous || !strings.Contains(stringOf(book["thumb"]), "cover_revision=") {
+			t.Fatal(book)
+		}
+		previous = url
+	}
+}

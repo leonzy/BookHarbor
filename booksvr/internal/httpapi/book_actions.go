@@ -608,6 +608,14 @@ func BookDetailHandler(cfg BookConfig) HandlerFunc {
 			return map[string]any{"err": "params.book.invalid", "msg": "书籍已不存在"}, nil
 		}
 		d := bookDict(cfg, *book)
+		if book.HasCover {
+			if info, e := os.Stat(library.ManagedCoverPath(cfg.LibraryRoot, bookID)); e == nil {
+				revision := fmt.Sprintf("&cover_revision=%d-%d", info.ModTime().UnixNano(), info.Size())
+				for _, key := range []string{"img", "thumb"} {
+					d[key] = stringOf(d[key]) + revision
+				}
+			}
+		}
 		// files 必须是对象数组（format/size/href/online_readable），
 		// 与 Python 的 BookFormatter.get_files 一致；前端 pages/book/[bid]/index.vue
 		// 直接读 file.format.toLowerCase()，传字符串会导致 500。

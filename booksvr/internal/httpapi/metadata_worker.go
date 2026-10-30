@@ -154,11 +154,11 @@ func (m *metadataWorker) saveJob(id int64, status, reason string, delay time.Dur
 	return err
 }
 
-func (m *metadataWorker) local(ctx context.Context, id int64) error {
+func (m *metadataWorker) local(ctx context.Context, id int64, force ...bool) error {
 	// Skip already completed records when an interrupted checkpoint is replayed.
 	var existing string
 	err := m.w.libraryDB.QueryRow(`SELECT status FROM metadata_enrichment_jobs WHERE book_id=?`, id).Scan(&existing)
-	if err == nil && existing != "file_retry" {
+	if err == nil && existing != "file_retry" && !(len(force) > 0 && force[0]) {
 		return nil
 	}
 	if err != nil && err != sql.ErrNoRows {
@@ -333,7 +333,7 @@ func matchingMetadata(book library.BookData, candidates []map[string]any) map[st
 			continue
 		}
 		match := current != "" && current == isbn
-		if !match && normalizeMetadataName(book.Title) == normalizeMetadataName(stringOf(candidate["title"])) && !localmeta.MissingAuthors(book.Authors) {
+		if !match && normalizeMetadataName(localmeta.FilenameTitle(book.Title)) == normalizeMetadataName(localmeta.FilenameTitle(stringOf(candidate["title"]))) && !localmeta.MissingAuthors(book.Authors) {
 			for _, a := range book.Authors {
 				if localmeta.UnknownAuthor(a) {
 					continue

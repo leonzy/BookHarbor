@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="BookHarbor TXT 简介与 WebP 封面兼容修复，包含实现边界、回归测试和部署验证。" />
+    <link rel="icon" href="data:," />
+    <title>TXT 简介提取与 WebP 封面保存 · ACTIVE</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+      .hero, .card { overflow-wrap: anywhere; min-width: 0; }
+    </style>
+  </head>
+  <body><div class="page"><header class="hero"><h1>TXT 简介提取与 WebP 封面保存</h1><p>2026-10-30 · booksvr · ACTIVE · 用户反馈 book/17 与 book/16</p></header><main>
+<section class="card"><h2>原始诉求与目标</h2><p>从第17本 TXT 文件提取可靠元数据；第16本互联网候选有封面却无法保存。保留人工编辑、原文件和正在运行的导入。</p></section>
+<section class="card"><h2>方案与边界</h2><p>有界解析明确标记的 TXT 内容简介，遇章节或相关设定结束；无标记不猜正文。带明确作者标签的书名文件名仅用于新导入缺失标题和检索规范化，已有标题不改。用户主动检索时允许重新读取本地字段，仍遵守非空与人工锁保护。已检查过、简介仍空、含 TXT 且无简介人工锁的 complete/network_pending/needs_review 任务，先备份任务行，再一次性转为 file_retry；沿用每分钟一条的低优先重试，不重置历史游标，不重新全库核对源文件。</p><p>注册兼容 Go 1.22 的 WebP 解码器，沿用尺寸限制与 JPEG 原子保存。详情封面 URL 增加文件版本，避免替换后缓存仍旧。只部署独立元数据服务，不重启导入或阅读进程。</p></section>
+<section class="card"><h2>影响范围与回滚</h2><p>localmeta、library managed_cover、httpapi refer/详情，spec/元数据.md。不迁移书籍文件。不覆盖人工信息。回滚独立元数据 ELF；封面与简介为可审计补全。</p></section>
+<section class="card" id="tests"><h2>测试结果</h2><div class="table-wrap" role="region" aria-label="测试结果" tabindex="0"><table><thead><tr><th>验证</th><th>命令或实际页面</th><th>结果</th></tr></thead><tbody>
+<tr><td>新增用例</td><td>go test ./internal/httpapi ./internal/localmeta ./internal/library -run 'TestBookDetailCoverRevision|TestExplicitSynopsis|TestTXTCanonical|TestManagedCoverAccepts|TestExplicitReferenceRefreshes|TestFilenameTitle' -count=1</td><td>通过：简介边界、CRLF、超长拒绝、人工清空保护、规范查询不改显示标题、WebP 有损/无损及损坏图保护、封面版本变化。</td></tr>
+<tr><td>完整 Go 回归</td><td>bookharbor-meta-linux-qa.py；bookharbor-meta-run-linux.py --isolated</td><td>47/47 包通过；复用已有镜像、独立 QA 容器、UID1000、无生产数据挂载，含扫描及挂载保护回归。可选 Open Library 联网用例未启用，本次通过实际七猫封面验证。</td></tr>
+<tr><td>静态与部署脚本</td><td>go vet ./...；bookharbor-meta-python-qa.py；python scripts/check_spec.py；git diff --check</td><td>通过；104 个镜像/部署脚本测试通过；25 篇规格与212份方案检查通过。</td></tr>
+<tr><td>实际书籍</td><td>http://leonfn:8850/book/16 与 /book/17</td><td>在浏览器从七猫候选选择“仅设置书籍图片”，成功保存 33,586 字节 JPEG；16 仅 has_cover 变化。17 从源文件提取 198 字简介，仅 comments/last_modified 变化。两本书的字段锁、源文件大小、时间与 SHA256 均保持。</td></tr>
+<tr><td>实际部署</td><td>scripts/deploy_metadata_enrichment.py --host leonFN --container bookharbor --binary C:/Users/leon/bookharbor-metadata-20261030 --revision working-txt-synopsis-webp-20261030</td><td>独立元数据服务更新，ELF SHA256：8b2623ee5503061da6f6c7a129da5359de3a7db08cec1734711dd26431996fa7；导入 PID70/start6789233、阅读 PID3934/start14119217 前后相同。无容器重启。</td></tr>
+<tr><td>旧任务修复</td><td>仅条件匹配的任务行转 file_retry，按50条一组短事务，比较原状态/时间防止覆盖并发任务；写前备份。</td><td>5,619 条旧 TXT 空简介任务重新排队；不操作源文件、不重置游标、保留人工锁。备份位于 /data/maintenance/20261030-txt-synopsis-webp-cover/txt-jobs-before.json，目录0700、备份0600；不重复执行。</td></tr>
+<tr><td>真实渲染</td><td>bookharbor-txt-webp-browser.cjs；bookharbor-txt-webp-review.cjs</td><td>真实 Docker 后端，1280浅色、412深色、320浅色均通过；封面加载和键盘放大成功，简介自动换行，零页面异常。Chrome DevTools MCP 未提供，使用本地 Playwright Chromium 替代。截图与报告保存在 C:/Users/leon/bookharbor-review/txt-webp。</td></tr>
+</tbody></table></div></section>
+<section class="card"><h2>界面审查：interface-review full</h2>
+<h3>范围与覆盖（Scope and Coverage）</h3><p>目标 branch；默认分支由 git symbolic-ref --quiet --short refs/remotes/origin/HEAD 确认为 origin/main。git merge-base origin/main HEAD 为 aa46265db1e08a91c30bb8562601473e2efe8607；git rev-list --count origin/main..HEAD 为0；git diff --name-only HEAD 与 git ls-files --others --exclude-standard 共17项本地文件，其中 go.sum 为生成校验清单排除，16项审查范围。起始已存在的 storage-migration.active.html 是用户未跟踪文档，仅只读核对，不修改或提交。未 fetch、checkout、stash 或写入 Git 引用。</p><p>技术栈 Nuxt4/Vue3/Vuetify。扩展五个消费者：书籍详情及候选对话框、书籍编辑、BookCards_Small、BookCardText、BookCover；未进一步扩展 BookCards 与 BookCoverGrid 等其他同类卡片，底层图片与文本组件一致，列表不增加逐本文件查询。</p>
+<div class="table-wrap" role="region" aria-label="界面审查覆盖" tabindex="0"><table><thead><tr><th>领域</th><th>证据</th><th>结论</th></tr></thead><tbody>
+<tr><td>Accessibility</td><td>保留 BookCover 原生按钮和命名；键盘 Enter 放大、命名关闭；简介正常文本，不插入可执行标记。</td><td>Clear</td></tr>
+<tr><td>Layout</td><td>320/412/1280 真实详情与简介；新增长简介自动换行且容器未越界。</td><td>Clear</td></tr>
+<tr><td>Writing</td><td>无新前端文案；保留已有标题，检索使用规范标题；未把“暂无简介”误当数据库字段进行替换。</td><td>Clear</td></tr>
+<tr><td>Typography</td><td>简介继续使用原有 line-height 1.8 与 pre-line，窄屏完整可读。</td><td>Clear</td></tr>
+<tr><td>Colors</td><td>沿用现有主题正文颜色，深浅色实际渲染检查，正文对比度分别为13.60:1与12.68:1；无新增颜色或状态语义。</td><td>Clear</td></tr>
+<tr><td>UI</td><td>源 WebP 预览与保存后的 JPEG 对照；封面加载、放大、关闭成功；未新增交互模式。</td><td>Clear</td></tr>
+</tbody></table></div>
+<h3>问题（Findings）</h3><p>No actionable interface findings in this change. 已读增删两侧 diff，未移除可访问性、焦点、文案或主题信号。</p>
+<h3>考虑但拒绝（Considered but Rejected）</h3><ul><li>直接批量改写现有文件名式标题：会扩大影响，已有显示标题保留，仅改检索和新书标题线索。</li><li>原样保存网络 WebP：会绕过既有体积限制与统一封面格式，因此继续压缩为 JPEG。</li><li>给所有列表的每张封面增加文件 stat：引入批量浏览 I/O，因此文件版本检查只用于单本详情。</li></ul>
+<h3>验证与结论（Verification / Verdict）</h3><p>上述 Git 命令、源组件双侧核对、真实站点三种视口与主题、七猫封面设置、简介显示、键盘放大均完成。前端代码未改，不运行 Nuxt 重新构建或重复整库浏览性能测试。方案自身初次320px渲染时长哈希与路径导致横向溢出，已补充自然断行并复查：1280/320px页面宽度均等于视口宽度；表格可键盘横向滚动。此排版问题已解决，重新审查无新增问题。结论：Approve；无 HIGH/MEDIUM 遗留。用户已有未跟踪存储方案不参与本次界面结论。</p></section>
+</main><footer>BookHarbor · ACTIVE · 2026-10-30</footer></div></body></html>

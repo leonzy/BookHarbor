@@ -11,6 +11,8 @@ import (
 	_ "image/png"
 	"os"
 	"path/filepath"
+
+	_ "golang.org/x/image/webp"
 )
 
 // ManagedCoverPath keeps artwork separate from external, potentially read-only books.

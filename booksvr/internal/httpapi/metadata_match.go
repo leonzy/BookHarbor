@@ -11,6 +11,7 @@ import (
 var titleDecoration = regexp.MustCompile(`[（(【\[][^(）)】\]]*[）)】\]]`)
 
 func titleForms(title string) []string {
+	title = localmeta.FilenameTitle(title)
 	clean := titleDecoration.ReplaceAllString(title, "")
 	forms := []string{normalizeMetadataName(title), normalizeMetadataName(clean)}
 	for _, v := range []string{title, clean} {
