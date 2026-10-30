@@ -251,8 +251,8 @@ func TestSourceGlobalConcurrencyBound(t *testing.T) {
 	m := testMetadataWorker(t, w)
 	w.settings["auto_fill_meta"] = true
 	gate := make(chan struct{})
-	started := make(chan string, 5)
-	for i := 0; i < 5; i++ {
+	started := make(chan string, 9)
+	for i := 0; i < 9; i++ {
 		registerConcurrentMetadata(t, w, &concurrentMetadataProvider{referenceProvider: &referenceProvider{key: fmt.Sprintf("test.cap%d", i)}, started: started, gate: gate, empty: true})
 	}
 	pluginruntime.EnsureRuntimeInstallations(w.db, w.settings, w.registry)
@@ -265,7 +265,7 @@ func TestSourceGlobalConcurrencyBound(t *testing.T) {
 	if e := m.network(context.Background()); e != nil {
 		t.Fatal(e)
 	}
-	for range 4 {
+	for range 8 {
 		select {
 		case <-started:
 		case <-time.After(3 * time.Second):
@@ -273,7 +273,7 @@ func TestSourceGlobalConcurrencyBound(t *testing.T) {
 			t.Fatal("concurrent sources did not start")
 		}
 	}
-	if len(m.active) != 4 || len(started) != 0 {
+	if len(m.active) != 8 || len(started) != 0 {
 		close(gate)
 		t.Fatal("global concurrency bound bypassed")
 	}
@@ -295,7 +295,7 @@ func TestSourceGlobalConcurrencyBound(t *testing.T) {
 	select {
 	case <-started:
 	case <-time.After(3 * time.Second):
-		t.Fatal("fifth source starved")
+		t.Fatal("ninth source starved")
 	}
 	for len(m.active) > 0 {
 		r := <-m.results

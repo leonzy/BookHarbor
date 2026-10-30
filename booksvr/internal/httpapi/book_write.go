@@ -394,6 +394,9 @@ func (w *bookWiring) updateBookMeta(bookID int64, title string, args map[string]
 	if err := library.LockMetadata(tx, bookID, fields); err != nil {
 		return err
 	}
+	if err := library.ResolveMetadataReview(tx, bookID); err != nil {
+		return err
+	}
 
 	return tx.Commit()
 }

@@ -20,6 +20,13 @@ const mounted: ReturnType<typeof mount>[] = [];
 afterEach(() => { mounted.splice(0).forEach(w => w.unmount()); backend.mockReset(); });
 function render() { const w = mount(MetadataSourceLimits, { props: { sources }, global: { plugins: [vuetify, i18n] } }); mounted.push(w); return w; }
 describe('independent source intervals', () => {
+    it('links a failed source to its protected execution record in a new tab', async () => {
+        const w = render();
+        await w.setProps({ sources: [{ ...sources[0], failures: 1, last_failure_run: 42, last_failure_code: 'provider_error', last_error: 'request_failed' }] });
+        const link = w.get('a'); expect(link.attributes('href')).toBe('/admin/plugins/runs/42');
+        expect(link.attributes('target')).toBe('_blank'); expect(link.text()).toContain('七猫小说');
+        expect(link.text()).toContain('provider_error');
+    });
     it('preserves an unsaved interval during polling and only saves that source', async () => {
         const w = render(); const input = w.findAll('input')[0];
         await input.setValue('12');

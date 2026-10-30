@@ -97,7 +97,7 @@ stdout_logfile_backups=2
             print(remote(["docker", "exec", args.container, *command]), flush=True)
         route = """
     # File-first metadata and protected edits, independent from running imports.
-    location ~ ^/api/(?:book/[0-9]+(?:/(?:edit|refer))?|admin/plugins/[a-z0-9.-]+/metadata/search|admin/metadata/enrichment(?:/sources/[0-9]+)?)$ {
+    location ~ ^/api/(?:book/[0-9]+(?:/(?:edit|refer))?|admin/plugins/[a-z0-9.-]+/metadata/search|admin/metadata/enrichment(?:/sources/[0-9]+|/review)?)$ {
         proxy_http_version 1.1;
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -106,6 +106,18 @@ stdout_logfile_backups=2
         proxy_buffering off;
         proxy_read_timeout 90s;
         proxy_pass http://127.0.0.1:8004;
+    }
+
+"""
+        opds_route = """    # Bounded OPDS queries beside the uninterrupted importer.
+    location ^~ /opds/ {
+        proxy_set_header Host $http_host;
+        proxy_pass http://127.0.0.1:8004;
+    }
+
+"""
+        opds_root_route = """    location = /opds {
+        return 302 /opds/;
     }
 
 """
@@ -143,18 +155,21 @@ p=Path('/etc/nginx/conf.d/talebook.conf');old=p.read_text();marker='    location
 assert old.count(marker)==1
 new=old.replace('book/[0-9]+/(?:edit|refer)', 'book/[0-9]+(?:/(?:edit|refer))?')
 # Upgrade the previously managed regex too; an existing 8004 location is not sufficient.
-new=new.replace('admin/metadata/enrichment)$ {','admin/metadata/enrichment(?:/sources/[0-9]+)?)$ {')
+new=new.replace('admin/metadata/enrichment)$ {','admin/metadata/enrichment(?:/sources/[0-9]+|/review)?)$ {')
+new=new.replace('admin/metadata/enrichment(?:/sources/[0-9]+)?)$ {','admin/metadata/enrichment(?:/sources/[0-9]+|/review)?)$ {')
 if 'proxy_pass http://127.0.0.1:8004;' not in new:new=new.replace(marker,ROUTE+marker)
 if 'location ^~ /_i18n/' not in new:
  static='    location ^~ /_nuxt/ {';assert new.count(static)==1;new=new.replace(static,LOCALE_GUARD+static)
 if 'location = /get/pcover {' not in new:new=new.replace(marker,COVER_ROUTE+marker)
+if 'location ^~ /opds/ {' not in new:new=new.replace(marker,OPDS_ROUTE+marker)
+if 'location = /opds {' not in new:new=new.replace(marker,OPDS_ROOT+marker)
 if new!=old:p.write_text(new)
 # The production Nginx master runs as talebook, unlike this root installer.
 p.chmod(0o644)
 subprocess.run(['nginx','-t'],check=True)
 subprocess.run(['nginx','-s','reload'],check=True)
 print('Only metadata API locations switched')
-""".replace("COVER_ROUTE", repr(cover_route)).replace("ROUTE", repr(route)).replace("LOCALE_GUARD", repr(locale_guard))
+""".replace("OPDS_ROOT", repr(opds_root_route)).replace("OPDS_ROUTE", repr(opds_route)).replace("COVER_ROUTE", repr(cover_route)).replace("ROUTE", repr(route)).replace("LOCALE_GUARD", repr(locale_guard))
         print(inside(code), flush=True)
         if args.frontend:
             frontend = args.frontend.resolve()
@@ -236,7 +251,7 @@ c.commit();c.close()
         print(inside(rollback), flush=True)
         raise
     receipt = {"revision": args.revision, "binary": target, "sha256": digest, "preserved_processes": after,
-               "mode": "metadata-only", "local_interval_seconds": 1, "network_interval_seconds": 0,"source_default_interval_seconds":5,"network_max_concurrency":4}
+               "mode": "metadata-only", "local_interval_seconds": 1, "network_interval_seconds": 0,"source_default_interval_seconds":5,"network_max_concurrency":8}
     print(inside("from pathlib import Path;Path(" + repr(maintenance + "/receipt.json") + ").write_text(" + repr(json.dumps(receipt, indent=2)) + ")"), flush=True)
     print(json.dumps(receipt, indent=2), flush=True)
 

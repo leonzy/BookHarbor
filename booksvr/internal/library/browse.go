@@ -19,6 +19,7 @@ type BrowseQuery struct {
 	Excluded      map[int64]bool
 	Candidates    []int64
 	TimestampSort bool
+	TitleSort     bool
 	SizeSort      string
 	RatingSort    bool
 	Start, Size   int
@@ -165,6 +166,9 @@ func BrowseBooks(ctx context.Context, db *sql.DB, q BrowseQuery) ([]int64, int, 
 	order := "b.id DESC"
 	if q.TimestampSort {
 		order = "b.timestamp DESC,b.id DESC"
+	}
+	if q.TitleSort {
+		order = "b.title,b.id DESC"
 	}
 	if q.RatingSort {
 		var scored int

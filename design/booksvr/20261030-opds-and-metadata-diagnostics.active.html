@@ -1,0 +1,180 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OPDS 与八来源并发 · ACTIVE</title><style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        overflow-wrap: anywhere;
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style></head><body><main class="page"><header class="hero"><h1>OPDS 有界查询与八来源并发</h1><p class="sub">创建：2026-10-30 · 模块：booksvr / app · 状态：ACTIVE · 来源：用户截图及本轮请求</p></header>
+<section class="card"><h2>原始诉求</h2><p>OPDS 地址是什么、为何加载慢；需人工确认如何处理；来源失败的实际错误；改为八个来源各一个请求并发。</p></section>
+<section class="card"><h2>目标与边界</h2><p>最多八个不同来源同时请求，同源一个；保留来源独立频率、退避、断点和人工保护。提供待确认书目及错误日志入口。窄屏审查发现整段帮助文案为悬浮按钮预留空间导致过窄，调整为只在操作区避让，并缩短说明。列表刷新按钮单独命名，避免与全库进度刷新混淆。OPDS 保持权限、来源可用性、Atom MIME、目录及分页语义。</p><p>不重启主服务、导入或阅读进程，不修改源文件及人工元数据，不放宽自动匹配条件。</p></section>
+<section class="card"><h2>设计决策与边界核对</h2><p>用户已明确并发为八。限速仍默认每源五秒，覆盖搜索、详情、封面。人工确认复用书籍详情的编辑及互联网元数据选择，显示原因和按书号游标分页的列表；人工保存立即受已有字段锁保护，同时把待确认状态改为人工保护，后台来源汇总不得覆盖该状态。保护条件同时放进任务写入的冲突更新中，避免人工保存与异步汇总之间的竞态。来源错误查询增加仅失败记录的连接/执行号索引，启动时幂等创建，避免进度轮询反复读取完整执行历史；最小测试库尚未建立插件表时跳过该索引，保持既有服务启动契约；当前执行历史规模约八千条，索引初始化不扫描书库或源目录。来源错误以受权限控制的插件执行记录展示，不在公开状态返回上游敏感信息。</p><p>OPDS 首页面向固定六种分类只做 EXISTS；最后修改时间使用单行 book_opds_state，由书籍、关联分类、格式和可用性表的写入触发器 O(1) 更新；首次创建以安装时刻作为此目录版本的基线，不查询历史大表 MAX。触发器只对小时钟行按秒合并写入，不遍历书籍或文件。最小旧库没有时钟表时兼容原有时间查询。常用全部书目通过数据库计数和 LIMIT/OFFSET 返回，权限先过滤再分页。按分类/搜索的已有集合按候选 ID 分批加载排序字段，避免每次读取全库。标题 lower 排序实测仍约六秒，改用现有书名索引的数据库字符顺序；同名保持书号倒序，稳定分页。标题目录不承诺忽略大小写；分类/搜索候选排序保持既有逻辑。，不在正在导入的库新建重型索引。</p></section>
+<section class="card"><h2>方案及影响范围</h2><p>涉及 spec/元数据.md、spec/插件/元数据源.md、spec/外部访问.md。新增管理员只读待确认接口，返回最多二十本及下一游标；进度区按需展开。频率说明使用后端真实并发值。复用元数据维护监听承接 OPDS 优化路由，现有无尾斜杠 OPDS 跳转必须保留，只在缺少时补路由，避免重复 location；部署脚本仅重启维护进程、验证 Nginx 并保留原进程。</p></section>
+<section class="card"><h2>风险</h2><p>跨用户私藏与源挂载保护必须等价；标题目录使用已有书名索引，字符大小写排序遵守数据库顺序；避免新建重型索引阻塞导入写入。上游失败不能靠增加并发解决，继续独立退避。待确认列表随后台变化采用书号游标，不承诺静态页码。</p></section>
+<section id="tests" class="card"><h2>测试结果</h2>
+<p>Go：Linux 完整回归 47 个包全部通过，包含时钟投影、最小服务启动与来源独立索引。最终标题排序索引调整追加 Linux 目标回归通过（TestOpdsTitlePageUsesExistingIndexAndStableTies 等），无需重复无关包。执行 go test -c 的 Linux ELF，通过隔离容器以 talebook 用户逐包执行；日志 bookharbor-8sources-linux-tests-final.log。go vet -p 3 ./... 通过。</p>
+<p>前端：node node_modules/vitest/vitest.mjs run test/components/MetadataProgress.spec.ts test/components/MetadataSourceLimits.spec.ts test/components/MetadataReview.spec.ts test/utils/trusted-metadata-locales.spec.ts，12 项通过；Nuxt generate 构建通过。完整 ESLint 为零错误、570 个既有警告，本次组件零警告。最初翻译测试把嵌套对象误当字符串，已改为递归校验所有消息叶节点。</p>
+<p>脚本：Linux python3 -m pytest tests -q，119 项通过（容器、升级及部署脚本，不是 Python 应用后端）。Windows 缺少 fcntl 的完整脚本检查由隔离 Linux 容器替代。check_spec.py 通过，25 篇；check_design_docs.py 与 diff --check 在 ACTIVE 门禁执行；离线方案首轮窄屏长哈希/标题导致溢出，已加入文本换行规则并复测。</p>
+<p>受控失败及修复：首次 Nginx 校验发现与已有 /opds 跳转重复，自动回滚成功；补充有/无既有跳转与旧/新维护路由测试后部署通过。初次 QA 容器 tmpfs 禁止执行且镜像默认 UID 为 911，与宿主运行账号 1000 不同；隔离测试改为可执行临时挂载并按镜像实际用户分配临时目录，不改生产用户。新增错误索引最初使没有插件表的最小服务测试无法就绪，增加表存在检查后启动回归及 47 包回归通过。</p>
+<p>真实部署仅重启维护监听并发布 SPA 资源；最终二进制 SHA256：8a7b69424961ea845e2c09eabe84ab0765f55063eb209473e9b7cd44895c1b0c。主导入 PID 70/start 6789233、阅读 PID 3934/start 14119217 全程不变；16/17 两本已有人工字段锁、源路径、大小、mtime 及 SHA256 核对不变。</p>
+<div class="table-wrap"><table><thead><tr><th>实际 OPDS 路径</th><th>响应耗时</th><th>条目数</th></tr></thead><tbody><tr><td>/opds/</td><td>0.026 秒</td><td>7</td></tr><tr><td>/opds/nav/4f6e6577657374</td><td>0.222 秒</td><td>50</td></tr><tr><td>/opds/nav/4f7469746c65</td><td>0.76 秒</td><td>50</td></tr><tr><td>/opds/nav/4f6e6577657374?offset=50</td><td>0.132 秒</td><td>50</td></tr></tbody></table></div>
+<p>修复前直接 IP 访问根目录超过 20 秒；中间版发现 MAX(last_modified) 与 lower(title) 分别造成二十多秒和约六秒延迟，改为单行版本时钟及现有书名索引后得到上表结果。Atom MIME、导航、首/末页链接、来源缺失过滤与私藏权限测试通过；作者与标签分类分组仍需读取分类项，实际约 4.5 / 1.1 秒，未宣称所有分类入口均为常数时间。</p>
+<p>实际后台八个可用来源均有执行记录；六个来源无失败，Open Library 有 HTTP 422、微信读书有网关请求失败，后者继续独立退避，不将外部失败伪装成功。待重试数字按书籍去重；具体失败从来源链接打开受权限保护的执行记录。浏览器未修改生产书籍，仅查看编辑与错误页；人工保存出列在隔离真实 SQLite 事务中测试，包括晚到任务不能覆盖人工保护。</p></section>
+<section class="card"><h2>interface-review full · Scope and Coverage</h2>
+<p>遵循 .agents/skills/interface-review/SKILL.md，交由 better-interface 汇总 accessibility、layout、writing、typography、colors、ui 六个领域；已读取根目录 AGENTS.md、app/CLAUDE.md 及六个 owning skill。Nuxt 4 / Vue 3 / Vuetify，沿用主题令牌与现有密度。</p>
+<p>目标为当前分支全部本地变更：origin/main 与 HEAD 同为 69cb340eead53df37045b71c9bb5c299b3b1beae，领先零提交；25 个已跟踪变更、9 个未跟踪文件，共 34 项。无生成文件或锁文件排除。用户已有 design/docker/20261025-storage-migration.active.html 仅清点、读取，不改动、不提交；本任务提交 33 项。</p>
+<p>消费者扩展上限五处，实际检查 admin/plugins/index.vue、admin/settings/plugins.vue、admin/plugins/runs/[id].vue、book/[bid]/index.vue、book/[bid]/edit.vue；没有额外导入页面被遗漏。已读取删除行：原有进度刷新、字段与原 OPDS 权限保持，刷新说明替换为后端真实并发数，SQL 分页替代原全库排序。</p>
+<div class="table-wrap"><table><thead><tr><th>领域</th><th>证据与状态</th><th>结果</th></tr></thead><tbody>
+<tr><td>Accessibility</td><td>原生 details/summary，键盘 Enter、链接新标签与名称，焦点轮廓，错误/空状态组件测试</td><td>Clear</td></tr>
+<tr><td>Layout</td><td>1280/412/320/640 宽度，明暗主题与中俄语言，按钮几何与无横向溢出</td><td>Clear（修复后复测）</td></tr>
+<tr><td>Writing</td><td>确认说明、独立列表刷新、三语言消息，错误链接说明目的地</td><td>Clear（修复后复测）</td></tr>
+<tr><td>Typography</td><td>沿用 Vuetify 字体尺度、原因可换行，窄屏完整文本与长书名</td><td>Clear</td></tr>
+<tr><td>Colors</td><td>真实渲染混合后的文字对比度，亮色最低 9.39、暗色最低 7.84</td><td>Clear</td></tr>
+<tr><td>UI</td><td>沿用现有边框、折叠与按钮，加载/空/错误状态，无新增动效</td><td>Clear</td></tr>
+</tbody></table></div>
+<h3>Findings</h3><p>Introduced MEDIUM / Layout：为整个待确认段落预留悬浮按钮空间造成窄屏文本过窄，改为只在操作区避让并缩短说明；Introduced MEDIUM / Writing：列表按钮原为“刷新进度”易与全库刷新混淆，改为“刷新待确认列表”。已修复并重新执行完整消费者及浏览器检查，无 HIGH / MEDIUM / LOW 遗留。</p>
+<h3>Considered but Rejected</h3><p>不把单次匹配直接设为确认：会削弱人工选择；不把来源原始异常嵌入公共状态：使用既有受权限保护执行记录；不添加独立分页页码：待确认队列随后台变化，书号游标更稳定。后端诊断原因沿用既有存储文本，界面标签全部三语言覆盖。</p>
+<h3>Verification</h3><p>git symbolic-ref --quiet --short refs/remotes/origin/HEAD、git merge-base origin/main HEAD、git rev-list --count origin/main..HEAD、git diff --name-status HEAD、git ls-files --others --exclude-standard，结果如上；审查期间未 fetch、checkout、stash 或改写工作树。实现阶段修复与复测单独进行。Chrome DevTools MCP 未提供，改用 Playwright Chromium 连接真实 Docker 后端，无 mock 体验页面。</p>
+<p>登录实际站点，展开待确认队列、加载下一批、打开书籍编辑与来源失败执行记录、检查并发值 8、独立来源行及四种宽度。空/错误状态通过组件测试，未故意中断生产服务制造异常；没有真实静读天下设备验证。截图与报告：C:/Users/leon/bookharbor-review/opds-and-metadata/；初步与最终渲染均人工查看。</p>
+<h3>Verdict</h3><p><strong>Approve</strong>。本次可执行界面问题全部修复，验证边界与未实测设备已明确。</p></section></main></body></html>

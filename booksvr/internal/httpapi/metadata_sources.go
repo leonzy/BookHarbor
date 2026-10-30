@@ -18,7 +18,7 @@ import (
 	"talebook/booksvr/internal/userdb"
 )
 
-const metadataSourceConcurrency = 4
+const metadataSourceConcurrency = 8
 
 type sourceTask struct {
 	book, connection int64
@@ -599,6 +599,13 @@ func (m *metadataWorker) finishSource(r sourceResult, settings map[string]any) e
 }
 
 func (m *metadataWorker) rollupSourceBook(id int64, settings map[string]any) error {
+	var status string
+	if e := m.w.libraryDB.QueryRow(`SELECT status FROM metadata_enrichment_jobs WHERE book_id=?`, id).Scan(&status); e != nil {
+		return e
+	}
+	if status == "protected" {
+		return nil
+	}
 	var user int64
 	if e := m.w.db.QueryRow(`SELECT coalesce(collector_id,0) FROM items WHERE book_id=? ORDER BY collector_id LIMIT 1`, id).Scan(&user); e != nil {
 		return e

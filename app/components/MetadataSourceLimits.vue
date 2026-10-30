@@ -29,6 +29,14 @@
                 >
                     {{ source.unavailable ? t('metadataProgress.unavailableReasons.' + source.unavailable) : source.failures ? t('metadataProgress.sourceFailureReasons.' + (source.last_error || 'request_failed')) : '' }}
                 </p>
+                <a
+                    v-if="source.last_failure_run"
+                    class="text-caption"
+                    :href="`/admin/plugins/runs/${source.last_failure_run}`"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    :aria-label="t('metadataProgress.sourceFailureLink', { name: source.name, code: source.last_failure_code })"
+                >{{ t('metadataProgress.sourceFailureLink', { name: source.name, code: source.last_failure_code }) }}</a>
             </div>
             <form
                 novalidate

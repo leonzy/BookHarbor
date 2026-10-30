@@ -14,7 +14,7 @@ const i18n = createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': z
 const backend = vi.fn();
 vi.mock('nuxt/app', () => ({ useNuxtApp: () => ({ $backend: backend }) }));
 const mounted: ReturnType<typeof mount>[] = [];
-const base = { err: 'ok', total_books: 10, files_checked: 4, files_remaining: 6, counts: { complete: 1, network_pending: 2, needs_review: 1 }, network_retries: 1, network_applied_books: 0, worker_active: true, network_enabled: true };
+const base = { err: 'ok', total_books: 10, files_checked: 4, files_remaining: 6, counts: { complete: 1, network_pending: 2, needs_review: 1 }, network_retries: 1, network_applied_books: 0, worker_active: true, network_enabled: true, network_max_concurrency: 8 };
 afterEach(() => { mounted.splice(0).forEach(w => w.unmount()); vi.useRealTimers(); backend.mockReset(); });
 describe('Metadata progress', () => {
     it('separates checked files from online success and refreshes without a save', async () => {
@@ -25,6 +25,7 @@ describe('Metadata progress', () => {
         expect(w.text()).toContain('已核查 4 / 10 本');
         expect(w.text()).toContain('待联网处理');
         expect(w.text()).toContain('已联网补全');
+        expect(w.text()).toContain('最多8个来源、每源一个请求');
         expect(w.find('[role="progressbar"]').attributes('aria-valuenow')).toBe('40');
         await vi.advanceTimersByTimeAsync(10000); await flushPromises();
         expect(backend).toHaveBeenCalledTimes(2);

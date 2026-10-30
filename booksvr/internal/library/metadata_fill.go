@@ -43,6 +43,20 @@ func LockMetadata(tx *sql.Tx, id int64, fields []string) error {
 	return nil
 }
 
+// ResolveMetadataReview runs inside the explicit edit transaction. The queue
+// never acknowledges a failed save, and editing an ordinary book is unchanged.
+func ResolveMetadataReview(tx *sql.Tx, id int64) error {
+	var exists bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='metadata_enrichment_jobs')`).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	_, err := tx.Exec(`UPDATE metadata_enrichment_jobs SET status='protected',last_error='人工确认并保存，保留现有信息',updated_at=unixepoch() WHERE book_id=? AND status='needs_review'`, id)
+	return err
+}
+
 // Older versions did not record field provenance. If a historical book was
 // modified after import, conservatively protect even its empty fields.
 func ProtectHistoricalMetadataEdits(db *sql.DB, id int64) error {

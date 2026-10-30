@@ -18,9 +18,10 @@ def load_deployer():
     return module
 
 
-@pytest.mark.parametrize("existing_route", [False, True])
+@pytest.mark.parametrize("existing_root", [False, True])
+@pytest.mark.parametrize("existing_route", [False, "old", "sources"])
 @pytest.mark.parametrize("fail_nginx,use_frontend", [(False, False), (True, False), (False, True)])
-def test_metadata_deployment_preserves_main_and_rolls_back_on_nginx_failure(tmp_path, monkeypatch, fail_nginx, use_frontend, existing_route):
+def test_metadata_deployment_preserves_main_and_rolls_back_on_nginx_failure(tmp_path, monkeypatch, fail_nginx, use_frontend, existing_route, existing_root):
     deploy = load_deployer()
     binary = tmp_path / "booksvr"
     binary.write_bytes(b"\x7fELFfixture")
@@ -55,8 +56,12 @@ def test_metadata_deployment_preserves_main_and_rolls_back_on_nginx_failure(tmp_
             from types import SimpleNamespace
             site = tmp_path / "nginx.conf"
             site.write_text('    location ~ ^/(api|get|read|read-comic|opds|auth|books|media)/ {\n    location ^~ /_nuxt/ {\n')
+            if existing_root:
+                site.write_text("    location = /opds {\n        return 302 /opds/;\n    }\n" + site.read_text())
             if existing_route:
                 old_route = "    # File-first metadata and protected edits, independent from running imports.\n    location ~ ^/api/(?:book/[0-9]+/(?:edit|refer)|admin/metadata/enrichment)$ {\n        proxy_pass http://127.0.0.1:8004;\n    }\n"
+                if existing_route == "sources":
+                    old_route = old_route.replace("admin/metadata/enrichment)", "admin/metadata/enrichment(?:/sources/[0-9]+)?)")
                 site.write_text(old_route + site.read_text())
             site.chmod(0o600)
             adapted = code.replace('/etc/nginx/conf.d/talebook.conf', site.as_posix())
@@ -70,7 +75,10 @@ def test_metadata_deployment_preserves_main_and_rolls_back_on_nginx_failure(tmp_
             })
             assert 'book/[0-9]+(?:/(?:edit|refer))?' in site.read_text()
             assert 'location = /get/pcover {' in site.read_text()
-            assert 'admin/metadata/enrichment(?:/sources/[0-9]+)?' in site.read_text()
+            assert 'admin/metadata/enrichment(?:/sources/[0-9]+|/review)?' in site.read_text()
+            assert 'location ^~ /opds/ {' in site.read_text()
+            assert site.read_text().count('location = /opds {') == 1
+            assert 'return 302 /opds/;' in site.read_text()
             assert 'expires off;' in site.read_text()
             if os.name == 'posix':
                 assert site.stat().st_mode & 0o004

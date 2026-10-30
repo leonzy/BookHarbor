@@ -118,6 +118,9 @@ func Migrate(db *sql.DB) error {
 	if err := EnsureMetadataSchema(db); err != nil {
 		return err
 	}
+	if err := EnsureOpdsClock(db); err != nil {
+		return err
+	}
 	return migrateBookDirectoryIndex(db)
 }
 

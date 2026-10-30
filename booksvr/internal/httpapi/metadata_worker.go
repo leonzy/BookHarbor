@@ -33,6 +33,9 @@ type metadataWorker struct {
 }
 
 func startMetadataWorker(ctx context.Context, opts ServeOptions, db, userDB *sql.DB) (func(), error) {
+	if err := ensureMetadataDiagnosticsIndex(userDB); err != nil {
+		return nil, err
+	}
 	if err := library.EnsureMetadataSchema(db); err != nil {
 		return nil, err
 	}
@@ -177,7 +180,7 @@ func (m *metadataWorker) saveJob(id int64, status, reason string, delay time.Dur
 	if len(reason) > 240 {
 		reason = reason[:240]
 	}
-	_, err := m.w.libraryDB.Exec(`INSERT INTO metadata_enrichment_jobs(book_id,status,next_at,last_error,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(book_id) DO UPDATE SET status=excluded.status,next_at=excluded.next_at,last_error=excluded.last_error,updated_at=excluded.updated_at`, id, status, m.now().Add(delay).Unix(), reason, m.now().Unix())
+	_, err := m.w.libraryDB.Exec(`INSERT INTO metadata_enrichment_jobs(book_id,status,next_at,last_error,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(book_id) DO UPDATE SET status=excluded.status,next_at=excluded.next_at,last_error=excluded.last_error,updated_at=excluded.updated_at WHERE metadata_enrichment_jobs.status<>'protected' OR excluded.status='protected'`, id, status, m.now().Add(delay).Unix(), reason, m.now().Unix())
 	if err == nil && (status == "network_pending" || status == "partial") {
 		_, err = m.w.libraryDB.Exec(`INSERT INTO metadata_source_pending(book_id) VALUES(?) ON CONFLICT(book_id) DO UPDATE SET version=version+1`, id)
 	}

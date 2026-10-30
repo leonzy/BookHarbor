@@ -51,11 +51,12 @@
                     <dt>{{ t('metadataProgress.' + item.key) }}</dt><dd>{{ item.value.toLocaleString() }}</dd>
                 </div>
             </dl>
+            <MetadataReview :count="Number(state.counts?.needs_review || 0)" />
             <p class="text-caption mb-1">
                 {{ t(state.worker_active ? 'metadataProgress.running' : 'metadataProgress.paused') }} · {{ t(state.network_enabled ? 'metadataProgress.onlineOn' : 'metadataProgress.onlineOff') }}
             </p>
             <p class="text-caption mb-1">
-                {{ t('metadataProgress.rate') }}
+                {{ t('metadataProgress.rate', { count: state.network_max_concurrency }) }}
             </p>
             <MetadataSourceLimits
                 :sources="state.sources || []"
@@ -81,6 +82,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useNuxtApp } from 'nuxt/app';
 import MetadataSourceLimits from '@/components/MetadataSourceLimits.vue';
+import MetadataReview from '@/components/MetadataReview.vue';
 const { t } = useI18n();
 const { $backend } = useNuxtApp();
 const state = ref(null);

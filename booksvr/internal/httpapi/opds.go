@@ -20,7 +20,8 @@ type OpdsConfig struct {
 	// DB 是 Calibre 元数据库。
 	DB *sql.DB
 	// Settings 是站点配置。
-	Settings map[string]any
+	Settings     map[string]any
+	SettingsPath string
 	// PublicURL 给路径加部署前缀（对应 public_url）。
 	PublicURL func(path string) string
 	// Search 执行书库搜索；为 nil 时使用内置实现。
@@ -28,6 +29,8 @@ type OpdsConfig struct {
 	// CanViewBook 判定当前请求方能否查看该书。
 	CanViewBook          func(ctx *Context, bookID int64) bool
 	FilterVisibleBookIDs func(ctx *Context, ids []int64) ([]int64, error)
+	// ExcludedBookIDs supplies the same visibility policy before SQL pagination.
+	ExcludedBookIDs func(ctx *Context) (map[int64]bool, error)
 }
 
 // ---- 路由常量 ----
@@ -551,6 +554,10 @@ func opdsSearchIDs(cfg OpdsConfig, query string) ([]int64, error) {
 
 // opdsLastModified 取书库最后修改时间。
 func opdsLastModified(cfg OpdsConfig) time.Time {
+	var at int64
+	if err := cfg.DB.QueryRow(`SELECT updated_at FROM book_opds_state WHERE id=1`).Scan(&at); err == nil && at > 0 {
+		return time.Unix(at, 0)
+	}
 	raw, err := library.LastModified(cfg.DB)
 	if err != nil || raw == "" {
 		return time.Now()
@@ -608,36 +615,45 @@ func opdsSortBooks(books []library.BookData, sortBy string, ascending bool) {
 // opdsOrderedIDs sorts lightweight rows before loading page-sized complete metadata.
 func opdsOrderedIDs(cfg OpdsConfig, ids []int64, sortBy string, ascending bool) ([]int64, error) {
 	wanted := make(map[int64]bool, len(ids))
+	unique := make([]int64, 0, len(ids))
 	for _, id := range ids {
+		if !wanted[id] {
+			unique = append(unique, id)
+		}
 		wanted[id] = true
 	}
 	series := "''"
 	if sortBy == "series" {
 		series = `COALESCE((SELECT s.name FROM books_series_link l JOIN series s ON s.id=l.series WHERE l.book=b.id LIMIT 1), '')`
 	}
-	rows, err := cfg.DB.Query(`SELECT b.id, b.title, b.timestamp, COALESCE(b.series_index, 1), ` + series + ` FROM books b ORDER BY b.id DESC`)
-	if err != nil {
-		return nil, err
-	}
 	var books []library.BookData
-	for rows.Next() {
-		var b library.BookData
-		var timestamp []byte
-		if err := rows.Scan(&b.ID, &b.Title, &timestamp, &b.SeriesIdx, &b.Series); err != nil {
-			rows.Close()
+	for start := 0; start < len(unique); start += 400 {
+		end := min(start+400, len(unique))
+		args := make([]any, end-start)
+		for i, id := range unique[start:end] {
+			args[i] = id
+		}
+		rows, err := cfg.DB.Query(`SELECT b.id, b.title, b.timestamp, COALESCE(b.series_index, 1), `+series+` FROM books b WHERE b.id IN (`+strings.TrimSuffix(strings.Repeat("?,", len(args)), ",")+`)`, args...)
+		if err != nil {
 			return nil, err
 		}
-		if !wanted[b.ID] {
-			continue
+		for rows.Next() {
+			var b library.BookData
+			var timestamp []byte
+			if err := rows.Scan(&b.ID, &b.Title, &timestamp, &b.SeriesIdx, &b.Series); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			b.Timestamp = library.ParseCalibreTimestamp(timestamp)
+			books = append(books, b)
 		}
-		b.Timestamp = library.ParseCalibreTimestamp(timestamp)
-		books = append(books, b)
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
 	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return nil, err
-	}
+	sort.Slice(books, func(i, j int) bool { return books[i].ID > books[j].ID })
 	opdsSortBooks(books, sortBy, ascending)
 	out := make([]int64, len(books))
 	for i, b := range books {
@@ -673,6 +689,10 @@ func opdsAcquisitionFeed(cfg OpdsConfig, ctx *Context, ids []int64, offset int,
 		return nil, err
 	}
 
+	return opdsPageFeed(cfg, ctx, page, offsets, pageURL, upURL, id, feedTitle)
+}
+
+func opdsPageFeed(cfg OpdsConfig, ctx *Context, page []library.BookData, offsets *opdsOffsets, pageURL, upURL, id, feedTitle string) ([]byte, error) {
 	updated := opdsLastModified(cfg)
 	ctx.Writer.Header().Set("Content-Type", opdsHTTPContentType)
 	ctx.Writer.Header().Set("Last-Modified", lastModifiedHeader(updated.Unix()))
@@ -715,20 +735,16 @@ func opdsTopLevelFeed(cfg OpdsConfig, ctx *Context) ([]byte, error) {
 
 // opdsCategoryNames 返回可展示的分类名（已排序）。
 func opdsCategoryNames(cfg OpdsConfig) ([]string, error) {
-	all, err := library.GetCategories(cfg.DB, "")
-	if err != nil {
-		return nil, err
-	}
-	_ = all
 	// 逐分类查询，跳过空分类与 formats/identifiers。
 	known := []string{"authors", "series", "tags", "publishers", "ratings", "languages"}
 	out := []string{}
 	for _, name := range known {
-		cats, err := library.GetCategories(cfg.DB, name)
+		var exists bool
+		err := cfg.DB.QueryRow("SELECT EXISTS(SELECT 1 FROM " + name + " LIMIT 1)").Scan(&exists)
 		if err != nil {
 			return nil, err
 		}
-		if len(cats) == 0 {
+		if !exists {
 			continue
 		}
 		out = append(out, name)
@@ -775,6 +791,32 @@ func opdsAllBooks(cfg OpdsConfig, ctx *Context, which, pageURL, upURL string, of
 		label = "Newest"
 	}
 	feedTitle := opdsDefaultFeedTitle(cfg) + " :: By " + label
+	if cfg.ExcludedBookIDs != nil || (cfg.FilterVisibleBookIDs == nil && cfg.CanViewBook == nil) {
+		var excluded map[int64]bool
+		var err error
+		if cfg.ExcludedBookIDs != nil {
+			excluded, err = cfg.ExcludedBookIDs(ctx)
+			if err != nil {
+				return nil, err
+			}
+		}
+		ids, total, err := library.BrowseBooks(ctx.Request.Context(), cfg.DB, library.BrowseQuery{Excluded: excluded, TimestampSort: which == "newest", TitleSort: which == "title", Start: offset, Size: opdsMaxItems(cfg)})
+		if err != nil {
+			return nil, err
+		}
+		if total == 0 {
+			return nil, errOpdsNoBooks
+		}
+		offsets, err := newOpdsOffsets(offset, opdsMaxItems(cfg), total)
+		if err != nil {
+			return nil, err
+		}
+		page, err := opdsLoadBooks(cfg, ids)
+		if err != nil {
+			return nil, err
+		}
+		return opdsPageFeed(cfg, ctx, page, offsets, pageURL, upURL, "calibre-all:"+sortBy, feedTitle)
+	}
 
 	ids, err := opdsAllBookIDs(cfg)
 	if err != nil {
@@ -1043,7 +1085,11 @@ var errOpdsNoBooks = fmt.Errorf("No books found")
 // opdsHandler 包装 OPDS 处理逻辑：统一错误映射与 OPDS 开关检查。
 func opdsHandler(cfg OpdsConfig, fn func(ctx *Context) ([]byte, error)) HandlerFunc {
 	return func(ctx *Context) (map[string]any, error) {
-		if !settingBool(cfg.Settings, "OPDS_ENABLED", false) {
+		settings := cfg.Settings
+		if cfg.SettingsPath != "" {
+			settings = LoadSettings(cfg.SettingsPath)
+		}
+		if !settingBool(settings, "OPDS_ENABLED", false) {
 			http.Redirect(ctx.Writer, ctx.Request, "/?err=opds_disabled&msg=OPDS服务已关闭", http.StatusFound)
 			return nil, nil
 		}

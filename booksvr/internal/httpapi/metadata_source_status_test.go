@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,44 @@ import (
 
 	"talebook/booksvr/internal/pluginruntime"
 )
+
+func TestMetadataFailureHistoryUsesPartialIndex(t *testing.T) {
+	empty, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer empty.Close()
+	if e := ensureMetadataDiagnosticsIndex(empty); e != nil {
+		t.Fatal(e)
+	}
+	w, _, _ := referenceFixture(t)
+	if e := ensureMetadataDiagnosticsIndex(w.db); e != nil {
+		t.Fatal(e)
+	}
+	if e := ensureMetadataDiagnosticsIndex(w.db); e != nil {
+		t.Fatal(e)
+	}
+	rows, e := w.db.Query(`EXPLAIN QUERY PLAN SELECT id,coalesce(error_code,'') FROM plugin_runs WHERE connection_id=1 AND status='failed' AND json_extract(input_data,'$.background_metadata')=1 ORDER BY id DESC LIMIT 1`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer rows.Close()
+	var plan string
+	for rows.Next() {
+		var a, b, c int
+		var d string
+		if e = rows.Scan(&a, &b, &c, &d); e != nil {
+			t.Fatal(e)
+		}
+		plan += d
+	}
+	if e = rows.Err(); e != nil {
+		t.Fatal(e)
+	}
+	if !strings.Contains(plan, "metadata_failed_runs") || strings.Contains(plan, "TEMP B-TREE") {
+		t.Fatal(plan)
+	}
+}
 
 func TestMetadataSourceIntervalValidationAndBackoffProtection(t *testing.T) {
 	w, _, _ := referenceFixture(t)

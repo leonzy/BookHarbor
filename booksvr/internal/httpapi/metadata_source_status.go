@@ -11,6 +11,21 @@ import (
 
 const rMetadataSource = "/api/admin/metadata/enrichment/sources/([0-9]+)"
 
+func ensureMetadataDiagnosticsIndex(db *sql.DB) error {
+	if db == nil {
+		return nil
+	}
+	var exists bool
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='plugin_runs')`).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	_, err := db.Exec(`CREATE INDEX IF NOT EXISTS metadata_failed_runs ON plugin_runs(connection_id,id DESC) WHERE status='failed'`)
+	return err
+}
+
 func metadataSourceRoutes(db, userDB *sql.DB, opts ServeOptions) []RouteSpec {
 	return []RouteSpec{{Pattern: rMetadataSource, Methods: []string{"PUT"}, Auth: true, Admin: true, Handler: func(ctx *Context) (map[string]any, error) {
 		id, e := strconv.ParseInt(ctx.Param(0), 10, 64)
@@ -92,7 +107,13 @@ func metadataSourceStatus(db, userDB *sql.DB, opts ServeOptions, ctx *Context) (
 				name += " · " + c.Name
 			}
 		}
-		out = append(out, map[string]any{"id": c.ID, "name": name, "plugin_key": key, "interval_seconds": interval, "next_at": next, "requests": requests, "processed": done, "matched": matched, "failures": failures, "last_error": reason, "unavailable": unavailable})
+		var runID int64
+		errCode := ""
+		e = userDB.QueryRow(`SELECT id,coalesce(error_code,'') FROM plugin_runs WHERE connection_id=? AND status='failed' AND json_extract(input_data,'$.background_metadata')=1 ORDER BY id DESC LIMIT 1`, c.ID).Scan(&runID, &errCode)
+		if e != nil && e != sql.ErrNoRows {
+			return nil, e
+		}
+		out = append(out, map[string]any{"id": c.ID, "name": name, "plugin_key": key, "interval_seconds": interval, "next_at": next, "requests": requests, "processed": done, "matched": matched, "failures": failures, "last_error": reason, "unavailable": unavailable, "last_failure_run": runID, "last_failure_code": errCode})
 	}
 	return out, nil
 }
