@@ -1289,7 +1289,7 @@ const get_refer = async () => {
                 if (!data.cover_url || data.cover_url === '') {
                     data.img = withBasePath('/get/cover/0');
                 } else {
-                    data.img = withBasePath('/get/pcover?url=' + encodeURIComponent(data.cover_url) + '&v=20261030-trusted');
+                    data.img = withBasePath('/get/pcover?url=' + encodeURIComponent(data.cover_url) + '&v=20261030-webp-jpeg');
                 }
                 refer_books.value.push(data);
             }

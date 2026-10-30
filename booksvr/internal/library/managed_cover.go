@@ -1,18 +1,12 @@
 package library
 
 import (
-	"bytes"
 	"database/sql"
 	"fmt"
-	"image"
-	"image/color"
-	_ "image/gif"
-	"image/jpeg"
-	_ "image/png"
 	"os"
 	"path/filepath"
 
-	_ "golang.org/x/image/webp"
+	"talebook/booksvr/internal/coverimage"
 )
 
 // ManagedCoverPath keeps artwork separate from external, potentially read-only books.
@@ -36,60 +30,9 @@ func storeCover(db *sql.DB, root string, id int64, data []byte, replace bool) (b
 	if id <= 0 || root == "" {
 		return false, fmt.Errorf("invalid cover destination")
 	}
-	if len(data) > 32<<20 {
-		return false, fmt.Errorf("cover exceeds 32 MiB")
-	}
-	config, _, err := image.DecodeConfig(bytes.NewReader(data))
+	encoded, err := coverimage.JPEG(data, 800)
 	if err != nil {
 		return false, err
-	}
-	if config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > 40_000_000 {
-		return false, fmt.Errorf("cover dimensions exceed limit")
-	}
-	src, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return false, err
-	}
-	w, h := config.Width, config.Height
-	if w > 800 || h > 800 {
-		if w >= h {
-			h = max(1, h*800/w)
-			w = 800
-		} else {
-			w = max(1, w*800/h)
-			h = 800
-		}
-	}
-	normalized := src
-	if w != config.Width || h != config.Height {
-		dst := image.NewRGBA(image.Rect(0, 0, w, h))
-		b := src.Bounds()
-		// JPEG's YCbCr fast path avoids allocating a boxed color per pixel.
-		// Keep native JPEG buffers when no resize is necessary.
-		if jpg, ok := src.(*image.YCbCr); ok {
-			for y := 0; y < h; y++ {
-				for x := 0; x < w; x++ {
-					c := jpg.YCbCrAt(b.Min.X+x*config.Width/w, b.Min.Y+y*config.Height/h)
-					r, g, blue := color.YCbCrToRGB(c.Y, c.Cb, c.Cr)
-					dst.SetRGBA(x, y, color.RGBA{R: r, G: g, B: blue, A: 255})
-				}
-			}
-		} else {
-			for y := 0; y < h; y++ {
-				for x := 0; x < w; x++ {
-					dst.Set(x, y, src.At(b.Min.X+x*config.Width/w, b.Min.Y+y*config.Height/h))
-				}
-			}
-		}
-		normalized = dst
-	}
-
-	var out bytes.Buffer
-	if err := jpeg.Encode(&out, normalized, &jpeg.Options{Quality: 75}); err != nil {
-		return false, err
-	}
-	if out.Len() > 512<<10 {
-		return false, fmt.Errorf("compressed cover exceeds 512 KiB")
 	}
 	var exists int
 	if err := db.QueryRow(`SELECT 1 FROM books WHERE id=?`, id).Scan(&exists); err != nil {
@@ -104,7 +47,7 @@ func storeCover(db *sql.DB, root string, id int64, data []byte, replace bool) (b
 		return false, err
 	}
 	defer os.Remove(f.Name())
-	if _, err = f.Write(out.Bytes()); err != nil {
+	if _, err = f.Write(encoded); err != nil {
 		f.Close()
 		return false, err
 	}

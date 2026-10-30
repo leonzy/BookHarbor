@@ -19,6 +19,7 @@ import (
 	"talebook/booksvr/internal/sourcefile"
 	"time"
 
+	"talebook/booksvr/internal/coverimage"
 	"talebook/booksvr/internal/library"
 	"talebook/booksvr/internal/safehttp"
 )
@@ -269,7 +270,17 @@ func ProxyImageHandler(cfg FilesConfig) HandlerFunc {
 				http.Error(ctx.Writer, "Source returned no image", http.StatusBadGateway)
 				return nil, nil
 			}
-			ctx.Writer.Header().Set("Content-Type", headers.Get("Content-Type"))
+			contentType := headers.Get("Content-Type")
+			// A f_auto CDN can return WebP even for extensionless or .jpg URLs.
+			if strings.HasPrefix(strings.ToLower(contentType), "image/webp") || (len(body) >= 12 && string(body[:4]) == "RIFF" && string(body[8:12]) == "WEBP") {
+				body, err = coverimage.JPEG(body, 800)
+				if err != nil {
+					http.Error(ctx.Writer, "Source returned invalid cover image", http.StatusBadGateway)
+					return nil, nil
+				}
+				contentType = "image/jpeg"
+			}
+			ctx.Writer.Header().Set("Content-Type", contentType)
 			ctx.Writer.Header().Set("X-Content-Type-Options", "nosniff")
 			ctx.Writer.Header().Set("Cache-Control", "private, max-age=3600")
 			_, _ = ctx.Writer.Write(body)
@@ -319,7 +330,7 @@ func fetchImageWithPolicy(ctx context.Context, rawURL string, allows func(string
 func chromeHeaders() map[string]string {
 	return map[string]string{
 		"User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-		"Accept":          "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+		"Accept":          "image/jpeg,image/png,image/webp,image/gif;q=0.9,*/*;q=0.1",
 		"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
 	}
 }

@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Talebook 内部方案模板：用于记录原始诉求、目标边界、实现方案、风险与测试结果。" />
+    <link rel="icon" href="data:," />
+    <title>联网元数据封面格式兼容</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><header class="hero"><h1>联网元数据封面的实际格式识别</h1><p>2026-10-30 · booksvr · ACTIVE · 来源：用户反馈书籍 56 与百科 pcover 地址</p></header>
+<section class="card"><h2>原始诉求</h2><p>联网更新元数据时封面格式不支持。用户提供无扩展名、带 f_auto 参数的百科封面，预览和保存均需正确处理。</p></section>
+<section class="card"><h2>目标与设计决策</h2><p>真实响应为可解码 WebP；旧百科下载器按 URL 后缀猜测，默认 PNG，强制 PNG 解码失败。按图片内容识别 PNG、JPEG、GIF、WebP，另注册已有 x/image 的 BMP/TIFF 解码器。共享有界解码与 JPEG 归一化，封面存储继续最长边 800、32 MiB 输入、4000 万像素及 512 KiB 输出上限。预览代理将 WebP 归一为 JPEG，最长边 800；不再向上游声明无法解码的 AVIF。保留域名、跳转和公网地址策略。百科保留现有正常封面裁剪规则，拒绝错误状态、HTML 与损坏图片。</p></section>
+<section class="card"><h2>方案与影响范围</h2><p>前端候选封面 URL 更新缓存版本，避免旧 WebP 响应继续命中浏览器缓存。独立 coverimage 工具服务 library、metasource 和 HTTP 代理；Go 回归覆盖无后缀/错误后缀、WebP 有损/无损、坏图片与像素上限。修改 spec/元数据.md 与 spec/插件/元数据源.md。源书籍、人工字段、导入调度均不改变。OPDS 仍是独立未完成 WIP，不将它提交为通过。</p></section>
+<section class="card"><h2>验证与部署</h2><p>已通过：go test -p 3 ./internal/coverimage ./internal/metasource -count=1；library 的 TestManagedCover、删除仅索引封面保护回归；Linux 隔离容器完整 internal/httpapi 测试包 PASS（300 秒上限）；最终二进制 Linux TestProxyCover/TestProxyImage/TestBookReference/TestBookMetadata/TestOpds PASS；go vet -p 3 ./...；eslint pages/book/[bid]/index.vue；nuxt generate；25 篇规格校验。实际网络两张 WebP 经百科下载及临时 SQLite ReplaceCover 写成 JPEG：303×402/26126 字节与 800×800/77057 字节。部署后用户原 pcover 链接返回 200 image/jpeg，75747 字节。真实浏览器书籍 56 的候选封面 complete=true、303×402，点击可放大；候选 URL 的 v=20261030-webp-jpeg，截图保存在本机 bookharbor-cover56-fixed.png。没有把检索出的“异界流氓天尊2”整条套用，主库文字字段未由本次操作改写。仅重启维护侧服务。用户给出的封面 URL 对应内容须明确，不自动套用当前检索出的疑似续作文字信息。</p></section><section class="card"><h2>interface-review full</h2><p>默认分支 origin/main，基准 5f8156aee951901a655a0f50615cc2b3d0c7991c；审查时领先 0 个提交，11 个已跟踪修改和 9 个未跟踪文件（含待处理 OPDS、用户已有 storage-migration 草稿）全部纳入清单。用户草稿只核对归属，不编辑、不提交。按 AGENTS.md、app/CLAUDE.md 和 interface-review → better-interface 六域审查。消费者展开：书籍候选弹窗、封面放大框、托管封面/缩略图、百科与新华书店适配器、OPDS 客户端导航；未再展开其他消费者。部署脚本和 OPDS 功能可用性另归一般正确性审查，原生 BooxReader 翻页仍未通过，保留原 WIP。</p><table><tr><th>领域</th><th>证据与结论</th></tr><tr><td>Accessibility</td><td>真实弹窗具名封面按钮、放大框关闭/缩放按钮及来源链接仍存在；无新增问题。</td></tr><tr><td>Layout</td><td>真实候选卡片与放大框显示，图像等比，800 上限无拉伸；无新增问题。</td></tr><tr><td>Writing</td><td>源名称、进度与设置文案保持；坏图提示区分无图和无效封面；无新增问题。</td></tr><tr><td>Typography</td><td>Not reviewed: 没有字体或正文排版变更证据。</td></tr><tr><td>Colors</td><td>Not reviewed: 没有主题与颜色 token 变更证据。</td></tr><tr><td>UI polish</td><td>候选图片可见且可放大，未引入占位图当成功；无新增问题。</td></tr></table><p>考虑后排除：不改卡片宽度（原组件布局保持）；不统一把非 WebP 代理图片重新压缩（没有相应兼容故障证据）；不将原生 OPDS 未翻页称为视觉审查已通过（属于独立功能验证）。No actionable interface findings，Verdict: Approve；未覆盖移动端或深色截图，不声称这些状态已实测。</p></section><section class="card"><h2>部署与保护证据</h2><p>仅更新 bookharbor-metadata 与静态前端；主导入 PID 70/start 6789233、阅读 PID 3934/start 14119217 均与部署前一致。旧独立核对脚本把书籍 17 新增人工锁视为不相等而失败；复核原锁全部保留、16 锁集不变、17 新增保护项没有删除旧锁，16/17 来源路径、尺寸、mtime 与 SHA 均一致。没有改写保护表逻辑。运行 ELF SHA256 为 9cbe1b31c69eee98717886eceb521eb2cd45c5f05f8d511bc8db4893d11e7ea0，包含现场仍未提交的 OPDS 兼容补丁，不能把本次封面提交 SHA 描述为整份运行源代码的唯一版本。</p></section></main></body></html>

@@ -6,13 +6,13 @@ import (
 	"encoding/json"
 	"image"
 	"image/jpeg"
-	"image/png"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"talebook/booksvr/internal/coverimage"
 	"talebook/booksvr/internal/htmlx"
 	"talebook/booksvr/internal/metabase"
 	"talebook/booksvr/internal/safehttp"
@@ -469,7 +469,7 @@ func (s *BaikeSource) BuildMetadata(entry map[string]any, copyImage bool) map[st
 	return mi
 }
 
-// GetCover 复刻 get_cover：校验 CDN 白名单，PNG 转 JPEG。
+// GetCover validates the CDN and decodes the actual image, regardless of URL suffix.
 func (s *BaikeSource) GetCover(coverURL string, normalCover bool) *metabase.CoverResult {
 	if coverURL == "" {
 		return nil
@@ -492,37 +492,28 @@ func (s *BaikeSource) GetCover(coverURL string, normalCover bool) *metabase.Cove
 		return nil
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
 	img, err := readAll(resp.Body)
 	if err != nil {
 		return nil
 	}
-
-	parsed, _ := url.Parse(trustedURL)
-	coverPath := strings.ToLower(parsed.Path)
-	imgFmt := "png"
-	if strings.HasSuffix(coverPath, ".jpg") || strings.HasSuffix(coverPath, ".jpeg") {
-		imgFmt = "jpg"
+	converted, err := convertCoverToJPEG(img, normalCover)
+	if err != nil {
+		return nil
 	}
-
-	if imgFmt == "png" {
-		converted, err := convertPNGToJPEG(img, normalCover)
-		if err != nil {
-			return nil
-		}
-		img = converted
-		imgFmt = "jpg"
-	}
-	return &metabase.CoverResult{Extension: imgFmt, Content: img}
+	return &metabase.CoverResult{Extension: "jpg", Content: converted}
 }
 
-// convertPNGToJPEG 复刻 get_cover 中的 PNG→JPEG 转换。
+// convertCoverToJPEG decodes bounded artwork by content and preserves cover cropping.
 //
 // 复刻要点：
 //   - RGBA / P 模式先转 RGB；
 //   - 高宽比 < 1.2 且 normalCover 时，居中裁剪为正方形；
 //   - 以 JPEG 编码输出。
-func convertPNGToJPEG(data []byte, normalCover bool) ([]byte, error) {
-	src, err := png.Decode(bytes.NewReader(data))
+func convertCoverToJPEG(data []byte, normalCover bool) ([]byte, error) {
+	src, err := coverimage.Decode(data)
 	if err != nil {
 		return nil, err
 	}
@@ -546,6 +537,11 @@ func convertPNGToJPEG(data []byte, normalCover bool) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// convertPNGToJPEG retains the existing Xinhua adapter entry point.
+func convertPNGToJPEG(data []byte, normalCover bool) ([]byte, error) {
+	return convertCoverToJPEG(data, normalCover)
 }
 
 // toRGB 把任意图像转为 RGB（丢弃 alpha）。
