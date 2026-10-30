@@ -575,10 +575,6 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 		CookieSecret: opts.CookieSecret,
 		LibraryRoot:  opts.LibraryRoot,
 	}
-	onlineComicCfg := OnlineComicConfig{
-		Settings: map[string]any{"cookie_secret": opts.CookieSecret},
-	}
-	specs = append(specs, OnlineComicRouteSpecs(onlineComicCfg)...)
 	// 插件 run 执行器：在共享后台队列上执行已持久化的 run。
 	pluginExecutor := pluginjobs.NewExecutor(pluginjobs.Config{
 		DB:      userDB,
@@ -623,13 +619,6 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 		Settings: opts.Settings,
 		SeedFile: opts.BookSourceSeedFile,
 	})...)
-	// 网络书库的封面改写依赖在线漫画的签名图片地址，这里把两者接上。
-	specs = append(specs, NetworkRouteSpecs(NetworkConfig{
-		Settings:           opts.Settings,
-		LibraryRoot:        opts.LibraryRoot,
-		SaveOnline:         opts.SaveOnline,
-		ComicCoverRewriter: OnlineComicCoverRewriter(onlineComicCfg),
-	})...)
 	specs = append(specs, CaptchaRouteSpecs(CaptchaConfig{
 		CookieSecret: opts.CookieSecret,
 		Settings:     opts.CaptchaSettings,
@@ -657,6 +646,7 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 	// DefaultCover 必须接线：书籍无封面时回退到它，否则 /get/cover 返回 0 字节，
 	// 前端封面图空白（用户可见现象：详情页/列表页都没有封面）。
 	bookWiring := newBookWiring(userDB, db, opts.Settings, opts.PluginRegistry).withSettingsPath(opts.SettingsPath)
+	specs = append(specs, networkLibraryRouteSpecs(opts, userDB, db, bookWiring.registry)...)
 	specs = append(specs, FilesRouteSpecs(FilesConfig{
 		DB:                   db,
 		LibraryRoot:          opts.LibraryRoot,

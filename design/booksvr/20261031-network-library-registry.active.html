@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Talebook 内部方案模板：用于记录原始诉求、目标边界、实现方案、风险与测试结果。" />
+    <link rel="icon" href="data:," />
+    <title>网络书库共享插件注册表接线</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><header class="hero"><h1>网络书库共享插件注册表接线</h1><p>2026-10-31 · booksvr · ACTIVE · 来源：用户报告网络书库 Plugin provider is not available</p></header><section class="card"><h2>原始诉求与证据</h2><p>已登录访问 /api/network/sources 返回 exception，正常启用的 source 插件均存在。常规启动装配 NetworkConfig 与 OnlineComicConfig 时遗漏 Catalog；默认构造 NewRuntime(...,nil) 得到空注册表，数据库连接列表仍有插件，而 Registry.Get 失败。既有 handler 单测注入自定义 Catalog，未覆盖正式装配。</p></section><section class="card"><h2>目标与设计边界</h2><p>网络书库和在线漫画复用已经注册的 provider，保留当前用户、启用状态、权限、凭据与连接策略。共享组装函数同时供正式服务与维护监听器使用，避免单独热修列表而搜索/浏览/正文仍坏。设置按请求读取，保存到本地沿用既有书源保存实现，不启动额外目录监控或导入器。原导入和阅读进程不重启。</p></section><section class="card"><h2>方案与影响范围</h2><p>抽出 networkLibraryRouteSpecs，注入 Catalog 和 SaveOnline；正式服务与 metadata-only 维护服务共用这套标准及旧别名、漫画 API 路由。维护部署复用已有有界服务更新步骤，独立脚本仅新增网络 API 和在线漫画页面 Nginx 转发，支持重复执行与失败恢复。不修改尚未完成的 OPDS 补丁，不把它提交为完成。修改 spec/网络书库.md 与维护模式说明。</p></section><section class="card"><h2>验证计划</h2><p>已通过：go test -p 3 ./internal/httpapi ./internal/sourcecatalog ./internal/booksourcesearch -run 'TestNetwork|TestOnlineComic|TestMetadataOnly|Test.*Binding' -count=1；sourcecatalog/booksourcesearch 另有搜索回归通过。新用例 TestNetworkDispatcherUsesRegisteredProviders 对正常和维护 dispatcher 分别验证标准/旧别名、分类、搜索轮询、浏览、详情、正文、禁用插件和游客拒绝。Linux 隔离容器完整 internal/httpapi 测试 ELF 返回 PASS/0，涵盖 import_resume、metadata cursor/restart、source rate restart 及在线漫画回归。Windows 扩大选项首次包含 TestSourceSyncWorkerWorksWithAutoImportDisabled，因无原生 Linux 目录监视而超时；不重试掩盖，已由 Linux 整包通过补足。go vet -p 3 ./... 通过；部署脚本 5 个回归验证优先级、原 OPDS/主 API 路由保留、幂等、nginx 校验/重载失败恢复，以及只 update restart policy 不 restart。25 篇规格检查通过。源站网络不可达与插件未注册分别报告，不以空数组吞掉错误。</p></section><section class="card"><h2>重启与续跑核对</h2><p>用户追加询问导入、补全是否同进程，以及系统重启是否自启续跑。现场主服务 PID 70，独立补全 PID 52053；import_auto_watch_enabled/auto_fill_meta 均为 true、import_control.paused=0、没有手动全库续跑任务。自动导入读取持久化 scanfiles；补全游标、分源任务、重试时间落库，短期租约最多等待 120 秒。主服务由 bootstrap 自检成功后启动，独立服务由 supervisor autostart/ autorestart 负责。Docker restart policy 当前为 no，部署改为 unless-stopped，不重启容器；保留用户主动停止后的状态。不通过实际重启中断现有任务来验证。</p></section><section class="card"><h2>真实环境结果</h2><p>部署后 /api/book-sources 与 /api/network/sources 均 err=ok，返回 Standard Ebooks、WebDAV、番茄小说下载器三项，分别耗时 0.468/0.203 秒。Standard Ebooks 分类返回 root，浏览返回 15 本，Short Fiction 详情正常；pride 搜索任务完成 1/1，无匹配结果，无分源失败。真实浏览器 /library/network 从错误弹窗恢复到 3 源，浏览页展示 15 本书目；截图位于本机 C:/Users/leon/bookharbor-network-fixed.png 。实际外部保存/推送、未配置 WebDAV 以及禁用漫画源未作有副作用实测，以隔离用例覆盖接线和权限，不声称外部服务全部可用。</p><p>Docker 服务 is-enabled=enabled，容器 policy=unless-stopped，StartedAt 不变。导入仍 PID 70/start 6789233，阅读仍 PID 3934/start 14119217；补全新 PID 52621 启动后读到 initial_max/new_cursor=439973、history_cursor=13792 的既有进度，随后推进至 13829，日志显示文件补全和百科补全继续完成。没有实机重启验证，避免中断现行任务。</p></section><section class="card"><h2>interface-review full</h2><p>基准 origin/main=d79f2229813b6b9c67af13c2ccac00d5d46a6306，领先 0 个提交；9 个已跟踪修改、9 个未跟踪文件全部纳入清单（包括仍未通过原生分页的 OPDS WIP、用户已有 storage-migration 草稿）。按 AGENTS.md、app/CLAUDE.md、interface-review/better-interface 与六个 better-* owner 审查；用户草稿不编辑、不提交。展开 5 个消费者：网络搜索页、浏览/详情页、在线漫画、维护部署、OPDS 同监听器；未扩大至其他消费者。</p><table><tr><th>领域</th><th>证据及结论</th></tr><tr><td>Accessibility</td><td>真实页面搜索/浏览 tab、具名搜索输入与书源下拉保持可访问，书籍详情仍为新标签链接；无新增问题。</td></tr><tr><td>Layout</td><td>真实桌面列表显示，已有分页/页码跳转保留；没有改前端布局，无新增问题。</td></tr><tr><td>Writing</td><td>不再因空 provider registry 显示误导错误，保留空配置与按源失败提示；CLI 文案反映维护路由范围，无新增问题。</td></tr><tr><td>Typography</td><td>Not reviewed: 无字体或正文排版变更证据。</td></tr><tr><td>Colors</td><td>Not reviewed: 无主题 token 变更证据。</td></tr><tr><td>UI polish</td><td>实际加载完成后展示书目，无全局错误；未更改动画与卡片样式，无新增问题。</td></tr></table><p>考虑后排除：不删除原漫画路由（现由共享函数完整追加）；不把连接数据库有记录说成已加载 provider（修复了真正装配）；不以 OPDS 原生按钮未验证推断页面样式缺陷（独立功能验证继续 WIP）。现有书目无封面时禁用放大按钮是既有数据/界面行为，未修改、不归因本次接线。不声称移动端、深色主题、设备真机已验收。No actionable interface findings；Verdict: Approve。</p></section><section class="card"><h2>运行构建标识</h2><p>ELF SHA256：28a06e6b0dcb9df7ec66e2d9898cbe363a592ebbc8d96e520ccbd5fa10900fec。运行构建保留尚未提交的 OPDS 兼容补丁；本次提交只包含网络书库装配和部署修复，不将提交 SHA 当作全部运行源代码的唯一版本。</p></section></main></body></html>

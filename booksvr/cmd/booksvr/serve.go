@@ -100,7 +100,7 @@ func newServeFlagSet(out io.Writer) *flag.FlagSet {
 	fs.String("serve-routes", "", "走 booksvr 本地的路由 pattern 白名单，逗号分隔；all 表示全部（默认空=全部走代理，可用 BOOKSVR_SERVE_ROUTES）")
 	fs.String("cookie-secret", "", "解析 Tornado secure cookie 的密钥（必填，可用 BOOKSVR_COOKIE_SECRET）")
 	fs.Bool("plugin-features-only", false, "仅提供用户插件额外功能及状态，不运行迁移或后台任务；仅允许环回监听")
-	fs.Bool("metadata-only", false, "仅提供元数据编辑、检索和限速补全，不运行迁移、导入或源目录扫描；仅允许环回监听")
+	fs.Bool("metadata-only", false, "仅提供维护 API（元数据、OPDS、网络书库），不运行迁移、导入或源目录扫描；仅允许环回监听")
 	fs.Bool("reader-only", false, "仅提供阅读入口，不运行迁移与后台任务（供保留导入进程的并行部署）")
 	fs.Bool("demo-mode", false, "开启演示模式（只读，可用 BOOKSVR_DEMO_MODE）")
 	fs.String("demo-username", "", "演示模式允许登录的账号（可用 BOOKSVR_DEMO_USERNAME）")

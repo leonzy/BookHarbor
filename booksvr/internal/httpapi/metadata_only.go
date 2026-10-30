@@ -9,7 +9,7 @@ import (
 )
 
 // Metadata-only deploys metadata fixes beside an uninterrupted import process.
-// It opens existing databases and starts only the leased enrichment worker.
+// It opens existing databases without starting importers or directory watchers.
 func newMetadataOnlyDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, error) {
 	host, _, err := net.SplitHostPort(opts.Addr)
 	if err != nil || (host != "localhost" && (net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback())) {
@@ -34,6 +34,7 @@ func newMetadataOnlyDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatch
 	specs = append(specs, metadataSourceRoutes(db, userDB, opts)...)
 	specs = append(specs, metadataReviewRoutes(db)...)
 	specs = append(specs, OpdsRouteSpecs(newOpdsConfig(db, userDB, opts))...)
+	specs = append(specs, networkLibraryRouteSpecs(opts, userDB, db, w.registry)...)
 	specs = append(specs, RouteSpec{Pattern: "/api/admin/plugins/([a-z0-9.-]+)/metadata/search", Methods: []string{"POST"}, Auth: true, Admin: true, Handler: AdminPluginMetadataSearchHandler(PluginConfig{Settings: opts.Settings, Registry: w.registry})})
 	server, err := NewServer(specs)
 	if err != nil {
