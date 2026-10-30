@@ -8,7 +8,8 @@
     "close": "Close",
     "imageArea": "Cover image, scroll to view",
     "failed": "Could not load the cover",
-    "retry": "Retry"
+    "retry": "Retry",
+    "unavailable": "Cover unavailable"
   },
   "bookSort": {
     "label": "Sort books",
@@ -235,7 +236,8 @@
     "ownerActions": "Owner controls",
     "introduction": "Introduction",
     "addedBy": "Added by",
-    "addedAt": "Added at"
+    "addedAt": "Added at",
+    "filteredMetadataCandidates": "Filtered {count} unrelated or conflicting results"
   },
   "authorAliases": {
     "manage": "Manage author aliases",
@@ -2366,5 +2368,34 @@
     "installedSize": "Application size: about {size} MB",
     "history": "Manage version history",
     "closeHistory": "Close"
+  },
+  "metadataProgress": {
+    "title": "Library metadata enrichment",
+    "refresh": "Refresh progress",
+    "description": "Check source files first, then fill gaps online. Finishing file checks does not mean online enrichment succeeded. Uncertain matches keep existing information.",
+    "checked": "Checked {checked} of {total} books",
+    "remaining": "Not checked",
+    "complete": "Key information complete",
+    "waiting": "Waiting for online lookup",
+    "retrying": "Of these, awaiting retry",
+    "applied": "Enriched online",
+    "review": "Needs review",
+    "unreadable": "Source unavailable",
+    "protected": "Manual edits protected",
+    "running": "Background worker running",
+    "paused": "Worker paused or awaiting start",
+    "onlineOn": "Automatic online lookup on",
+    "onlineOff": "Automatic online lookup off",
+    "rate": "One low-priority worker; online requests at least 30 seconds apart; manual edits and existing information preserved.",
+    "lastActivity": "Last processed: {time}",
+    "loadError": "Could not load progress. Please retry.",
+    "partial": "Processed, some fields missing"
+  },
+  "bookStorage": {
+    "title": "Storage locations",
+    "description": "Current edition #{id}: actual container paths for each format. Indexed files remain in their source directories.",
+    "directory": "Directory:",
+    "filename": "File:",
+    "member": "Path inside ZIP:"
   }
 }

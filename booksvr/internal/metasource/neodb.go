@@ -38,6 +38,7 @@ var neoDBHeaders = map[string]string{
 
 // NeoDBItem 是解析后的条目。
 type NeoDBItem struct {
+	ISBN        string
 	CoverPath   string
 	CoverURL    string
 	Title       string
@@ -86,6 +87,8 @@ func ParseItemCard(article *htmlx.Node) NeoDBItem {
 			}
 			text := span.TextSep(" ")
 			switch {
+			case strings.Contains(strings.ToUpper(text), "ISBN"):
+				item.ISBN = splitAfterColon(text)
 			case strings.Contains(text, "作者:") || strings.Contains(text, "作者："):
 				inner := span.Find("span")
 				if inner == nil {
@@ -272,8 +275,8 @@ func (s *NeoDBSource) BuildMetadata(item NeoDBItem, isbn string, copyImage bool)
 		"website":        item.URL,
 	}
 
-	if isbn != "" {
-		mi["isbn"] = isbn
+	if item.ISBN != "" {
+		mi["isbn"] = item.ISBN
 	}
 	if item.Description != "" {
 		mi["comments"] = item.Description
@@ -455,3 +458,5 @@ func (p *NeoDBProvider) Search(query plugindomain.MetadataQuery, context map[str
 func (p *NeoDBProvider) Fetch(externalID string, context map[string]any) (map[string]any, error) {
 	return p.Plugin.GetMetadataByProvider(externalID, "", "", ""), nil
 }
+
+func (p *NeoDBProvider) ProxyImageHosts() []string { return []string{"neodb.social"} }

@@ -1,11 +1,11 @@
 package metasource
 
 import (
-	"talebook/booksvr/internal/plugindomain"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"talebook/booksvr/internal/plugindomain"
 	"testing"
 
 	"talebook/booksvr/internal/htmlx"
@@ -237,7 +237,7 @@ func TestIsFourDigitYear(t *testing.T) {
 func TestBuildMetadata(t *testing.T) {
 	s := NewNeoDBSource(nil)
 	item := NeoDBItem{
-		Title: "三体", Author: "刘慈欣", Publisher: "重庆出版社",
+		Title: "三体", Author: "刘慈欣", Publisher: "重庆出版社", ISBN: "9787536692930",
 		URL: "https://neodb.social/book/1", Rating: "8.6 (236 个评分)",
 		PubYear: "2008", Description: "简介", CoverURL: "https://neodb.social/c/1.jpg",
 	}

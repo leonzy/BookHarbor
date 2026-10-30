@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"strings"
 
 	"talebook/booksvr/internal/metabase"
@@ -156,6 +157,8 @@ type DoubanV2Abstract struct {
 }
 
 // ParseDoubanV2Abstract 复刻 _parse_abstract：按 " / " 拆分。
+var doubanV2AbstractDate = regexp.MustCompile(`^\d{4}(?:[-/.年]|$)`)
+
 func ParseDoubanV2Abstract(abstract string) DoubanV2Abstract {
 	raw := strings.Split(abstract, " / ")
 	parts := make([]string, 0, len(raw))
@@ -171,6 +174,23 @@ func ParseDoubanV2Abstract(abstract string) DoubanV2Abstract {
 	}
 	if len(parts) > 2 {
 		out.PubDate = parts[2]
+	}
+	// A second creator is not a publisher. Prefer the field before a publication date.
+	for i := 1; i < len(parts); i++ {
+		if doubanV2AbstractDate.MatchString(parts[i]) {
+			if i > 1 {
+				out.Publisher = parts[i-1]
+			}
+			out.PubDate = parts[i]
+			return out
+		}
+	}
+	for _, part := range parts[1:] {
+		if strings.Contains(part, "出版社") || strings.Contains(part, "出版公司") || strings.Contains(strings.ToLower(part), " press") {
+			out.Publisher = part
+			out.PubDate = ""
+			break
+		}
 	}
 	return out
 }
@@ -209,9 +229,7 @@ func (s *DoubanV2Source) BuildMetadata(item DoubanV2Item, searchURL, isbn string
 		"website":        bookURL,
 	}
 
-	if isbn != "" {
-		mi["isbn"] = isbn
-	} else if detail != nil && detail.ISBN != "" {
+	if detail != nil && detail.ISBN != "" {
 		mi["isbn"] = detail.ISBN
 	}
 

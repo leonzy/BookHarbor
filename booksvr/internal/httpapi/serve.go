@@ -656,12 +656,14 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 	// FilesConfig.DB 是 Calibre 元数据库（data / book_formats 等表）。
 	// DefaultCover 必须接线：书籍无封面时回退到它，否则 /get/cover 返回 0 字节，
 	// 前端封面图空白（用户可见现象：详情页/列表页都没有封面）。
+	bookWiring := newBookWiring(userDB, db, opts.Settings, opts.PluginRegistry).withSettingsPath(opts.SettingsPath)
 	specs = append(specs, FilesRouteSpecs(FilesConfig{
-		DB:             db,
-		LibraryRoot:    opts.LibraryRoot,
-		HTMLPath:       opts.HTMLPath,
-		DefaultCover:   loadDefaultCover(opts.HTMLPath),
-		AllowGuestRead: settingBool(opts.Settings, "ALLOW_GUEST_READ", true),
+		DB:                   db,
+		LibraryRoot:          opts.LibraryRoot,
+		HTMLPath:             opts.HTMLPath,
+		DefaultCover:         loadDefaultCover(opts.HTMLPath),
+		AllowsImageProxyHost: bookWiring.registry.AllowsImageProxyHost,
+		AllowGuestRead:       settingBool(opts.Settings, "ALLOW_GUEST_READ", true),
 		CanViewBook: func(ctx *Context, bookID int64) bool {
 			ok, err := userdb.CanViewBook(userDB, bookID, ctx.Identity.UserID, ctx.Identity.IsAdmin)
 			return err == nil && ok
@@ -691,7 +693,7 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 	// 复用 bookCfg 的完整 BookFormatter，否则返回的书籍缺少 img/thumb/href，
 	// 前端 BookCards 拿不到封面地址（用户可见现象：钻取页无封面图）。
 	publicURL := bookPublicURL(opts.BasePath)
-	bookWiring := newBookWiring(userDB, db, opts.Settings, opts.PluginRegistry).withSettingsPath(opts.SettingsPath)
+	// bookWiring was initialized above for image host declarations.
 	// 删除公开书时把目录移入 <libraryRoot>/.caltrash，供回收站页面恢复。
 	bookWiring.libraryRoot = opts.LibraryRoot
 	// 在线阅读需要把 mobi/azw3 转成 EPUB；转换产物放在书库下的 convert 目录。
@@ -742,7 +744,7 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 	specs = append(specs, AdminRouteSpecs(newAdminConfig(opts, userDB, db))...)
 
 	specs = append(specs, BookRouteSpecs(bookCfg)...)
-	specs = append(specs, RouteSpec{Pattern: "/api/admin/metadata/enrichment", Methods: []string{"GET"}, Auth: true, Admin: true, Handler: MetadataEnrichmentStatus(db)})
+	specs = append(specs, RouteSpec{Pattern: "/api/admin/metadata/enrichment", Methods: []string{"GET"}, Auth: true, Admin: true, Handler: MetadataEnrichmentStatus(db, opts)})
 
 	audioRoot := opts.AudiobookRoot
 	if audioRoot == "" && opts.LibraryRoot != "" {

@@ -104,3 +104,37 @@ func TestHistoricalModifiedBookProtectsEmptyFields(t *testing.T) {
 		t.Fatal(changed, err)
 	}
 }
+
+func TestAutomaticMetadataAuditIsAtomicAndRespectsLaterManualEdit(t *testing.T) {
+	db := newQueryDB(t)
+	id, e := ImportBook(db, BookMeta{Title: "Audit", Author: "佚名"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, e = FillMissingMetadata(db, id, importmeta.Metadata{Authors: []string{"老舍"}, ISBN: "9787020091621", Publisher: "人民文学出版社"}, "network:fixture")
+	if e != nil {
+		t.Fatal(e)
+	}
+	var previous, written, origin string
+	if e = db.QueryRow(`SELECT previous_value,written_value,origin FROM metadata_enrichment_writes WHERE book_id=? AND field='isbn'`, id).Scan(&previous, &written, &origin); e != nil {
+		t.Fatal(e)
+	}
+	if previous != `""` || written != `"9787020091621"` || origin != "network:fixture" {
+		t.Fatal(previous, written, origin)
+	}
+	tx, _ := db.Begin()
+	LockMetadata(tx, id, []string{"publisher"})
+	tx.Exec(`DELETE FROM books_publishers_link WHERE book=?`, id)
+	tx.Commit()
+	before := 0
+	db.QueryRow(`SELECT count(*) FROM metadata_enrichment_writes`).Scan(&before)
+	_, e = FillMissingMetadata(db, id, importmeta.Metadata{Publisher: "wrong"}, "network:fixture")
+	if e != nil {
+		t.Fatal(e)
+	}
+	after := 0
+	db.QueryRow(`SELECT count(*) FROM metadata_enrichment_writes`).Scan(&after)
+	if before != after {
+		t.Fatal("protected field audited as auto-written")
+	}
+}

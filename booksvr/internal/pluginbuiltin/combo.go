@@ -570,3 +570,5 @@ var (
 	_ pluginiface.ReviewProvider   = (*OpenLibraryProvider)(nil)
 	_                              = json.Marshal
 )
+
+func (p *OpenLibraryProvider) ProxyImageHosts() []string { return []string{"covers.openlibrary.org"} }

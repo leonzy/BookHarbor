@@ -15,6 +15,8 @@
             </template>
         </RoutePageToolbar>
 
+        <MetadataProgress />
+
         <section class="management-panel">
             <div class="management-layout">
                 <div class="management-content">
@@ -507,6 +509,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n';
 import GlobalDeviceSettings from '~/components/GlobalDeviceSettings.vue';
 import MetadataAutomationSettings from '~/components/MetadataAutomationSettings.vue';
+import MetadataProgress from '~/components/MetadataProgress.vue';
 import OpdsImportDialog from '~/components/OpdsImportDialog.vue';
 import PluginCapabilityTester from '~/components/PluginCapabilityTester.vue';
 import RoutePageToolbar from '@/components/RoutePageToolbar.vue';

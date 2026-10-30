@@ -229,6 +229,12 @@
                                 </p>
                             </section>
                             <p
+                                v-if="refer_summary.filtered"
+                                class="text-body-2 mb-3"
+                            >
+                                {{ t('book.filteredMetadataCandidates', { count: refer_summary.filtered }) }}
+                            </p>
+                            <p
                                 v-if="!refer_books_loading && refer_books.length === 0"
                                 class="py-6 text-center"
                             >
@@ -841,6 +847,12 @@
                     @delete-book="delete_book"
                 />
 
+                <BookStorageLocations
+                    v-if="book.is_owner"
+                    :files="book.files || []"
+                    :book-id="Number(book.id)"
+                />
+
                 <!-- Zone 4: Introduction and annotations -->
                 <section
                     class="book-introduction"
@@ -892,6 +904,7 @@ import { useMainStore } from '@/stores/main';
 import BookCards_Small from '~/components/BookCards_Small.vue';
 import BookConvertDialog from '~/components/BookConvertDialog.vue';
 import BookDetailActions from '~/components/BookDetailActions.vue';
+import BookStorageLocations from '~/components/BookStorageLocations.vue';
 import AnnotationPanel from '~/components/AnnotationPanel.vue';
 import { READING_STATE, useBookReadingState } from '~/composables/useBookReadingState';
 import { readerPathForBook } from '~/utils/comic-reader';
@@ -1265,6 +1278,7 @@ const get_refer = async () => {
             }
             if (data.event === 'progress' || data.event === 'summary') {
                 refer_summary.value = {
+                    filtered: data.filtered || 0,
                     failures: Array.isArray(data.failures) ? data.failures : [],
                     total: data.total || 0,
                     completed: data.completed || 0,
@@ -1275,7 +1289,7 @@ const get_refer = async () => {
                 if (!data.cover_url || data.cover_url === '') {
                     data.img = withBasePath('/get/cover/0');
                 } else {
-                    data.img = withBasePath('/get/pcover?url=' + encodeURIComponent(data.cover_url));
+                    data.img = withBasePath('/get/pcover?url=' + encodeURIComponent(data.cover_url) + '&v=20261030-trusted');
                 }
                 refer_books.value.push(data);
             }

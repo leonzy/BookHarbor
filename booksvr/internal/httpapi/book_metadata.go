@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"talebook/booksvr/internal/library"
+	"talebook/booksvr/internal/localmeta"
 	"talebook/booksvr/internal/pluginiface"
 	"talebook/booksvr/internal/pluginruntime"
 	"talebook/booksvr/internal/userdb"
@@ -95,6 +96,7 @@ func (w *bookWiring) searchBookReferences(ctx *Context, book *library.BookData) 
 	books := []any{}
 	failures := []any{}
 	completed := 0
+	filtered := 0
 	for len(pending) > 0 {
 		select {
 		case <-lookup.Done():
@@ -118,17 +120,25 @@ func (w *bookWiring) searchBookReferences(ctx *Context, book *library.BookData) 
 			if len(records) == 0 {
 				failures = append(failures, map[string]any{"source": outcome.name, "code": "no_result", "message": "未找到匹配图书"})
 			}
-			for i, record := range records {
-				if i >= 5 {
+			accepted := 0
+			for _, record := range records {
+				record["isbn"] = localmeta.ISBN(stringOf(record["isbn"]))
+				if !referenceRelevant(*book, record) {
+					filtered++
+					continue
+				}
+				if accepted >= 5 {
 					break
 				}
 				if stringOf(record["title"]) == "" {
 					continue
 				}
+				accepted++
 				candidate := pluginMetadataSummary(record)
 				candidate["provider_key"] = outcome.key
 				candidate["source"] = outcome.name
 				candidate["author"] = strings.Join(toStringSlice(record["authors"]), ", ")
+				candidate["author_sort"] = candidate["author"]
 				date := stringOf(record["pubdate"])
 				if len(date) >= 4 {
 					candidate["pubyear"] = date[:4]
@@ -147,7 +157,7 @@ func (w *bookWiring) searchBookReferences(ctx *Context, book *library.BookData) 
 			}
 		}
 	}
-	summary := map[string]any{"event": "summary", "total": len(connections), "completed": completed, "failures": failures}
+	summary := map[string]any{"event": "summary", "filtered": filtered, "total": len(connections), "completed": completed, "failures": failures}
 	if stream {
 		_ = emit(summary)
 		return nil, nil
@@ -212,6 +222,10 @@ func (w *bookWiring) applyBookReference(ctx *Context, book *library.BookData, ar
 	if stringOf(metadata["title"]) == "" {
 		return map[string]any{"err": "metadata.not_found", "msg": "所选书籍信息已不可用，请重新搜索"}, nil
 	}
+	if !referenceRelevant(*book, metadata) {
+		return map[string]any{"err": "metadata.mismatch", "msg": "所选结果与本书不匹配，请重新检索"}, nil
+	}
+	metadata["isbn"] = localmeta.ISBN(stringOf(metadata["isbn"]))
 	var cover []byte
 	if !onlyMeta {
 		cover = referenceCoverData(metadata)

@@ -14,7 +14,11 @@
             :src="src"
             alt=""
             width="100%"
-        />
+        >
+            <template #error>
+                <span class="book-cover-unavailable"><v-icon aria-hidden="true">mdi-book-image</v-icon>{{ $t('coverPreview.unavailable') }}</span>
+            </template>
+        </v-img>
     </button>
 </template>
 
@@ -54,5 +58,6 @@ function dimension(value) {
     outline: 3px solid rgb(var(--v-theme-primary));
     outline-offset: 3px;
 }
+.book-cover-unavailable { display: flex; min-height: 90px; height: 100%; align-items: center; justify-content: center; flex-direction: column; gap: 6px; padding: 8px; font-size: 12px; background: rgba(var(--v-theme-on-surface), .05); }
 .book-cover-preview-trigger:disabled { cursor: default; }
 </style>

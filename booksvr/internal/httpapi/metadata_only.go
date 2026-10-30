@@ -25,7 +25,8 @@ func newMetadataOnlyDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatch
 			specs = append(specs, spec)
 		}
 	}
-	specs = append(specs, RouteSpec{Pattern: "/api/admin/metadata/enrichment", Methods: []string{"GET"}, Auth: true, Admin: true, Handler: MetadataEnrichmentStatus(db)})
+	specs = append(specs, RouteSpec{Pattern: rGetPcover, Methods: []string{"GET"}, Handler: ProxyImageHandler(FilesConfig{AllowsImageProxyHost: w.registry.AllowsImageProxyHost})})
+	specs = append(specs, RouteSpec{Pattern: "/api/admin/metadata/enrichment", Methods: []string{"GET"}, Auth: true, Admin: true, Handler: MetadataEnrichmentStatus(db, opts)})
 	specs = append(specs, RouteSpec{Pattern: "/api/admin/plugins/([a-z0-9.-]+)/metadata/search", Methods: []string{"POST"}, Auth: true, Admin: true, Handler: AdminPluginMetadataSearchHandler(PluginConfig{Settings: opts.Settings, Registry: w.registry})})
 	server, err := NewServer(specs)
 	if err != nil {

@@ -71,7 +71,7 @@ Path('/etc/supervisor/conf.d/bookharbor-metadata.conf').write_text(CONFIG)
 os.setgroups([]);os.setgid(1000);os.setuid(1000)
 c=sqlite3.connect('/data/books/library/metadata.db',timeout=1)
 c.execute('CREATE TABLE IF NOT EXISTS metadata_enrichment_lease(id INTEGER PRIMARY KEY,owner TEXT NOT NULL,expires INTEGER NOT NULL)')
-now=int(time.time());r=c.execute("INSERT INTO metadata_enrichment_lease(id,owner,expires) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,expires=excluded.expires WHERE metadata_enrichment_lease.expires<? OR metadata_enrichment_lease.owner LIKE 'deployment:%'",(FREEZE,now+120,now));assert r.rowcount==1,'Another metadata worker owns the lease';c.commit();c.close()
+now=int(time.time());r=c.execute("INSERT INTO metadata_enrichment_lease(id,owner,expires) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,expires=excluded.expires WHERE metadata_enrichment_lease.expires<? OR metadata_enrichment_lease.owner LIKE 'deployment:%' OR metadata_enrichment_lease.owner='maintenance:trusted-metadata-20261030'",(FREEZE,now+120,now));assert r.rowcount==1,'Another metadata worker owns the lease';c.commit();c.close()
 print('Only metadata supervisor configuration installed')
 """
     config = f"""[program:bookharbor-metadata]
@@ -109,6 +109,14 @@ stdout_logfile_backups=2
     }
 
 """
+        cover_route = """    location = /get/pcover {
+        expires off;
+        proxy_read_timeout 45s;
+        proxy_pass http://127.0.0.1:8004;
+        proxy_set_header Host $http_host;
+    }
+
+"""
         locale_guard = """
     # Locale payload failures must remain JSON/404, never the SPA shell.
     location ^~ /_i18n/ {
@@ -137,13 +145,14 @@ new=old.replace('book/[0-9]+/(?:edit|refer)', 'book/[0-9]+(?:/(?:edit|refer))?')
 if 'proxy_pass http://127.0.0.1:8004;' not in new:new=new.replace(marker,ROUTE+marker)
 if 'location ^~ /_i18n/' not in new:
  static='    location ^~ /_nuxt/ {';assert new.count(static)==1;new=new.replace(static,LOCALE_GUARD+static)
+if 'location = /get/pcover {' not in new:new=new.replace(marker,COVER_ROUTE+marker)
 if new!=old:p.write_text(new)
 # The production Nginx master runs as talebook, unlike this root installer.
 p.chmod(0o644)
 subprocess.run(['nginx','-t'],check=True)
 subprocess.run(['nginx','-s','reload'],check=True)
 print('Only metadata API locations switched')
-""".replace("ROUTE", repr(route)).replace("LOCALE_GUARD", repr(locale_guard))
+""".replace("COVER_ROUTE", repr(cover_route)).replace("ROUTE", repr(route)).replace("LOCALE_GUARD", repr(locale_guard))
         print(inside(code), flush=True)
         if args.frontend:
             frontend = args.frontend.resolve()

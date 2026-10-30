@@ -65,6 +65,8 @@ def test_metadata_deployment_preserves_main_and_rolls_back_on_nginx_failure(tmp_
                 'socket': SimpleNamespace(create_connection=lambda *args, **kwargs: ConnectedSocket()),
             })
             assert 'book/[0-9]+(?:/(?:edit|refer))?' in site.read_text()
+            assert 'location = /get/pcover {' in site.read_text()
+            assert 'expires off;' in site.read_text()
             if os.name == 'posix':
                 assert site.stat().st_mode & 0o004
         if use_frontend and "SPA entries and locale assets updated" in code:

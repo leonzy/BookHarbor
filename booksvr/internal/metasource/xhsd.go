@@ -307,6 +307,8 @@ func ParseXhsdDetailHTML(html, detailURL, isbn string) *XhsdBookInfo {
 
 	author := ""
 	publisher := ""
+	// The query ISBN is not evidence about the returned product.
+	actualISBN := ""
 
 	attrGroups := xhsdAttrGroups(data)
 	for _, group := range attrGroups {
@@ -322,6 +324,8 @@ func ParseXhsdDetailHTML(html, detailURL, isbn string) *XhsdBookInfo {
 			key, _ := attr["attrKey"].(string)
 			val, _ := attr["attrVal"].(string)
 			switch key {
+			case "ISBN", "ISBN号", "书号":
+				actualISBN = val
 			case "作者":
 				author = val
 			case "出版社":
@@ -376,7 +380,7 @@ func ParseXhsdDetailHTML(html, detailURL, isbn string) *XhsdBookInfo {
 		Publisher:    publisher,
 		Author:       author,
 		Introduction: introduction,
-		ISBN:         isbn,
+		ISBN:         actualISBN,
 		URL:          detailURL,
 	}
 }

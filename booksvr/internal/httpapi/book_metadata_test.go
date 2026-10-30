@@ -23,9 +23,9 @@ import (
 )
 
 type referenceProvider struct {
-	key                 string
-	fail, missingDetail bool
-	cover               []byte
+	key                            string
+	fail, missingDetail, unrelated bool
+	cover                          []byte
 }
 
 func (p *referenceProvider) Manifest() map[string]any {
@@ -40,7 +40,11 @@ func (p *referenceProvider) SelfCheck(map[string]any) (plugindomain.CheckReport,
 	return plugindomain.CheckReport{Healthy: true}, nil
 }
 func (p *referenceProvider) record() plugindomain.BookMetadata {
-	return plugindomain.NewBookMetadata(map[string]any{"title": "Selected title", "authors": []string{"Selected author"}, "publisher": "Selected press", "comments": "Selected description", "isbn": "9780141439518", "cover_url": "https://example.org/cover.jpg", "provider_value": "record-1"})
+	title := "Selected title"
+	if p.unrelated {
+		title = "A completely unrelated book"
+	}
+	return plugindomain.NewBookMetadata(map[string]any{"title": title, "authors": []string{"Selected author"}, "publisher": "Selected press", "comments": "Selected description", "isbn": "9780141439518", "cover_url": "https://example.org/cover.jpg", "provider_value": "record-1"})
 }
 func (p *referenceProvider) SearchBooks(plugindomain.MetadataQuery, map[string]any) ([]plugindomain.BookMetadata, error) {
 	if p.fail {
@@ -63,7 +67,7 @@ func referenceFixture(t *testing.T) (*bookWiring, *referenceProvider, string) {
 	t.Helper()
 	w, directory := newToolsFixture(t)
 	seedReader(t, w.db, "reference-admin", "password123", true, true)
-	insertBook(t, w.libraryDB, 1, "Original title")
+	insertBook(t, w.libraryDB, 1, "Selected title (original edition)")
 	insertItem(t, w.db, 1, "public", 1)
 	path := seedRealFormat(t, w, directory, 1, "TXT", "untouched original ebook")
 	w.libraryRoot = filepath.Join(directory, "managed")
@@ -182,7 +186,7 @@ func TestBookReferenceCoverOnlyReplacesManagedImage(t *testing.T) {
 		t.Fatal("selected cover did not replace existing artwork")
 	}
 	book, _ := bookGetOne(w.Config(""), 1)
-	if book.Title != "Original title" {
+	if book.Title != "Selected title (original edition)" {
 		t.Fatal("cover-only operation changed metadata")
 	}
 	provider.cover = []byte("invalid image")
@@ -214,7 +218,7 @@ func TestBookReferenceRejectsUnknownSelectionAndConflictingFlags(t *testing.T) {
 		}
 	}
 	book, _ := bookGetOne(w.Config(""), 1)
-	if book.Title != "Original title" {
+	if book.Title != "Selected title (original edition)" {
 		t.Fatal("invalid request changed metadata")
 	}
 }

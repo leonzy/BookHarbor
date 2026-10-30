@@ -345,11 +345,11 @@ func TestFilesGetMetadataAsOPFInjected(t *testing.T) {
 // ---- ProxyImageHandler ----
 
 // assertYoho 断言响应体为 "yoho"（代理拒绝时的固定响应）。
-func assertYoho(t *testing.T, ctx *Context) {
+func assertImageRejected(t *testing.T, ctx *Context) {
 	t.Helper()
 	rec := ctx.Writer.(*httptest.ResponseRecorder)
-	if rec.Body.String() != "yoho" {
-		t.Errorf("body = %q, want yoho", rec.Body.String())
+	if rec.Code < 400 || rec.Body.String() == "yoho" {
+		t.Fatalf("image rejection must be observable: %d %q", rec.Code, rec.Body.String())
 	}
 }
 
@@ -361,7 +361,7 @@ func TestProxyImageHandlerMissingURL(t *testing.T) {
 	if _, err := ProxyImageHandler(cfg)(ctx); err != nil {
 		t.Fatalf("不应返回裸错误: %v", err)
 	}
-	assertYoho(t, ctx)
+	assertImageRejected(t, ctx)
 }
 
 // TestProxyImageHandlerBadURL 非法 URL 返回 yoho。
@@ -372,7 +372,7 @@ func TestProxyImageHandlerBadURL(t *testing.T) {
 	if _, err := ProxyImageHandler(cfg)(ctx); err != nil {
 		t.Fatalf("不应返回裸错误: %v", err)
 	}
-	assertYoho(t, ctx)
+	assertImageRejected(t, ctx)
 }
 
 // TestProxyImageHandlerHostNotAllowed 非白名单主机返回 yoho。
@@ -385,7 +385,7 @@ func TestProxyImageHandlerHostNotAllowed(t *testing.T) {
 	if _, err := ProxyImageHandler(cfg)(ctx); err != nil {
 		t.Fatalf("不应返回裸错误: %v", err)
 	}
-	assertYoho(t, ctx)
+	assertImageRejected(t, ctx)
 }
 
 // TestProxyImageHandlerSuccess 白名单主机成功返回图片。

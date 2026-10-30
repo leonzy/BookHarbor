@@ -209,7 +209,7 @@ func TestXhsdParseDetailHTML(t *testing.T) {
 	html := `<html><body>` +
 		`<div class="item-title" data-item='{"name":"三体","mainImage":"//img1.xinhuashudian.com/a.jpg",` +
 		`"otherAttributes":[{"group":"BASIC","otherAttributes":[` +
-		`{"attrKey":"作者","attrVal":"刘慈欣"},{"attrKey":"出版社","attrVal":"重庆出版社"}]}]}'></div>` +
+		`{"attrKey":"作者","attrVal":"刘慈欣"},{"attrKey":"ISBN","attrVal":"9787536692930"},{"attrKey":"出版社","attrVal":"重庆出版社"}]}]}'></div>` +
 		`<div class="spu-tab-item-detail" data-detail='[{"title":"内容简介","content":"<p>简介正文</p>"}]'></div>` +
 		`</body></html>`
 

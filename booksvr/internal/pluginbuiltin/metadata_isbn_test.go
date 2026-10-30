@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"talebook/booksvr/internal/plugindomain"
+	"talebook/booksvr/internal/pluginruntime"
 	"testing"
 )
 
@@ -41,5 +42,22 @@ func TestOpenLibrarySearchRequestsFieldsAndRejectsUUID(t *testing.T) {
 	records, err := newOpenLibraryProvider().SearchBooks(plugindomain.MetadataQuery{Title: "Pride and Prejudice"}, nil)
 	if err != nil || len(records) != 1 || records[0].ToDict()["isbn"] != "9780141439518" {
 		t.Fatal(records, err)
+	}
+}
+
+func TestMetadataImageSourcesDeclareCoverHosts(t *testing.T) {
+	reg := pluginruntime.NewPluginRegistry()
+	if e := Register(reg); e != nil {
+		t.Fatal(e)
+	}
+	for _, host := range []string{"img3.doubanio.com", "img6.xinhuashudian.com", "img9.xinhuashudian.com", "neodb.social", "covers.openlibrary.org"} {
+		if !reg.AllowsImageProxyHost(host) {
+			t.Fatal("declared cover host missing", host)
+		}
+	}
+	for _, host := range []string{"img6.xinhuashudian.com.evil.test", "covers.openlibrary.org.evil.test", "127.0.0.1"} {
+		if reg.AllowsImageProxyHost(host) {
+			t.Fatal("untrusted cover host allowed", host)
+		}
 	}
 }

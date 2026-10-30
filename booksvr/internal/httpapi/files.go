@@ -228,74 +228,77 @@ func lastModifiedHeader(unix int64) string {
 // ProxyImageHandler 实现 /get/pcover（白名单图片代理）。
 func ProxyImageHandler(cfg FilesConfig) HandlerFunc {
 	return func(ctx *Context) (map[string]any, error) {
-		rawURL := ctx.Query("url")
-
-		parsed, err := url.Parse(rawURL)
-		if err != nil {
-			_, _ = ctx.Writer.Write([]byte("yoho"))
-			return nil, nil
-		}
-		if parsed.Scheme != "http" && parsed.Scheme != "https" {
-			_, _ = ctx.Writer.Write([]byte("yoho"))
-			return nil, nil
-		}
-		if parsed.User != nil {
-			_, _ = ctx.Writer.Write([]byte("yoho"))
-			return nil, nil
-		}
-
-		host := strings.ToLower(parsed.Hostname())
-		if host == "" || cfg.AllowsImageProxyHost == nil || !cfg.AllowsImageProxyHost(host) {
-			_, _ = ctx.Writer.Write([]byte("yoho"))
-			return nil, nil
-		}
-		if parsed.Port() != "" && parsed.Port() != "80" && parsed.Port() != "443" {
-			_, _ = ctx.Writer.Write([]byte("yoho"))
-			return nil, nil
-		}
-
-		// 重建安全 URL：丢掉 userinfo 与 fragment。
-		safeNetloc := host
-		if parsed.Port() != "" {
-			safeNetloc = host + ":" + parsed.Port()
-		}
-		safeURL := (&url.URL{
-			Scheme:   parsed.Scheme,
-			Host:     safeNetloc,
-			Path:     parsed.Path,
-			RawQuery: parsed.RawQuery,
-		}).String()
-
-		fetch := cfg.FetchImage
-		if fetch == nil {
-			fetch = DefaultFetchImage
-		}
-		status, headers, body, err := fetch(ctx.Request.Context(), safeURL)
-		if err != nil {
-			http.Error(ctx.Writer, err.Error(), http.StatusBadGateway)
-			return nil, nil
-		}
-		if status >= 400 {
-			ctx.Writer.WriteHeader(status)
-			return nil, nil
-		}
-		for k, values := range headers {
-			for _, v := range values {
-				ctx.Writer.Header().Set(k, v)
+		raw := ctx.Query("url")
+		for redirects := 0; redirects <= 3; redirects++ {
+			parsed, err := url.Parse(raw)
+			if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil {
+				http.Error(ctx.Writer, "Invalid image URL", http.StatusBadRequest)
+				return nil, nil
 			}
+			host := strings.ToLower(parsed.Hostname())
+			if host == "" || cfg.AllowsImageProxyHost == nil || !cfg.AllowsImageProxyHost(host) || (parsed.Port() != "" && parsed.Port() != "80" && parsed.Port() != "443") {
+				http.Error(ctx.Writer, "Image host not allowed", http.StatusForbidden)
+				return nil, nil
+			}
+			parsed.Fragment = ""
+			fetch := cfg.FetchImage
+			if fetch == nil {
+				fetch = func(ctx context.Context, raw string) (int, http.Header, []byte, error) {
+					return fetchImageWithPolicy(ctx, raw, cfg.AllowsImageProxyHost)
+				}
+			}
+			status, headers, body, err := fetch(ctx.Request.Context(), parsed.String())
+			if err != nil {
+				http.Error(ctx.Writer, err.Error(), http.StatusBadGateway)
+				return nil, nil
+			}
+			if status >= 300 && status < 400 {
+				next, e := url.Parse(headers.Get("Location"))
+				if e != nil || headers.Get("Location") == "" || redirects == 3 {
+					http.Error(ctx.Writer, "Image redirect failed", http.StatusBadGateway)
+					return nil, nil
+				}
+				raw = parsed.ResolveReference(next).String()
+				continue
+			}
+			if status < 200 || status >= 300 {
+				ctx.Writer.WriteHeader(status)
+				return nil, nil
+			}
+			if !strings.HasPrefix(strings.ToLower(headers.Get("Content-Type")), "image/") || len(body) == 0 {
+				http.Error(ctx.Writer, "Source returned no image", http.StatusBadGateway)
+				return nil, nil
+			}
+			ctx.Writer.Header().Set("Content-Type", headers.Get("Content-Type"))
+			ctx.Writer.Header().Set("X-Content-Type-Options", "nosniff")
+			ctx.Writer.Header().Set("Cache-Control", "private, max-age=3600")
+			_, _ = ctx.Writer.Write(body)
+			return nil, nil
 		}
-		_, _ = ctx.Writer.Write(body)
 		return nil, nil
 	}
 }
 
 // DefaultFetchImage 用 safehttp 抓取远端图片，不跟随重定向。
 func DefaultFetchImage(ctx context.Context, rawURL string) (int, http.Header, []byte, error) {
+	return fetchImageWithPolicy(ctx, rawURL, nil)
+}
+func fetchImageWithPolicy(ctx context.Context, rawURL string, allows func(string) bool) (int, http.Header, []byte, error) {
 	headers := chromeHeaders()
 	headers["Referer"] = rawURL
+	if parsed, e := url.Parse(rawURL); e == nil {
+		for domain, referer := range map[string]string{"doubanio.com": "https://book.douban.com/", "xinhuashudian.com": "https://item.xhsd.com/", "wtzw.com": "https://www.qimao.com/", "bytecdn.cn": "https://fanqienovel.com/"} {
+			if parsed.Hostname() == domain || strings.HasSuffix(parsed.Hostname(), "."+domain) {
+				headers["Referer"] = referer
+			}
+		}
+	}
 
-	client := &safehttp.SafeHttpClient{MaxRedirects: 0, MaxBytes: 32 << 20}
+	client := &safehttp.SafeHttpClient{MaxRedirects: 3, MaxBytes: 32 << 20, EnforcePublicAddress: true}
 	resp, err := client.Get(ctx, rawURL, safehttp.RequestOptions{
+		AllowRedirect: func(target *url.URL) bool {
+			return allows != nil && target.User == nil && (target.Port() == "" || target.Port() == "80" || target.Port() == "443") && allows(strings.ToLower(target.Hostname()))
+		},
 		Headers:    headers,
 		Timeout:    10 * time.Second,
 		HasTimeout: true,

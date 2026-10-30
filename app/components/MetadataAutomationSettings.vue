@@ -5,9 +5,13 @@
     >
         <v-card>
             <v-card-title class="d-flex align-center">
-                {{ t('pluginManagement.metadataBehavior') }}
+                <span
+                    class="text-wrap"
+                    style="min-width: 0; overflow-wrap: anywhere;"
+                >{{ t('pluginManagement.metadataBehavior') }}</span>
                 <v-spacer />
                 <v-btn
+                    class="flex-shrink-0"
                     icon="mdi-close"
                     variant="text"
                     :aria-label="t('common.close')"

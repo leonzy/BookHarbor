@@ -230,7 +230,7 @@ func (m *metadataWorker) local(ctx context.Context, id int64) error {
 	if !readable {
 		return m.saveJob(id, "file_retry", "来源文件暂不可读、未挂载或超过 ZIP 临时读取预算，未修改来源状态", time.Hour)
 	}
-	changed, err := library.FillMissingMetadata(m.w.libraryDB, id, found)
+	changed, err := library.FillMissingMetadata(m.w.libraryDB, id, found, "file")
 	if err == sql.ErrNoRows {
 		return nil
 	}
@@ -249,7 +249,7 @@ func (m *metadataWorker) local(ctx context.Context, id int64) error {
 	}
 	b := books[0]
 	status := "network_pending"
-	if b.ISBN != "" && b.Publisher != "" && !localmeta.MissingAuthors(b.Authors) && b.Comments != "" {
+	if localmeta.ISBN(b.ISBN) != "" && b.Publisher != "" && !localmeta.MissingAuthors(b.Authors) && b.Comments != "" {
 		status = "complete"
 	}
 	return m.saveJob(id, status, "", 0)
@@ -321,9 +321,15 @@ func isbn13(s string) string {
 func matchingMetadata(book library.BookData, candidates []map[string]any) map[string]any {
 	var selected map[string]any
 	for _, candidate := range candidates {
+		if !referenceRelevant(book, candidate) {
+			continue
+		}
 		isbn := isbn13(stringOf(candidate["isbn"]))
 		current := isbn13(book.ISBN)
 		if current != "" && isbn != "" && current != isbn {
+			continue
+		}
+		if current != "" && isbn == "" {
 			continue
 		}
 		match := current != "" && current == isbn
@@ -333,7 +339,7 @@ func matchingMetadata(book library.BookData, candidates []map[string]any) map[st
 					continue
 				}
 				for _, b := range toStringSlice(candidate["authors"]) {
-					if !localmeta.UnknownAuthor(b) && normalizeMetadataName(a) == normalizeMetadataName(b) {
+					if !localmeta.UnknownAuthor(b) && metadataAuthor(a) == metadataAuthor(b) {
 						match = true
 					}
 				}
@@ -407,9 +413,11 @@ func (m *metadataWorker) network(ctx context.Context) error {
 	var coverConnection *userdb.PluginConnection
 	coverURL := ""
 	matched := false
+	matchedSources := []string{}
 	failed := false
 	calls := 0
-	for _, connection := range connections {
+	for i := 0; i < len(connections); i++ {
+		connection := connections[(i+attempts*2)%len(connections)]
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -456,6 +464,8 @@ func (m *metadataWorker) network(ctx context.Context) error {
 			}
 		}
 		matched = true
+		providerKey, _ := runtime.PluginKeyOf(connection)
+		matchedSources = append(matchedSources, providerKey)
 		localmeta.Merge(&merged, metadataCandidate(record))
 		if coverURL == "" && stringOf(record["cover_url"]) != "" {
 			coverURL = stringOf(record["cover_url"])
@@ -466,7 +476,7 @@ func (m *metadataWorker) network(ctx context.Context) error {
 		return m.saveJob(id, "network_pending", "元数据源未启用或处于失败退避期", time.Hour)
 	}
 	if matched {
-		changed, e := library.FillMissingMetadata(m.w.libraryDB, id, merged)
+		changed, e := library.FillMissingMetadata(m.w.libraryDB, id, merged, "network:"+strings.Join(matchedSources, ","))
 		if e != nil {
 			return e
 		}
@@ -487,60 +497,33 @@ func (m *metadataWorker) network(ctx context.Context) error {
 				return m.saveJob(id, "complete", "书籍信息已处理；网络封面暂不可用，原封面保留", 0)
 			}
 		}
+		fresh, e := library.GetBooksData(m.w.libraryDB, []int64{id})
+		if e != nil {
+			return e
+		}
+		if len(fresh) > 0 && (localmeta.ISBN(fresh[0].ISBN) == "" || fresh[0].Publisher == "" || localmeta.MissingAuthors(fresh[0].Authors) || fresh[0].Comments == "") {
+			return m.saveJob(id, "partial", "已处理匹配结果，来源仍缺少部分信息", 0)
+		}
 		return m.saveJob(id, "complete", "", 0)
 	}
 	attempts++
 	if _, err = m.w.libraryDB.Exec(`UPDATE metadata_enrichment_jobs SET attempts=? WHERE book_id=?`, attempts, id); err != nil {
 		return err
 	}
-	if attempts >= 3 {
+	maxAttempts := ((len(connections) + 1) / 2) * 3
+	if maxAttempts < 3 {
+		maxAttempts = 3
+	}
+	if attempts >= maxAttempts {
 		return m.saveJob(id, "needs_review", "多次检索未取得可唯一确认的元数据", 0)
 	}
 	reason := "未找到可唯一确认的版本"
 	if failed {
 		reason = "元数据源请求失败，将退避重试"
 	}
-	return m.saveJob(id, "network_pending", reason, time.Duration(attempts)*time.Hour)
-}
-
-func MetadataEnrichmentStatus(db *sql.DB) HandlerFunc {
-	return func(ctx *Context) (map[string]any, error) {
-		rows, err := db.Query(`SELECT status,count(*) FROM metadata_enrichment_jobs GROUP BY status`)
-		if err != nil {
-			return nil, err
-		}
-		counts := map[string]int64{}
-		for rows.Next() {
-			var status string
-			var n int64
-			if err = rows.Scan(&status, &n); err != nil {
-				rows.Close()
-				return nil, err
-			}
-			counts[status] = n
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return nil, err
-		}
-		var state = map[string]int64{}
-		rows, err = db.Query(`SELECT key,value FROM metadata_enrichment_state WHERE key IN ('history_cursor','new_cursor','initial_max')`)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var k string
-			var n int64
-			if err = rows.Scan(&k, &n); err != nil {
-				return nil, err
-			}
-			state[k] = n
-		}
-		if err = rows.Err(); err != nil {
-			return nil, err
-		}
-		return map[string]any{"err": "ok", "counts": counts, "cursor": state, "local_interval_seconds": 1, "network_interval_seconds": 30, "overwrite_existing": false}, nil
+	delay := time.Hour
+	if attempts < (len(connections)+1)/2 {
+		delay = 30 * time.Second
 	}
+	return m.saveJob(id, "network_pending", reason, delay)
 }

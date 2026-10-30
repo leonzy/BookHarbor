@@ -660,12 +660,18 @@ func bookFileEntries(cfg BookConfig, ctx *Context, book library.BookData) []map[
 			// Python 版在 sizeof_format 抛异常时 continue，跳过该格式。
 			continue
 		}
-		out = append(out, map[string]any{
+		entry := map[string]any{
 			"format":          format,
 			"size":            size,
 			"href":            fmt.Sprintf("%s/api/book/%d.%s", cfg.CDNURL, book.ID, format),
 			"online_readable": OnlineReadable([]string{format}),
-		})
+		}
+		if !ctx.Identity.IsGuest() && (ctx.Identity.IsAdmin || (cfg.IsBookOwner != nil && cfg.IsBookOwner(ctx, book.ID))) {
+			if location := bookStorageLocation(cfg, book, format); location != nil {
+				entry["storage"] = location
+			}
+		}
+		out = append(out, entry)
 	}
 	return out
 }

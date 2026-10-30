@@ -294,6 +294,9 @@ func newXhsdProvider() *xhsdProvider {
 }
 
 func (p *xhsdProvider) Manifest() map[string]any { return p.ManifestDict }
+func (p *xhsdProvider) ProxyImageHosts() []string {
+	return []string{"img1.xinhuashudian.com", "img2.xinhuashudian.com", "img3.xinhuashudian.com", "img4.xinhuashudian.com", "img5.xinhuashudian.com", "img6.xinhuashudian.com", "img7.xinhuashudian.com", "img8.xinhuashudian.com", "img9.xinhuashudian.com"}
+}
 
 // Search 复刻 _search：keyword = isbn or title（get_book 会校验 13 位 ISBN）。
 func (p *xhsdProvider) Search(query plugindomain.MetadataQuery, context map[string]any) ([]map[string]any, error) {

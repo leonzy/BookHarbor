@@ -2,6 +2,7 @@ package library
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"talebook/booksvr/internal/importmeta"
@@ -11,6 +12,8 @@ import (
 // EnsureMetadataSchema is additive and independent of expensive library migrations.
 func EnsureMetadataSchema(db *sql.DB) error {
 	for _, stmt := range []string{
+		`CREATE TABLE IF NOT EXISTS metadata_enrichment_writes(id INTEGER PRIMARY KEY,book_id INTEGER NOT NULL,field TEXT NOT NULL,origin TEXT NOT NULL,previous_value TEXT NOT NULL,written_value TEXT NOT NULL,created_at INTEGER NOT NULL DEFAULT(unixepoch()))`,
+		`CREATE INDEX IF NOT EXISTS metadata_enrichment_writes_book ON metadata_enrichment_writes(book_id,id)`,
 		`CREATE TABLE IF NOT EXISTS metadata_field_locks(book_id INTEGER NOT NULL,field TEXT NOT NULL,PRIMARY KEY(book_id,field))`,
 		`CREATE TABLE IF NOT EXISTS metadata_enrichment_state(key TEXT PRIMARY KEY,value INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS metadata_enrichment_jobs(book_id INTEGER PRIMARY KEY,status TEXT NOT NULL,next_at INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,last_error TEXT NOT NULL DEFAULT '',updated_at INTEGER NOT NULL DEFAULT 0)`,
@@ -59,7 +62,7 @@ func ProtectHistoricalMetadataEdits(db *sql.DB, id int64) error {
 
 // FillMissingMetadata rechecks values after obtaining the SQLite write lock. No
 // extraction, network operation or sleep runs inside this short transaction.
-func FillMissingMetadata(db *sql.DB, id int64, m importmeta.Metadata) ([]string, error) {
+func FillMissingMetadata(db *sql.DB, id int64, m importmeta.Metadata, origin ...string) ([]string, error) {
 	tx, err := db.Begin()
 	if err != nil {
 		return nil, err
@@ -90,6 +93,13 @@ func FillMissingMetadata(db *sql.DB, id int64, m importmeta.Metadata) ([]string,
 	rows.Close()
 	if err != nil {
 		return nil, err
+	}
+	var before map[string]string
+	if len(origin) > 0 {
+		before, err = metadataSnapshot(tx, id)
+		if err != nil {
+			return nil, err
+		}
 	}
 	changed := []string{}
 	if !locks["authors"] && !localmeta.MissingAuthors(m.Authors) {
@@ -230,8 +240,64 @@ func FillMissingMetadata(db *sql.DB, id int64, m importmeta.Metadata) ([]string,
 			return nil, err
 		}
 	}
+	if len(origin) > 0 && len(changed) > 0 {
+		after, e := metadataSnapshot(tx, id)
+		if e != nil {
+			return nil, e
+		}
+		for field, value := range after {
+			if before[field] != value {
+				if _, e = tx.Exec(`INSERT INTO metadata_enrichment_writes(book_id,field,origin,previous_value,written_value) VALUES(?,?,?,?,?)`, id, field, origin[0], before[field], value); e != nil {
+					return nil, e
+				}
+			}
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
 	return changed, nil
+}
+
+func metadataSnapshot(tx *sql.Tx, id int64) (map[string]string, error) {
+	queries := map[string]string{
+		"authors":     `SELECT a.name FROM authors a JOIN books_authors_link l ON l.author=a.id WHERE l.book=? ORDER BY l.id`,
+		"tags":        `SELECT t.name FROM tags t JOIN books_tags_link l ON l.tag=t.id WHERE l.book=? ORDER BY t.id`,
+		"author_sort": `SELECT coalesce(author_sort,'') FROM books WHERE id=?`,
+		"pubdate":     `SELECT coalesce(pubdate,'') FROM books WHERE id=?`,
+		"publisher":   `SELECT p.name FROM publishers p JOIN books_publishers_link l ON l.publisher=p.id WHERE l.book=?`,
+		"language":    `SELECT p.lang_code FROM languages p JOIN books_languages_link l ON l.lang_code=p.id WHERE l.book=?`,
+		"isbn":        `SELECT val FROM identifiers WHERE book=? AND type='isbn' ORDER BY id`,
+		"comments":    `SELECT coalesce(text,'') FROM comments WHERE book=?`,
+	}
+	out := map[string]string{}
+	for field, query := range queries {
+		rows, e := tx.Query(query, id)
+		if e != nil {
+			return nil, e
+		}
+		values := []string{}
+		for rows.Next() {
+			var v string
+			if e = rows.Scan(&v); e != nil {
+				rows.Close()
+				return nil, e
+			}
+			values = append(values, v)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return nil, e
+		}
+		var value any = ""
+		if field == "authors" || field == "tags" {
+			value = values
+		} else if len(values) > 0 {
+			value = values[0]
+		}
+		b, _ := json.Marshal(value)
+		out[field] = string(b)
+	}
+	return out, nil
 }

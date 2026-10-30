@@ -144,7 +144,7 @@ func TestMetadataMissingSourceDoesNotChangeImportOrSourceState(t *testing.T) {
 		t.Fatal(status, reason, err)
 	}
 	b, err := bookGetOne(w.Config(""), 1)
-	if err != nil || b == nil || b.Title != "Original title" {
+	if err != nil || b == nil || b.Title != "Selected title (original edition)" {
 		t.Fatal(b, err)
 	}
 	var count int

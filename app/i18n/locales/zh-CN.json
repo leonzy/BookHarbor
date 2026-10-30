@@ -8,7 +8,8 @@
     "close": "关闭",
     "imageArea": "封面图片，可滚动查看",
     "failed": "封面加载失败",
-    "retry": "重试"
+    "retry": "重试",
+    "unavailable": "封面暂不可用"
   },
   "bookSort": {
     "label": "排序",
@@ -239,7 +240,8 @@
     "ownerActions": "管理操作",
     "introduction": "内容简介",
     "addedBy": "上传者",
-    "addedAt": "上传时间"
+    "addedAt": "上传时间",
+    "filteredMetadataCandidates": "已过滤 {count} 条不相关或版本冲突的结果"
   },
   "authorAliases": {
     "manage": "管理作者别名",
@@ -2372,5 +2374,34 @@
     "installedSize": "应用大小约 {size} MB",
     "history": "管理历史版本",
     "closeHistory": "关闭"
+  },
+  "metadataProgress": {
+    "title": "全库元数据补全",
+    "refresh": "刷新进度",
+    "description": "先核查源文件，再联网补缺。文件核查结束不代表联网补全成功；无法可靠匹配的书保留现有信息。",
+    "checked": "已核查 {checked} / {total} 本",
+    "remaining": "尚未核查",
+    "complete": "主要信息完整",
+    "waiting": "待联网处理",
+    "retrying": "其中等待重试",
+    "applied": "已联网补全",
+    "review": "需人工确认",
+    "unreadable": "来源暂不可读",
+    "protected": "人工修改保护",
+    "running": "后台运行中",
+    "paused": "后台暂停或等待启动",
+    "onlineOn": "自动联网已开启",
+    "onlineOff": "自动联网已关闭",
+    "rate": "单路低优先级核查；联网请求至少间隔30秒；保留人工修改和现有信息。",
+    "lastActivity": "最近处理：{time}",
+    "loadError": "补全进度读取失败，请重试。",
+    "partial": "已处理但仍有缺项"
+  },
+  "bookStorage": {
+    "title": "存储位置",
+    "description": "当前版本 #{id}，按格式显示容器内的实际位置；索引文件仍保留在源目录。",
+    "directory": "目录：",
+    "filename": "文件：",
+    "member": "ZIP 内路径："
   }
 }
