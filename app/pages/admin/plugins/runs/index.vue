@@ -101,7 +101,7 @@
                         {{ t('pluginManagement.view') }}
                     </v-btn>
                     <v-btn
-                        v-if="['failed', 'partial'].includes(item.status)"
+                        v-if="item.can_manage !== false && ['failed', 'partial'].includes(item.status)"
                         size="small"
                         variant="text"
                         color="warning"

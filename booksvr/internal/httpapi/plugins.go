@@ -1952,24 +1952,7 @@ func (cfg PluginConfig) pluginAllowedBookIDs(ctx *Context) ([]int64, error) {
 
 // pluginRunByID 按 id 取 run；不存在返回 nil。
 func pluginRunByID(db *sql.DB, id int64) (*userdb.PluginRun, error) {
-	var connectionID int64
-	err := db.QueryRow(`SELECT connection_id FROM plugin_runs WHERE id = ?`, id).Scan(&connectionID)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	runs, err := userdb.ListPluginRuns(db, connectionID, 1000)
-	if err != nil {
-		return nil, err
-	}
-	for _, run := range runs {
-		if run.ID == id {
-			return run, nil
-		}
-	}
-	return nil, nil
+	return userdb.GetPluginRunByID(db, id)
 }
 
 // AdminPluginRunsHandler 对应 AdminPluginRuns（@js @is_admin）。
@@ -1986,7 +1969,7 @@ func AdminPluginRunsHandler(cfg PluginConfig) HandlerFunc {
 			connectionID = &id
 		}
 		includeItems := ctx.Query("include_items") == "true"
-		return pluginRunsResponse(ctx, "instance", 0, connectionID, includeItems)
+		return pluginRunsResponse(ctx, "admin", ctx.Identity.UserID, connectionID, includeItems)
 	}
 }
 
@@ -2006,6 +1989,10 @@ func pluginRunsResponse(ctx *Context, ownerType string, ownerID int64,
 		JOIN plugin_connections c ON c.id = r.connection_id
 		WHERE c.owner_type = ?`
 	args := []any{ownerType}
+	if ownerType == "admin" {
+		query = `SELECT r.id FROM plugin_runs r JOIN plugin_connections c ON c.id=r.connection_id WHERE (c.owner_type='instance' OR (c.owner_type='user' AND c.owner_id=?))`
+		args = []any{ownerID}
+	}
 	if ownerType == "user" {
 		query += ` AND c.owner_id = ?`
 		args = append(args, ownerID)
@@ -2045,6 +2032,11 @@ func pluginRunsResponse(ctx *Context, ownerType string, ownerID int64,
 			continue
 		}
 		value := run.ToPublic()
+		connection, err := pluginConnectionByID(ctx.DB, run.ConnectionID)
+		if err != nil {
+			return nil, err
+		}
+		value["can_manage"] = connection != nil && connection.OwnerType == "instance" && run.InputData["background_metadata"] != true
 		if includeItems {
 			items, err := pluginRunItems(ctx.DB, run.ID, false)
 			if err != nil {
@@ -2096,7 +2088,7 @@ func pluginRunItems(db *sql.DB, runID int64, includeData bool) ([]map[string]any
 // AdminPluginRunDetailHandler 对应 AdminPluginRunDetail（@js @is_admin）。
 func AdminPluginRunDetailHandler(cfg PluginConfig) HandlerFunc {
 	return func(ctx *Context) (map[string]any, error) {
-		return pluginRunDetail(ctx, "instance", 0)
+		return pluginRunDetail(ctx, "admin", ctx.Identity.UserID)
 	}
 }
 
@@ -2124,15 +2116,20 @@ func pluginRunDetail(ctx *Context, ownerType string, ownerID int64) (map[string]
 	if err != nil {
 		return nil, err
 	}
-	if connection == nil || connection.OwnerType != ownerType ||
-		(ownerType == "user" && connection.OwnerID != ownerID) {
+	allowed := connection != nil && ((connection.OwnerType == ownerType &&
+		(ownerType != "user" || connection.OwnerID == ownerID)) ||
+		(ownerType == "admin" && (connection.OwnerType == "instance" ||
+			(connection.OwnerType == "user" && connection.OwnerID == ownerID))))
+	if !allowed {
 		return map[string]any{"err": "plugin.run_missing", "msg": "Plugin run was not found"}, nil
 	}
 	items, err := pluginRunItems(ctx.DB, run.ID, true)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"err": "ok", "run": run.ToPublic(), "items": items}, nil
+	value := run.ToPublic()
+	value["can_manage"] = connection.OwnerType == "instance" && run.InputData["background_metadata"] != true
+	return map[string]any{"err": "ok", "run": value, "items": items}, nil
 }
 
 // pluginConnectionByID 按 id 取连接；不存在返回 nil。

@@ -33,6 +33,13 @@ func newMetadataOnlyDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatch
 	specs = append(specs, RouteSpec{Pattern: "/api/admin/metadata/enrichment", Methods: []string{"GET"}, Auth: true, Admin: true, Handler: MetadataEnrichmentStatus(db, opts, userDB)})
 	specs = append(specs, metadataSourceRoutes(db, userDB, opts)...)
 	specs = append(specs, metadataReviewRoutes(db)...)
+	pluginConfig := PluginConfig{Settings: opts.Settings, Registry: w.registry}
+	specs = append(specs,
+		RouteSpec{Pattern: "/api/admin/plugins/runs", Methods: []string{"GET"}, Auth: true, Admin: true, Handler: AdminPluginRunsHandler(pluginConfig)},
+		RouteSpec{Pattern: "/api/admin/plugins/runs/([0-9]+)", Methods: []string{"GET"}, Auth: true, Admin: true, Handler: AdminPluginRunDetailHandler(pluginConfig)},
+		RouteSpec{Pattern: "/api/plugins/runs", Methods: []string{"GET"}, Auth: true, Handler: UserPluginRunsHandler(pluginConfig)},
+		RouteSpec{Pattern: "/api/plugins/runs/([0-9]+)", Methods: []string{"GET"}, Auth: true, Handler: UserPluginRunDetailHandler(pluginConfig)},
+	)
 	specs = append(specs, OpdsRouteSpecs(newOpdsConfig(db, userDB, opts))...)
 	specs = append(specs, networkLibraryRouteSpecs(opts, userDB, db, w.registry)...)
 	specs = append(specs, RouteSpec{Pattern: "/api/admin/plugins/([a-z0-9.-]+)/metadata/search", Methods: []string{"POST"}, Auth: true, Admin: true, Handler: AdminPluginMetadataSearchHandler(PluginConfig{Settings: opts.Settings, Registry: w.registry})})

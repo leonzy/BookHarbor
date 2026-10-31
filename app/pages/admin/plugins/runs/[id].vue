@@ -66,7 +66,7 @@
                 </v-alert>
                 <div class="d-flex flex-wrap ga-2 my-4">
                     <v-btn
-                        v-if="['failed', 'partial'].includes(run.status)"
+                        v-if="run.can_manage !== false && ['failed', 'partial'].includes(run.status)"
                         color="warning"
                         variant="tonal"
                         :loading="acting"
@@ -75,7 +75,7 @@
                         {{ t('pluginManagement.retryFailed') }}
                     </v-btn>
                     <v-btn
-                        v-if="['run', 'retry'].includes(run.action) && ['succeeded', 'partial'].includes(run.status)"
+                        v-if="run.can_manage !== false && ['run', 'retry'].includes(run.action) && ['succeeded', 'partial'].includes(run.status)"
                         color="error"
                         variant="outlined"
                         :loading="acting"
@@ -127,6 +127,7 @@
 import PageJump from '@/components/PageJump.vue';
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useNuxtApp, useRoute, useHead } from 'nuxt/app';
 import { useMainStore } from '@/stores/main';
 
 const tablePage = ref(1);
