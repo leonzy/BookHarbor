@@ -98,7 +98,7 @@ const counters = computed(() => {
     return [
         ['remaining', value.files_remaining], ['filled', value.written_books], ['complete', counts.complete], ['partial', counts.partial],
         ['waiting', counts.network_pending], ['retrying', value.network_retries],
-        ['applied', value.network_applied_books], ['review', counts.needs_review],
+        ['applied', value.network_applied_books], ['unmatched', counts.unmatched], ['insufficient', counts.insufficient], ['review', counts.needs_review], ['reclassifying', counts.classification_pending],
         ['fileRefresh', counts.file_refresh], ['unreadable', Math.max(0, (counts.file_retry || 0) - (counts.file_refresh || 0))], ['protected', counts.protected],
     ].map(([key, count]) => ({ key, value: Number(count || 0) }));
 });

@@ -44,6 +44,23 @@
                 <p class="text-body-2">
                     {{ book.reason }}
                 </p>
+                <p
+                    v-if="book.candidates?.length"
+                    class="text-caption"
+                >
+                    {{ t('metadataProgress.reviewCachedHelp') }}
+                </p>
+                <ul
+                    v-if="book.candidates?.length"
+                    class="metadata-review__candidates"
+                >
+                    <li
+                        v-for="(candidate, index) in book.candidates"
+                        :key="index"
+                    >
+                        {{ candidateLabel(candidate) }}
+                    </li>
+                </ul>
                 <a
                     :href="`/book/${book.id}/edit`"
                     target="_blank"
@@ -71,6 +88,7 @@ const props = defineProps({ count: { type: Number, default: 0 } });
 const { t } = useI18n();
 const { $backend } = useNuxtApp();
 const books = ref([]), next = ref(0), loading = ref(false), error = ref(false), loaded = ref(false), open = ref(false);
+function candidateLabel(candidate) { return [candidate.title, ...(candidate.authors || []), candidate.publisher, candidate.isbn ? `ISBN ${candidate.isbn}` : ''].filter(Boolean).join(' · '); }
 function toggle(event) { open.value = event.target.open; if (open.value && !loaded.value) load(true); }
 watch(() => props.count, () => { if (open.value && loaded.value) load(true); });
 async function load(reset) {
@@ -93,6 +111,8 @@ async function load(reset) {
 .metadata-review summary:focus-visible, .metadata-review a:focus-visible { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: 3px; }
 .metadata-review__books { list-style: none; padding: 0; }
 .metadata-review__books li { padding-block: 12px; border-block-end: 1px solid rgba(var(--v-theme-on-surface), .15); }
+.metadata-review__candidates { padding-inline-start: 20px; margin-block: 8px; }
+.metadata-review__candidates li { border: 0; padding-block: 4px; }
 .metadata-review__books p { margin-block: 6px; }
 .metadata-review :deep(.v-btn) { max-inline-size: calc(100% - 48px); height: auto; min-block-size: 36px; padding-block: 8px; }
 .metadata-review :deep(.v-btn__content) { white-space: normal; line-height: 1.4; }

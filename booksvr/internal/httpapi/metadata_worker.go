@@ -296,8 +296,12 @@ func (m *metadataWorker) local(ctx context.Context, id int64, force ...bool) err
 	if localmeta.ISBN(b.ISBN) != "" && b.Publisher != "" && !localmeta.MissingAuthors(b.Authors) && b.Comments != "" {
 		status = "complete"
 	}
-	if status != "complete" && !identityChanged && (existing == "partial" || existing == "needs_review") {
+	if status != "complete" && !identityChanged && (existing == "partial" || existing == "needs_review" || existing == "unmatched" || existing == "insufficient" || existing == "source_failed") {
 		return nil
+	}
+	identity := metadataLookupBook(b)
+	if status != "complete" && localmeta.ISBN(identity.ISBN) == "" && localmeta.MissingAuthors(identity.Authors) {
+		return m.saveJob(id, "insufficient", "缺少有效 ISBN，且无法确认作者，等待补充身份信息", 0)
 	}
 	return m.saveJob(id, status, "", 0)
 }
@@ -305,6 +309,9 @@ func (m *metadataWorker) local(ctx context.Context, id int64, force ...bool) err
 func (m *metadataWorker) step(ctx context.Context) error {
 	ok, err := m.lease()
 	if err != nil || !ok {
+		return err
+	}
+	if err := m.reclassifyReviewBatch(); err != nil {
 		return err
 	}
 	id, cursor, err := m.nextBook()
@@ -363,6 +370,7 @@ func isbn13(s string) string {
 
 // Strong matching prevents automatically assigning metadata from a namesake.
 func matchingMetadata(book library.BookData, candidates []map[string]any) map[string]any {
+	book = metadataLookupBook(book)
 	var selected map[string]any
 	for _, candidate := range candidates {
 		if !referenceRelevant(book, candidate) {

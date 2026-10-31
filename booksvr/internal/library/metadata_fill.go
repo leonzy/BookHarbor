@@ -23,10 +23,29 @@ func EnsureMetadataSchema(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS metadata_enrichment_state(key TEXT PRIMARY KEY,value INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS metadata_enrichment_jobs(book_id INTEGER PRIMARY KEY,status TEXT NOT NULL,next_at INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,last_error TEXT NOT NULL DEFAULT '',updated_at INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE INDEX IF NOT EXISTS metadata_enrichment_due ON metadata_enrichment_jobs(status,next_at,book_id)`,
+		`CREATE INDEX IF NOT EXISTS metadata_review_cursor ON metadata_enrichment_jobs(book_id) WHERE status='needs_review'`,
 		`CREATE TABLE IF NOT EXISTS metadata_enrichment_lease(id INTEGER PRIMARY KEY,owner TEXT NOT NULL,expires INTEGER NOT NULL)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			return err
+		}
+	}
+	for _, column := range []string{"outcome", "review_candidates"} {
+		present, err := columnExists(db, "metadata_source_jobs", column)
+		if err != nil {
+			return err
+		}
+		if !present {
+			initial := "''"
+			if column == "review_candidates" {
+				initial = "'[]'"
+			}
+			if _, err = db.Exec("ALTER TABLE metadata_source_jobs ADD COLUMN " + column + " TEXT NOT NULL DEFAULT " + initial); err != nil {
+				// Another process may have added the same column while this one waited.
+				if exists, check := columnExists(db, "metadata_source_jobs", column); check != nil || !exists {
+					return err
+				}
+			}
 		}
 	}
 	return nil

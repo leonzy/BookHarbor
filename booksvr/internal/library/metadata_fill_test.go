@@ -5,6 +5,30 @@ import (
 	"testing"
 )
 
+func TestMetadataOutcomeSchemaUpgradePreservesActiveJobs(t *testing.T) {
+	db := newQueryDB(t)
+	// The fixture initializes current schema; emulate the pre-upgrade source table.
+	if _, err := db.Exec(`DROP TABLE metadata_source_jobs`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE metadata_source_jobs(book_id INTEGER NOT NULL,connection_id INTEGER NOT NULL,phase TEXT NOT NULL DEFAULT 'search',priority INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0,record TEXT NOT NULL DEFAULT '{}',matched INTEGER NOT NULL DEFAULT 0,last_error TEXT NOT NULL DEFAULT '',PRIMARY KEY(book_id,connection_id)); INSERT INTO metadata_source_jobs(book_id,connection_id,phase,attempts,next_at,record) VALUES(1,2,'detail',1,12345,'{"title":"正在查询"}')`); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := EnsureMetadataSchema(db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var phase, record, outcome, candidates string
+	var attempts, next int64
+	if err := db.QueryRow(`SELECT phase,attempts,next_at,record,outcome,review_candidates FROM metadata_source_jobs WHERE book_id=1 AND connection_id=2`).Scan(&phase, &attempts, &next, &record, &outcome, &candidates); err != nil {
+		t.Fatal(err)
+	}
+	if phase != "detail" || attempts != 1 || next != 12345 || record != `{"title":"正在查询"}` || outcome != "" || candidates != "[]" {
+		t.Fatal("schema upgrade altered an active task", phase, attempts, next, record, outcome, candidates)
+	}
+}
+
 func TestImportPersistsAllExtractedFields(t *testing.T) {
 	db := newQueryDB(t)
 	id, e := ImportBook(db, BookMeta{Title: "多人作品", Authors: []string{"作者一", "作者二", "作者一"}, ISBN: "9787020091621", Language: "zh", Publisher: "人民文学出版社"})

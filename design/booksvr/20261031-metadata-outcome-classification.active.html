@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Talebook 内部方案模板：用于记录原始诉求、目标边界、实现方案、风险与测试结果。" />
+    <link rel="icon" href="data:," />
+    <title>元数据补全结果分类与历史修正</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><header class="hero"><h1>元数据补全结果分类与历史修正</h1><p>2026-10-31 · booksvr · ACTIVE · 用户要求区分查不到、失败待重试、信息不足与需人工确认，并修正历史记录</p></header><section class="card"><h2>原始诉求与证据</h2><p>后台把无身份信息和所有来源无唯一匹配都标为 needs_review；现场 2435 本的旧理由为缺作者/有效 ISBN，36 本没有保留候选证据。旧状态不能证明有人工可确认的候选。</p></section><section class="card"><h2>设计决策与边界</h2><p>insufficient：无所属用户，或同时缺少有效 ISBN 与可确认作者，不联网冒配；unmatched（界面“查不到”）：来源查询完成但无可靠匹配；source_failed：请求/缓存等处理失败，独立退避后重试；needs_review：实际保存了至少两个相关且满足身份校验的冲突版本。完整和部分已补入信息、未处理、保护状态保留。缓存候选摘要用于展示核对依据，最多 5 条，不存封面字节。保存与人工保护规则不放宽。</p><p>来源任务增加 outcome 与 review_candidates 两列；无候选与有歧义不再复用同一个 nil。既有强匹配与 ISBN 规则保持。分源失败三次仍有明确失败结果，由原工作器按一小时或更长来源退避重新安排，仅重试失败来源，成功/无匹配来源不重跑。每源限速、总并发 8 保持。</p></section><section class="card"><h2>历史修正与不中断部署</h2><p>在已持租约的工作器内，每轮最多 50 本，一个有界短事务，利用 needs_review 的部分索引与状态/时间条件更新；只访问数据库，不扫描书籍、不改元数据、人工锁或导入队列。缺身份归信息不足；明确失败归待重试；已有候选证据保留人工核对；按用户补充要求，旧的“无法唯一确认”且全部来源已结束、没有可靠匹配/保存候选时归“查不到”，含义为无可靠匹配，不断言上游从未返回任何原始结果；尚未查询完成的继续排队。以持久化游标保证可重入，人工保护状态不参与。运行中正常源任务不重置。</p></section><section class="card"><h2>影响范围与验证覆盖</h2><p>spec/元数据.md、library 的增量 schema、HTTP 工作器/统计/核对列表、前端进度/核对组件与三种语言。验证项目：空结果/不相关/多版本/重复同版本/失败重试/无身份/保护/中途改书/历史迁移幂等；候选摘要与权限；Linux HTTP 整包、Go vet、前端组件/i18n/lint/构建、真实进度页/核对列表、独立核对修正数与游标推进、完整本地差异 interface-review full。保留主导入/阅读 PID，不重建容器。另一个 OPDS WIP 与用户 storage-migration 草稿不提交。</p></section><section class="card"><h2>用户补充与核对</h2><p>截图书籍 289/297/307/308/309/317 的数据库作者字段齐全，属于已查询却无可靠匹配的 36 本，不归信息不足。最终采用用户文案“查不到”；不额外重查所有已完成的空结果。对整段文件名明确标注的作者，可作为查询身份提示，仍不覆写书名和人工字段，不放宽强匹配规则。</p></section><section class="card"><h2>测试与生产验收结果</h2><p>Go HTTP 整包 Linux 测试通过：交叉编译 package.test，在无网络、无生产挂载、CPU 1、768 MiB 的独立容器中以普通用户运行，test.count=1 / timeout=300s；其中失败注入日志是预期测试，不是生产报错。Windows 元数据与来源并发/限速/候选/封面回归通过。新增旧表升级测试连续初始化两次，保留已有 detail 阶段、重试数、下一次执行时间与候选记录。全模块 go vet -p 3 ./... 通过。Windows library 整包运行 139 秒，目录/源同步的 5 项用例因路径及 chmod 权限语义失败；元数据针对性用例通过。为区分平台差异，另将当前 library 整包交叉编译后在同样隔离的 Linux 普通用户容器验证，整包 PASS；验证包含本次增量 schema 升级用例和目录/权限用例。Windows 45 秒诊断运行只完成部分夹具后触发总时限，不作为通过证据。</p><p>前端 vitest：MetadataProgress、MetadataReview、metadata-enrichment-locales 共 3 文件 11 项通过；组件 ESLint 通过；Nuxt generate 成功生成 SPA。构建有既有 Browserslist 数据老旧、包体积、Nitro 依赖与隐式处理器提示，无编译失败。spec 检查 25 篇通过；暂存快照的方案检查通过，保留其他未暂存 WIP 而不将其误纳入提交。首次升级测试未模拟旧表、既有统计夹具未设置失败原因的问题已修正并重跑通过；不是放宽实际分类。</p><p>部署 SHA256：56b376a30317e21fcd42a7f7b5ce9aec6e8669522aefaf87513c8643076fea70。只更新 metadata sidecar 与 SPA，保留既有 OPDS 兼容草稿逻辑，未重建或重启容器。主导入 PID 95 / start 17082、阅读 PID 22 / start 13745 前后不变。维护租约交接后历史核查游标从 75941 推进至 76116，初始/新增游标保持 439973。手工保护样本 16/17 的书名、作者、出版社、ISBN、简介、锁，以及源文件路径/大小/mtime/SHA256 均保持；访问时间不作不变断言，因为 SHA 校验本身读取文件。未重启整机。</p><p>部署前快照 2478 条 needs_review：36 条改为 unmatched，2441 条改为 insufficient，1 条继续 network_pending；classification_v2_done=1。截图六本 289/297/307/308/309/317 全部为 unmatched，不是 insufficient。迁移结束后新核查又增加 1 条 insufficient，页面显示 2442，属于并行正常任务，不混入历史修正数。当前人工确认数与历史复核中均为 0。</p><p>真实页面 /admin/settings/plugins 已登录状态：验证分类计数、展开人工确认的空态、刷新；浏览器错误日志为空。默认桌面与 320×760 窄屏实际渲染，无横向溢出（documentWidth 305）。窄屏核对区说明/按钮正常换行。截图保存在本机 C:/Users/leon/bookharbor-classification-fixed.png。生产当前无歧义候选，候选正向显示和转义通过真实 Vue 组件测试覆盖，不冒充生产候选场景。Chrome DevTools MCP 不可用，使用现有 CUA 内置浏览器渲染验收；未验证深色主题和 200% 缩放。</p></section>
+<section class="card"><h2>interface-review full：范围与覆盖</h2><p>依据项目 AGENTS.md 显式执行 interface-review full，并由 better-interface 统筹六个可用领域技能。框架 Nuxt 4 / Vue 3 / Vuetify，遵循 app/CLAUDE.md 与 spec/元数据.md 的 API、语义和多语言约定。基线 origin/main 与 HEAD 均为 273b4b96e993b8bc97efb15a194fefec78a13105；领先提交 0，当前未提交 30 文件（23 已跟踪、7 新文件），无生成文件/锁文件排除。不仅审查本次分类文件，也读了保留中的 OPDS、部署脚本、测试、外部访问规格与两份其他设计草稿的变更。未切分支、未 stash、未建 worktree；git symbolic-ref origin/HEAD、merge-base、rev-list、diff、ls-files、status 均只读，无 fetch 或其他 .git 写入。</p><p>直接消费者扩展：插件设置进度/人工核对、书籍详情联网候选弹窗、OPDS 根导航、OPDS 按页书目与离线方案文档；达到五个消费者上限，其余插件及阅读器设置入口未扩展。读取增删两侧，未删除可访问标签、焦点或本地化键。OPDS 真机翻页仍待另一个任务实测，未把协议单测等同 BooxReader 验收。</p>
+<table><thead><tr><th>领域</th><th>证据</th><th>结果</th></tr></thead><tbody><tr><td>Accessibility</td><td>原生 details/summary、ul/li、已有 focus-visible、命名刷新按钮、空态状态，默认与窄屏</td><td>Clear，未改变键盘路径，无新图标按钮</td></tr><tr><td>Layout</td><td>进度网格、新候选摘要换行、320px 无横向溢出与空态</td><td>Clear；真实歧义列表仅组件测试</td></tr><tr><td>Writing</td><td>中英俄四类文案、旧原因与新的行为、OPDS 导航文案</td><td>Clear，查不到与来源失败含义分离</td></tr><tr><td>Typography</td><td>沿用原字阶与数值样式，无字体/字阶改动</td><td>Not reviewed: no evidence in the change scope</td></tr><tr><td>Colors</td><td>沿用 Vuetify 语义色，无颜色修改</td><td>Not reviewed: no evidence in the change scope</td></tr><tr><td>UI</td><td>刷新/展开/加载/错误/空列表与缓存摘要，前端回归及真实页面</td><td>Clear；无新增动画，深色与缩放未验证</td></tr></tbody></table><h3>Findings</h3><p>No actionable interface findings in this change. 无 Introduced / Regression HIGH 或 MEDIUM；与范围无关的历史问题不改变本次结论。</p><h3>Considered but Rejected</h3><p>候选增加封面与长简介：确认依据优先用作者、出版社、ISBN，可避免缓存膨胀；不增加。空结果保留人工按钮：没有可作选择的候选会误导，改为单独统计。为迁移重新扫描源文件：分类已有数据库证据，额外文件读取无助于这次任务。已有网格和语义色：保留共享组件风格，无证据支持另加视觉体系。</p><h3>Verification</h3><p>范围命令 git diff --name-status HEAD、git ls-files --others --exclude-standard、git diff 与 git status；基线/提交数如上。后端 Linux 整包、前端 11 测试与构建、默认/320px 的真实页面均通过。未验证：BooxReader 原生分页（保留独立 WIP）、深色/200% 缩放、生产真实歧义候选。测试替代证据范围明确，不声称未测状态完成。</p><h3>Verdict</h3><p>Approve：已宣称的界面覆盖通过，无可操作的新增/回归问题。</p><details><summary>审查时的完整本地文件清单</summary><pre> M app/components/MetadataProgress.vue
+ M app/components/MetadataReview.vue
+ M app/i18n/locales/en-US.json
+ M app/i18n/locales/ru-RU.json
+ M app/i18n/locales/zh-CN.json
+ M app/test/components/MetadataProgress.spec.ts
+ M app/test/components/MetadataReview.spec.ts
+ M booksvr/internal/httpapi/book_metadata.go
+ M booksvr/internal/httpapi/metadata_match.go
+ M booksvr/internal/httpapi/metadata_review.go
+ M booksvr/internal/httpapi/metadata_review_test.go
+ M booksvr/internal/httpapi/metadata_sources.go
+ M booksvr/internal/httpapi/metadata_status.go
+ M booksvr/internal/httpapi/metadata_trust_test.go
+ M booksvr/internal/httpapi/metadata_worker.go
+ M booksvr/internal/httpapi/opds.go
+ M booksvr/internal/httpapi/opds_test.go
+ M booksvr/internal/library/metadata_fill.go
+ M booksvr/internal/library/metadata_fill_test.go
+ M scripts/deploy_metadata_enrichment.py
+ M &quot;spec/\345\205\203\346\225\260\346\215\256.md&quot;
+ M &quot;spec/\345\244\226\351\203\250\350\256\277\351\227\256.md&quot;
+ M tests/test_deploy_metadata_enrichment.py
+?? booksvr/internal/httpapi/metadata_classification.go
+?? booksvr/internal/httpapi/metadata_classification_test.go
+?? booksvr/internal/httpapi/opds_pages.go
+?? booksvr/internal/httpapi/opds_pages_test.go
+?? design/booksvr/20261030-opds-page-directories.wip.html
+?? design/booksvr/20261031-metadata-outcome-classification.wip.html
+?? design/docker/20261025-storage-migration.active.html
+</pre></details></section></main></body></html>

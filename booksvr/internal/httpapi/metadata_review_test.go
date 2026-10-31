@@ -14,7 +14,10 @@ func TestMetadataReviewCursorAndManualSave(t *testing.T) {
 		if i > 1 {
 			insertBook(t, w.libraryDB, int64(i), fmt.Sprint("Book ", i))
 		}
-		if err := m.saveJob(int64(i), "needs_review", "缺少可验证作者", 0); err != nil {
+		if err := m.saveJob(int64(i), "needs_review", "存在候选版本", 0); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.libraryDB.Exec(`INSERT INTO metadata_source_jobs(book_id,connection_id,phase,outcome,review_candidates) VALUES(?,1,'done','ambiguous','[{"title":"候选一","authors":["作者"],"provider_value":"one"},{"title":"候选二","authors":["作者"],"provider_value":"two"}]')`, i); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -29,7 +32,7 @@ func TestMetadataReviewCursorAndManualSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	books := out["books"].([]map[string]any)
-	if len(books) != 20 || out["next_after"] != int64(20) || books[0]["reason"] != "缺少可验证作者" {
+	if len(books) != 20 || out["next_after"] != int64(20) || books[0]["reason"] != "存在候选版本" {
 		t.Fatal(out)
 	}
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/?after=20", nil)

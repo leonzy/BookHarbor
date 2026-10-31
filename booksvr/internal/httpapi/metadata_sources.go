@@ -169,7 +169,7 @@ func (m *metadataWorker) enrollSources(conns []*userdb.PluginConnection) error {
 			}
 			for _, id := range ids {
 				if owners[id] <= 0 {
-					_, e = tx.Exec(`UPDATE metadata_enrichment_jobs SET status='needs_review',last_error='书籍没有可用的所属用户' WHERE book_id=?`, id)
+					_, e = tx.Exec(`UPDATE metadata_enrichment_jobs SET status='insufficient',last_error='书籍没有可用的所属用户' WHERE book_id=?`, id)
 					if e != nil {
 						break
 					}
@@ -232,7 +232,7 @@ func (m *metadataWorker) enrollSources(conns []*userdb.PluginConnection) error {
 	defer tx.Rollback()
 	for _, id := range ids {
 		if owners[id] <= 0 {
-			if _, e = tx.Exec(`UPDATE metadata_enrichment_jobs SET status='needs_review',last_error='书籍没有可用的所属用户' WHERE book_id=?`, id); e != nil {
+			if _, e = tx.Exec(`UPDATE metadata_enrichment_jobs SET status='insufficient',last_error='书籍没有可用的所属用户' WHERE book_id=?`, id); e != nil {
 				return e
 			}
 		}
@@ -275,6 +275,9 @@ func (m *metadataWorker) network(ctx context.Context) error {
 	}
 	if !enabled || ctx.Err() != nil {
 		return nil
+	}
+	if e := m.retryFailedSourceBook(); e != nil {
+		return e
 	}
 	conns, e := m.sourceConnections(settings)
 	if e != nil {
@@ -329,7 +332,7 @@ func (m *metadataWorker) network(ctx context.Context) error {
 			return e
 		}
 		if user == 0 {
-			if e = m.saveJob(task.book, "needs_review", "书籍没有可用的所属用户", 0); e != nil {
+			if e = m.saveJob(task.book, "insufficient", "书籍没有可用的所属用户", 0); e != nil {
 				return e
 			}
 			continue
@@ -350,9 +353,9 @@ func (m *metadataWorker) network(ctx context.Context) error {
 			}
 			continue
 		}
-		book := books[0]
+		book := metadataLookupBook(books[0])
 		if localmeta.ISBN(book.ISBN) == "" && localmeta.MissingAuthors(book.Authors) {
-			if e = m.saveJob(task.book, "needs_review", "文件中缺少可验证的 ISBN 或作者，不自动套用同名书", 0); e != nil {
+			if e = m.saveJob(task.book, "insufficient", "缺少有效 ISBN，且无法确认作者，等待补充身份信息", 0); e != nil {
 				return e
 			}
 			continue
@@ -503,6 +506,9 @@ func (m *metadataWorker) finishSource(r sourceResult, settings map[string]any) e
 				delay = max(delay, 3600)
 			}
 		}
+		if e = m.setSourceOutcome(t, "source_failed", nil); e != nil {
+			return e
+		}
 		terminal := t.attempts+1 >= 3
 		target := t.phase
 		if terminal {
@@ -535,9 +541,27 @@ func (m *metadataWorker) finishSource(r sourceResult, settings map[string]any) e
 	if len(books) == 0 {
 		return nil
 	}
-	book := books[0]
+	book := metadataLookupBook(books[0])
 	if t.phase == "search" {
-		record = matchingMetadata(book, pluginRecords(pluginBooksOf(r.value)))
+		candidates := pluginRecords(pluginBooksOf(r.value))
+		record = matchingMetadata(book, candidates)
+		if record == nil {
+			reviews := metadataReviewCandidates(book, candidates)
+			outcome, reason := "no_match", "未取得可靠匹配"
+			if len(reviews) > 1 {
+				outcome, reason = "ambiguous", "存在多个可验证的候选版本"
+			}
+			if e = m.setSourceOutcome(t, outcome, reviews); e != nil {
+				return e
+			}
+			if e = m.setSourcePhase(t, "done", nil, 0, reason); e != nil {
+				return e
+			}
+			return m.rollupSourceBook(t.book, settings)
+		}
+		if e = m.setSourceOutcome(t, "matched", nil); e != nil {
+			return e
+		}
 	}
 	if t.phase == "detail" {
 		if candidate := pluginRecordDict(r.value); matchingMetadata(book, []map[string]any{candidate}) != nil {
@@ -549,7 +573,10 @@ func (m *metadataWorker) finishSource(r sourceResult, settings map[string]any) e
 		}
 	}
 	if record == nil || matchingMetadata(book, []map[string]any{record}) == nil {
-		if e = m.setSourcePhase(t, "done", nil, 0, "未找到可唯一确认的版本"); e != nil {
+		if e = m.setSourceOutcome(t, "no_match", nil); e != nil {
+			return e
+		}
+		if e = m.setSourcePhase(t, "done", nil, 0, "未取得可靠匹配"); e != nil {
 			return e
 		}
 		return m.rollupSourceBook(t.book, settings)
@@ -557,16 +584,28 @@ func (m *metadataWorker) finishSource(r sourceResult, settings map[string]any) e
 	var safe bool
 	record, safe = boundedSourceRecord(record)
 	if !safe {
+		if e = m.setSourceOutcome(t, "source_failed", nil); e != nil {
+			return e
+		}
 		if e = m.setSourcePhase(t, "done", nil, 0, "来源元数据超过缓存上限"); e != nil {
 			return e
 		}
 		return m.rollupSourceBook(t.book, settings)
 	}
+	if e = m.setSourceOutcome(t, "matched", nil); e != nil {
+		return e
+	}
 	if t.phase == "cover" {
 		if !settingBool(settings, "auto_fill_keep_cover", true) && !book.HasCover && m.w.libraryRoot != "" {
 			if image, ok := r.value.(*pluginiface.CoverResult); ok && image != nil && len(image.Content) > 0 {
 				if _, e = library.StoreCover(db, m.w.libraryRoot, t.book, image.Content); e != nil {
-					return e
+					if e = m.setSourceOutcome(t, "source_failed", nil); e != nil {
+						return e
+					}
+					if e = m.setSourcePhase(t, "done", nil, 0, "封面处理失败"); e != nil {
+						return e
+					}
+					return m.rollupSourceBook(t.book, settings)
 				}
 			}
 		}
@@ -607,37 +646,16 @@ func (m *metadataWorker) rollupSourceBook(id int64, settings map[string]any) err
 		return nil
 	}
 	var user int64
-	if e := m.w.db.QueryRow(`SELECT coalesce(collector_id,0) FROM items WHERE book_id=? ORDER BY collector_id LIMIT 1`, id).Scan(&user); e != nil {
+	if e := m.w.db.QueryRow(`SELECT coalesce(collector_id,0) FROM items WHERE book_id=? ORDER BY collector_id LIMIT 1`, id).Scan(&user); e != nil && e != sql.ErrNoRows {
 		return e
+	}
+	if user == 0 {
+		return m.saveJob(id, "insufficient", "书籍没有可用的所属用户", 0)
 	}
 	rt := pluginruntime.NewRuntime(m.w.db, settings, m.w.registry)
 	conns, e := rt.ConnectionsFor(metadataLookupCapability, &user)
 	if e != nil {
 		return e
-	}
-	matched := 0
-	relevant := 0
-	for _, c := range conns {
-		if m.sourceUnavailable(rt, c) != "" {
-			continue
-		}
-		relevant++
-		var phase string
-		var hasMatch int
-		e = m.w.libraryDB.QueryRow(`SELECT phase,matched FROM metadata_source_jobs WHERE book_id=? AND connection_id=?`, id, c.ID).Scan(&phase, &hasMatch)
-		if e == sql.ErrNoRows || phase != "done" {
-			return nil
-		}
-		if e != nil {
-			return e
-		}
-		matched += hasMatch
-	}
-	if relevant == 0 {
-		return nil
-	}
-	if matched == 0 {
-		return m.saveJob(id, "needs_review", "所有可用来源均已处理，未取得可唯一确认的信息", 0)
 	}
 	books, e := library.GetBooksData(m.w.libraryDB, []int64{id})
 	if e != nil {
@@ -647,8 +665,47 @@ func (m *metadataWorker) rollupSourceBook(id int64, settings map[string]any) err
 		return nil
 	}
 	b := books[0]
+	matched, relevant, failed, reviews := 0, 0, 0, 0
+	for _, c := range conns {
+		if m.sourceUnavailable(rt, c) != "" {
+			continue
+		}
+		relevant++
+		var phase, outcome, cache, reason string
+		var hasMatch int
+		e = m.w.libraryDB.QueryRow(`SELECT phase,matched,outcome,review_candidates,last_error FROM metadata_source_jobs WHERE book_id=? AND connection_id=?`, id, c.ID).Scan(&phase, &hasMatch, &outcome, &cache, &reason)
+		if e == sql.ErrNoRows {
+			return nil
+		}
+		if e != nil {
+			return e
+		}
+		if phase != "done" {
+			return nil
+		}
+		matched += hasMatch
+		if outcome == "source_failed" || (outcome == "" && (reason == "来源请求失败" || strings.Contains(reason, "缓存上限"))) {
+			failed++
+		}
+		var candidates []map[string]any
+		if outcome == "ambiguous" && len(cache) <= 32768 && json.Unmarshal([]byte(cache), &candidates) == nil && len(metadataReviewCandidates(b, candidates)) >= 2 {
+			reviews++
+		}
+	}
+	if relevant == 0 {
+		return m.saveJob(id, "source_failed", "没有可用元数据来源，等待配置后重试", time.Hour)
+	}
 	if localmeta.ISBN(b.ISBN) != "" && b.Publisher != "" && !localmeta.MissingAuthors(b.Authors) && b.Comments != "" {
 		return m.saveJob(id, "complete", "", 0)
+	}
+	if reviews > 0 {
+		return m.saveJob(id, "needs_review", "存在多个可验证的候选版本，请核对已保存的候选", 0)
+	}
+	if failed > 0 {
+		return m.saveJob(id, "source_failed", "来源请求或处理失败，等待独立退避重试", time.Hour)
+	}
+	if matched == 0 {
+		return m.saveJob(id, "unmatched", "所有已查询来源均未取得可靠匹配", 0)
 	}
 	return m.saveJob(id, "partial", "所有可用来源均已处理，仍缺少部分信息", 0)
 }

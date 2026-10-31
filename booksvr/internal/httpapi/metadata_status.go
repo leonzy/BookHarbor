@@ -35,7 +35,7 @@ func MetadataEnrichmentStatus(db *sql.DB, opts ServeOptions, userDB ...*sql.DB) 
 		if e != nil {
 			return nil, e
 		}
-		if e = db.QueryRow(`SELECT count(DISTINCT s.book_id) FROM metadata_source_jobs s JOIN books b ON b.id=s.book_id JOIN metadata_enrichment_jobs j ON j.book_id=s.book_id WHERE s.phase<>'done' AND s.attempts>0 AND j.status IN ('network_pending','partial')`).Scan(&retries); e != nil {
+		if e = db.QueryRow(`SELECT count(DISTINCT s.book_id) FROM metadata_source_jobs s JOIN books b ON b.id=s.book_id JOIN metadata_enrichment_jobs j ON j.book_id=s.book_id WHERE s.phase<>'done' AND s.attempts>0 AND (s.outcome='source_failed' OR s.last_error='来源请求失败') AND j.status IN ('network_pending','partial')`).Scan(&retries); e != nil {
 			return nil, e
 		}
 		if e = db.QueryRow(`SELECT count(DISTINCT w.book_id) FROM metadata_enrichment_writes w JOIN books b ON b.id=w.book_id WHERE w.origin LIKE 'network:%'`).Scan(&applied); e != nil {
@@ -60,6 +60,14 @@ func MetadataEnrichmentStatus(db *sql.DB, opts ServeOptions, userDB ...*sql.DB) 
 			return nil, e
 		}
 		counts["file_refresh"] = refresh
+		var verified int64
+		if e = db.QueryRow(`SELECT count(*) FROM metadata_enrichment_jobs j JOIN books b ON b.id=j.book_id WHERE j.status='needs_review' AND ` + verifiedMetadataReviewSQL).Scan(&verified); e != nil {
+			return nil, e
+		}
+		counts["classification_pending"] = counts["needs_review"] - verified
+		counts["needs_review"] = verified
+		retries += counts["source_failed"]
+
 		if e = db.QueryRow(`SELECT count(DISTINCT w.book_id) FROM metadata_enrichment_writes w JOIN books b ON b.id=w.book_id`).Scan(&written); e != nil {
 			return nil, e
 		}

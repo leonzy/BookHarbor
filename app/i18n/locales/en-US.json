@@ -2377,7 +2377,7 @@
     "reviewMore": "Load more books needing review",
     "reviewEditBook": "Edit and confirm {title} (new tab)",
     "reviewEdit": "Edit and confirm",
-    "reviewHelp": "Open a book in a new tab. Edit and save its details, or choose matching internet metadata on the book page. Saving removes it from this queue and protects your choices. Leave uncertain matches for later.",
+    "reviewHelp": "Only books with relevant but conflicting candidates appear here. No matches, insufficient identity and source failures are counted separately.",
     "reviewQueue": "Books needing review ({count})",
     "title": "Library metadata enrichment",
     "refresh": "Refresh progress",
@@ -2420,7 +2420,11 @@
       "request_failed": "Source request failed; retrying with backoff while other sources continue",
       "provider_rate_limited": "Source rate limit reached; waiting before retrying while other sources continue",
       "provider_unauthorized": "Source authentication failed. Check its credentials in plugin settings."
-    }
+    },
+    "unmatched": "No reliable match",
+    "insufficient": "Insufficient identity",
+    "reclassifying": "Reclassifying history",
+    "reviewCachedHelp": "These saved candidate summaries explain why confirmation is needed. A fresh search may return different results."
   },
   "bookStorage": {
     "title": "Storage locations",

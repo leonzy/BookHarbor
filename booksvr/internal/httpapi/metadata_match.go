@@ -66,6 +66,7 @@ func sharedAuthor(a, b []string) bool {
 
 // A search parameter must never turn an unrelated title into a matching edition.
 func referenceRelevant(book library.BookData, record map[string]any) bool {
+	book = metadataLookupBook(book)
 	if !relatedTitle(book.Title, stringOf(record["title"])) {
 		return false
 	}

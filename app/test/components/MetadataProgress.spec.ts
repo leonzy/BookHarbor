@@ -17,6 +17,17 @@ const mounted: ReturnType<typeof mount>[] = [];
 const base = { err: 'ok', total_books: 10, files_checked: 4, files_remaining: 6, counts: { complete: 1, network_pending: 2, needs_review: 1 }, network_retries: 1, network_applied_books: 0, worker_active: true, network_enabled: true, network_max_concurrency: 8 };
 afterEach(() => { mounted.splice(0).forEach(w => w.unmount()); vi.useRealTimers(); backend.mockReset(); });
 describe('Metadata progress', () => {
+    it('keeps no matches, insufficient identity, failures and human choices separate', async () => {
+        backend.mockResolvedValue({ ...base, total_books: 25, files_checked: 20, files_remaining: 5,
+            counts: { unmatched: 12, insufficient: 2, source_failed: 3, needs_review: 3 }, network_retries: 3 });
+        const w = mount(MetadataProgress, { global: { plugins: [vuetify, i18n] } }); mounted.push(w);
+        await flushPromises();
+        const counts = Object.fromEntries(w.findAll('dl > div').map(item => [item.get('dt').text(), item.get('dd').text()]));
+        expect(counts['查不到']).toBe('12');
+        expect(counts['信息不足']).toBe('2');
+        expect(counts['来源失败待重试']).toBe('3');
+        expect(counts['需人工确认']).toBe('3');
+    });
     it('separates checked files from online success and refreshes without a save', async () => {
         vi.useFakeTimers();
         backend.mockResolvedValue(base);

@@ -16,6 +16,17 @@ const mounted: ReturnType<typeof mount>[] = [];
 afterEach(() => { mounted.splice(0).forEach(w => w.unmount()); backend.mockReset(); });
 function render() { const w = mount(MetadataReview, { props: { count: 28 }, global: { plugins: [vuetify, i18n] } }); mounted.push(w); return w; }
 describe('metadata manual review', () => {
+    it('shows saved candidates as the reason for review without rendering upstream HTML', async () => {
+        backend.mockResolvedValue({ err: 'ok', books: [{ id: 7, title: '同名书', reason: '多个候选版本', candidates: [
+            { title: '同名书', authors: ['作者甲'], publisher: '出版社甲', isbn: '9780141439518' },
+            { title: '<img src=x onerror=alert(1)>', authors: ['作者甲'], publisher: '出版社乙', isbn: '9787020091621' },
+        ] }], next_after: 0 });
+        const w = render(); await w.get('button').trigger('click'); await flushPromises();
+        expect(w.text()).toContain('后台已保存以下候选摘要');
+        expect(w.text()).toContain('出版社甲'); expect(w.text()).toContain('ISBN 9787020091621');
+        expect(w.findAll('.metadata-review__candidates li')).toHaveLength(2);
+        expect(w.find('img').exists()).toBe(false);
+    });
     it('loads on expansion, shows reasons and opens books in new tabs; cursor paging deduplicates', async () => {
         const w = render(); expect(backend).not.toHaveBeenCalled(); expect(w.get('button').text()).toContain('刷新待确认列表');
         backend.mockResolvedValueOnce({ err: 'ok', books: [{ id: 1, title: 'Book one', reason: '缺少作者' }], next_after: 1 });
