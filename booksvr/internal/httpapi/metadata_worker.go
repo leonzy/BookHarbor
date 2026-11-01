@@ -13,7 +13,6 @@ import (
 	"time"
 	"unicode"
 
-	"talebook/booksvr/internal/booktools"
 	"talebook/booksvr/internal/importmeta"
 	"talebook/booksvr/internal/library"
 	"talebook/booksvr/internal/localmeta"
@@ -233,8 +232,9 @@ func (m *metadataWorker) local(ctx context.Context, id int64, force ...bool) err
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		path, e := booktools.GetFormatPath(m.w.libraryDB, id, format)
-		if e != nil {
+		// Enrichment reads indexed ZIP members; the editing resolver rejects them.
+		path, missing, e := library.ResolvePath(m.w.libraryDB, id, format)
+		if e != nil || missing || path == "" {
 			continue
 		}
 		if !sourcefile.IsReference(path) && !filepath.IsAbs(path) {
