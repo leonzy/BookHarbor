@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"talebook/booksvr/internal/library"
+	"talebook/booksvr/internal/pluginjobs"
+	"talebook/booksvr/internal/pluginruntime"
 	"talebook/booksvr/internal/userdb"
 )
 
@@ -23,6 +25,7 @@ func newMetadataOnlyDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatch
 	}
 	w := newBookWiring(userDB, db, opts.Settings, opts.PluginRegistry).withSettingsPath(opts.SettingsPath)
 	w.libraryRoot = opts.LibraryRoot
+	opts.PluginRegistry = w.registry
 	var specs []RouteSpec
 	for _, spec := range BookRouteSpecs(w.Config(opts.CDNURL)) {
 		if spec.Pattern == rBookEdit || spec.Pattern == rBookRefer || spec.Pattern == rBookDetail {
@@ -33,7 +36,16 @@ func newMetadataOnlyDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatch
 	specs = append(specs, RouteSpec{Pattern: "/api/admin/metadata/enrichment", Methods: []string{"GET"}, Auth: true, Admin: true, Handler: MetadataEnrichmentStatus(db, opts, userDB)})
 	specs = append(specs, metadataSourceRoutes(db, userDB, opts)...)
 	specs = append(specs, metadataReviewRoutes(db)...)
-	pluginConfig := PluginConfig{Settings: opts.Settings, Registry: w.registry}
+	executor := pluginjobs.NewExecutor(pluginjobs.Config{DB: userDB, Runtime: pluginruntime.NewRuntime(userDB, opts.Settings, w.registry)})
+	pluginConfig := PluginConfig{Settings: opts.Settings, Registry: w.registry, ExecuteRun: func(_ *Context, id int64) error { _, e := executor.Execute(id); return e }}
+	// The catalogue and connection controls must see the same native providers as
+	// searches and scheduling, while the original import listener stays running.
+	for _, spec := range PluginRouteSpecs(pluginConfig) {
+		switch spec.Pattern {
+		case "/api/admin/plugins", "/api/admin/plugins/installations/([0-9]+)/state", "/api/admin/plugins/connections", "/api/admin/plugins/connections/([0-9]+)/state", "/api/admin/plugins/connections/([0-9]+)/(test|preview|run|retry|rollback)":
+			specs = append(specs, spec)
+		}
+	}
 	specs = append(specs,
 		RouteSpec{Pattern: "/api/admin/plugins/runs", Methods: []string{"GET"}, Auth: true, Admin: true, Handler: AdminPluginRunsHandler(pluginConfig)},
 		RouteSpec{Pattern: "/api/admin/plugins/runs/([0-9]+)", Methods: []string{"GET"}, Auth: true, Admin: true, Handler: AdminPluginRunDetailHandler(pluginConfig)},

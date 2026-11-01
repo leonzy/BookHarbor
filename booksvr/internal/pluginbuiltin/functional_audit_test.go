@@ -3,6 +3,7 @@ package pluginbuiltin
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -592,15 +593,17 @@ func TestAuditMetadataAdapters(t *testing.T) {
 					return 200, `<article class="item-card"><hgroup><h5><a href="/book/1">西游记</a></h5></hgroup><div class="multi-fields"><span>作者: <span>吴承恩</span></span></div></article>`
 				})
 				p.Plugin.Source.HTTP = client
-			case *calibreMetaProvider:
-				if _, err := p.SearchBooks(plugindomain.MetadataQuery{Title: "西游记"}, nil); err == nil {
-					t.Fatal("unwired identify reported an empty success")
+			case *internationalProvider:
+				p.get = func(_ context.Context, u string) ([]byte, error) {
+					if !p.amazon {
+						return []byte(`{"items":[{"id":"volume1","volumeInfo":{"title":"西游记","authors":["吴承恩"],"industryIdentifiers":[{"type":"ISBN_13","identifier":"9787020008735"}]}}]}`), nil
+					}
+					if strings.Contains(u, "/s/?") {
+						return []byte(`<div data-component-type="s-search-result" data-asin="0141439513"></div>`), nil
+					}
+					return []byte(`<span id="productTitle">西游记</span>`), nil
 				}
-				report, err := p.SelfCheck(nil)
-				if err != nil || report.Healthy {
-					t.Fatalf("unwired check=%+v %v", report, err)
-				}
-				p.Source.API.Identifier = auditIdentifier{}
+
 			}
 			rows, err := provider.(pluginiface.MetadataProvider).SearchBooks(plugindomain.MetadataQuery{Title: "西游记", ISBN: "9787020008735"}, nil)
 			if err != nil || len(rows) == 0 || rows[0].Get("title") != "西游记" {

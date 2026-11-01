@@ -241,6 +241,11 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 		}
 	}
 
+	// Share runtime probes across handlers, diagnostics and background scheduling.
+	if opts.PluginRegistry == nil && !opts.ReaderOnly {
+		opts.PluginRegistry = newBookWiring(userDB, db, opts.Settings, nil).registry
+	}
+
 	if !opts.ReaderOnly && !opts.PluginFeaturesOnly && !opts.MetadataOnly {
 		stopCovers, err := attachCoverWorker(ctx, db, opts.LibraryRoot)
 		if err != nil {

@@ -80,9 +80,6 @@ func (m *metadataWorker) sourceUnavailable(rt *pluginruntime.Runtime, c *userdb.
 	if e != nil {
 		return "unavailable"
 	}
-	if key == "talebook.meta.calibre" {
-		return "not_connected"
-	}
 	if key == "talebook.source.legado" {
 		var n int
 		if e = m.w.db.QueryRow(`SELECT count(*) FROM book_sources WHERE enabled=1 AND source_type=0`).Scan(&n); e != nil || n == 0 {

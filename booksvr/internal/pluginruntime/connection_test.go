@@ -577,3 +577,19 @@ func TestCapabilityConnectionsRetainScopedSecretReferenceWithoutExposingIt(t *te
 		}
 	}
 }
+func TestRuntimeRetiredBuiltinConnectionsRemainHistorical(t *testing.T) {
+	rt, inst, _ := newRuntimeWithPlugin(t, "retired", nil)
+	before, e := rt.ConnectionsFor("metadata.lookup", nil)
+	if e != nil || len(before) != 1 {
+		t.Fatalf("%v %v", before, e)
+	}
+	rt.Registry = NewPluginRegistry()
+	after, e := rt.ConnectionsFor("metadata.lookup", nil)
+	if e != nil || len(after) != 0 {
+		t.Fatalf("retired still scheduled %v %v", after, e)
+	}
+	saved, e := userdb.ListPluginConnections(rt.DB, inst.ID)
+	if e != nil || len(saved) != 1 {
+		t.Fatal("historical connection removed")
+	}
+}

@@ -402,3 +402,48 @@ func TestNowStringFormat(t *testing.T) {
 		t.Errorf("unexpected format: %q", got)
 	}
 }
+
+type replacementProvider struct{ *fakeProvider }
+
+func (p *replacementProvider) ReplacesBuiltin() []string { return []string{"talebook.old-meta"} }
+func TestBuiltinReplacementPreservesOptOutAndHistory(t *testing.T) {
+	db := newSchemaDB(t)
+	admin := seedAdmin(t, db)
+	old := newTestRegistry(t, "old-meta", nil)
+	if _, e := EnsureBuiltinInstallations(db, admin, nil, old); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := db.Exec("UPDATE plugin_installations SET enabled=0 WHERE plugin_key='talebook.old-meta'"); e != nil {
+		t.Fatal(e)
+	}
+	reg := NewPluginRegistry()
+	caps := pluginiface.CapabilitySet{Interfaces: map[string]bool{"MetadataProvider": true}, HasSelfCheck: true}
+	for _, id := range []string{"new-google", "new-amazon"} {
+		if _, e := reg.Register(&replacementProvider{&fakeProvider{manifest: minimalManifest(id)}}, caps); e != nil {
+			t.Fatal(e)
+		}
+	}
+	insts, e := EnsureBuiltinInstallations(db, admin, nil, reg)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, i := range insts {
+		if i.Enabled {
+			t.Fatal("legacy opt-out lost")
+		}
+	}
+	if _, e = db.Exec("UPDATE plugin_installations SET enabled=1 WHERE plugin_key='talebook.new-google'"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = EnsureBuiltinInstallations(db, admin, nil, reg); e != nil {
+		t.Fatal(e)
+	}
+	i, e := userdb.GetPluginInstallationByKey(db, "talebook.new-google")
+	if e != nil || i == nil || !i.Enabled {
+		t.Fatal("existing preference overwritten")
+	}
+	i, e = userdb.GetPluginInstallationByKey(db, "talebook.old-meta")
+	if e != nil || i == nil {
+		t.Fatal("historical installation removed")
+	}
+}

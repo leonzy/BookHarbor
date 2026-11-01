@@ -155,6 +155,19 @@ func EnsureBuiltinInstallations(db *sql.DB, installedBy int64, settings map[stri
 			if hooks, ok := provider.(ProviderHooks); ok {
 				enabled = hooks.InitialEnabled(settings)
 			}
+			// Inherit a retired provider's opt-out only on first installation.
+			if replacement, ok := provider.(interface{ ReplacesBuiltin() []string }); ok {
+				for _, key := range replacement.ReplacesBuiltin() {
+					legacy, loadErr := userdb.GetPluginInstallationByKey(db, key)
+					if loadErr != nil {
+						return nil, loadErr
+					}
+					if legacy != nil {
+						enabled = legacy.Enabled
+						break
+					}
+				}
+			}
 			installation, err = InstallBuiltin(db, pluginKey, installedBy, nil, nil, enabled, registry)
 			if err != nil {
 				return nil, err

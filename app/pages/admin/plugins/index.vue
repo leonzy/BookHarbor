@@ -505,6 +505,7 @@
 </template>
 
 <script setup>
+import { builtinPluginType as pluginType } from '@/utils/builtin-plugins';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import GlobalDeviceSettings from '~/components/GlobalDeviceSettings.vue';
@@ -613,10 +614,6 @@ const catalog = computed(() => definitions.value
         ui: definition.ui || {},
         installation: installations.value.find(item => item.plugin_key === definition.plugin_key) || null,
     })));
-function pluginType(plugin) {
-    const parts = String(plugin?.plugin_key || '').split('.');
-    return parts[0] === 'talebook' ? parts[1] || '' : '';
-}
 
 const filteredPlugins = computed(() => {
     const needle = (search.value || '').trim().toLowerCase();

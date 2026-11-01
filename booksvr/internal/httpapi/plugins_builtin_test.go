@@ -9,7 +9,7 @@ import (
 )
 
 // TestAdminPluginsReturnsAllBuiltins 端到端：注册内置插件后，
-// /api/admin/plugins 返回 39 条 definitions 与 installations，
+// /api/admin/plugins 返回 40 条 definitions 与 installations，
 // 且 builtin_state 含 talebook.source.opds 的三键。
 func TestAdminPluginsReturnsAllBuiltins(t *testing.T) {
 	db := netSchemaDB(t)
@@ -45,11 +45,11 @@ func TestAdminPluginsReturnsAllBuiltins(t *testing.T) {
 	}
 	definitions, _ := out["definitions"].([]map[string]any)
 	installations, _ := out["installations"].([]map[string]any)
-	if len(definitions) != 39 {
-		t.Errorf("definitions = %d, want 39", len(definitions))
+	if len(definitions) != 40 {
+		t.Errorf("definitions = %d, want 40", len(definitions))
 	}
-	if len(installations) != 39 {
-		t.Errorf("installations = %d, want 39", len(installations))
+	if len(installations) != 40 {
+		t.Errorf("installations = %d, want 40", len(installations))
 	}
 	state, _ := out["builtin_state"].(map[string]any)
 	opdsState, ok := state["talebook.source.opds"].(map[string]any)

@@ -129,7 +129,7 @@ func TestPluginConfigSaveExtraSettingsWired(t *testing.T) {
 		t.Fatal(catalog)
 	}
 	defs, _ := catalog["definitions"].([]any)
-	if len(defs) != 39 {
+	if len(defs) != 40 {
 		t.Fatalf("registry lost on reload: %d", len(defs))
 	}
 	state := catalog["builtin_state"].(map[string]any)["talebook.source.opds"].(map[string]any)

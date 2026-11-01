@@ -162,6 +162,12 @@ func (r *Runtime) ConnectionsFor(capability string, userID *int64) ([]*userdb.Pl
 		if definition == nil || !containsString(definition.Capabilities, capability) {
 			continue
 		}
+		// Retired builtin definitions remain available for historical run records.
+		if definition.RuntimeKind == "builtin" {
+			if _, e := r.Registry.Get(definition.PluginKey); e != nil {
+				continue
+			}
+		}
 		out = append(out, conn)
 	}
 	return out, nil

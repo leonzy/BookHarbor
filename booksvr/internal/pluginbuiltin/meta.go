@@ -5,7 +5,6 @@ import (
 	"talebook/booksvr/internal/metasource"
 	"talebook/booksvr/internal/plugindomain"
 	"talebook/booksvr/internal/pluginiface"
-	"talebook/booksvr/internal/pluginproto"
 	"talebook/booksvr/internal/pluginruntime"
 )
 
@@ -19,14 +18,15 @@ func metaCaps() pluginiface.CapabilitySet {
 	}
 }
 
-// registerMetaProviders 注册 7 个元数据源。
+// registerMetaProviders 注册独立的元数据来源。
 //
-// 顺序与 Python register.py 的 META_PROVIDERS 一致。
+// 国际出版物来源由 Go 原生检索。
 func registerMetaProviders(reg *pluginruntime.PluginRegistry) error {
 	providers := []pluginiface.Provider{
 		newDoubanV2Provider(),
 		newBaikeProvider(),
-		newCalibreMetaProvider(),
+		newInternationalProvider(false),
+		newInternationalProvider(true),
 		newXhsdProvider(),
 		newTomatoMetaProvider(),
 		newQimaoProvider(),
@@ -158,83 +158,6 @@ func (p *baikeProvider) Fetch(externalID string, context map[string]any) (map[st
 func (p *baikeProvider) GetCover(coverURL string, context map[string]any) (*pluginiface.CoverResult, error) {
 	_ = context
 	if cover := p.Source.GetCover(coverURL, true); cover != nil {
-		return &pluginiface.CoverResult{Extension: cover.Extension, Content: cover.Content}, nil
-	}
-	return nil, nil
-}
-
-// ---- Calibre 元数据 ----
-
-// calibreMetaProvider 复刻 CalibreProvider。
-type calibreMetaProvider struct {
-	*metabase.MetaSourceMixin
-	Source       *metasource.CalibreSource
-	ManifestDict map[string]any
-}
-
-func newCalibreMetaProvider() *calibreMetaProvider {
-	p := &calibreMetaProvider{
-		// CalibreIdentifier 由部署方注入；nil 时所有查询返回空（与 Go 侧约定一致）。
-		Source: metasource.NewCalibreSource(nil, nil),
-		ManifestDict: metabase.MetaManifest(
-			"talebook.meta.calibre", "Calibre 元数据",
-			"书籍信息检索默认启用 Google Books（Google）、Amazon.com 与 Edelweiss；"+
-				"Calibre 运行时同时启用 Big Book Search、Google Images 与 Open Library 封面来源。",
-			"mdi-google", "https://calibre-ebook.com/",
-			metabase.ManifestOptions{BrandIcon: "/images/plugin-icons/calibre.svg"},
-		),
-	}
-	p.MetaSourceMixin = metabase.NewMetaSourceMixin(p)
-	return p
-}
-
-func (p *calibreMetaProvider) Manifest() map[string]any { return p.ManifestDict }
-
-// Search 复刻 _search：优先 ISBN，其次书名。
-func (p *calibreMetaProvider) Search(query plugindomain.MetadataQuery, context map[string]any) ([]map[string]any, error) {
-	_ = context
-	if p.Source.API.Identifier == nil {
-		return nil, pluginproto.NewUpstreamError("Calibre 元数据检索服务未接入，请选择其他元数据源", "unavailable", nil)
-	}
-	results, err := p.Source.Search(query.ISBN, query.Title, query.Authors)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]map[string]any, 0, len(results))
-	for _, r := range results {
-		if r == nil {
-			continue
-		}
-		out = append(out, calibreResultToMetadata(r))
-	}
-	return out, nil
-}
-
-// SelfCheck reports the actual adapter availability rather than a successful no-op.
-func (p *calibreMetaProvider) SelfCheck(context map[string]any) (plugindomain.CheckReport, error) {
-	if p.Source.API.Identifier == nil {
-		return plugindomain.CheckReport{Healthy: false, Message: "Calibre 元数据检索服务未接入，请选择其他元数据源"}, nil
-	}
-	return p.MetaSourceMixin.SelfCheck(context)
-}
-
-// Fetch 复刻 _fetch：按 ISBN 查，失败再按书名查，取第一条。
-func (p *calibreMetaProvider) Fetch(externalID string, context map[string]any) (map[string]any, error) {
-	_ = context
-	r, err := p.Source.Fetch(externalID)
-	if err != nil {
-		return nil, err
-	}
-	if r == nil {
-		return nil, nil
-	}
-	return calibreResultToMetadata(r), nil
-}
-
-// GetCover 复刻 get_cover。
-func (p *calibreMetaProvider) GetCover(coverURL string, context map[string]any) (*pluginiface.CoverResult, error) {
-	_ = context
-	if cover := p.Source.GetCover(coverURL); cover != nil {
 		return &pluginiface.CoverResult{Extension: cover.Extension, Content: cover.Content}, nil
 	}
 	return nil, nil
@@ -463,17 +386,6 @@ func (p *baikeProvider) Invoke(method string, args []any, context map[string]any
 }
 
 // SearchBooks 用接口精确签名覆盖 mixin 的宽签名。
-func (p *calibreMetaProvider) SearchBooks(query plugindomain.MetadataQuery,
-	context map[string]any) ([]plugindomain.BookMetadata, error) {
-	return p.MetaSourceMixin.SearchBooks(query, context)
-}
-
-// Invoke 实现 MethodDispatcher：全部委托 DispatchInvoke。
-func (p *calibreMetaProvider) Invoke(method string, args []any, context map[string]any) (any, error) {
-	return DispatchInvoke(p, method, args, context)
-}
-
-// SearchBooks 用接口精确签名覆盖 mixin 的宽签名。
 func (p *xhsdProvider) SearchBooks(query plugindomain.MetadataQuery,
 	context map[string]any) ([]plugindomain.BookMetadata, error) {
 	return p.MetaSourceMixin.SearchBooks(query, context)
@@ -510,7 +422,6 @@ func (p *qimaoProvider) Invoke(method string, args []any, context map[string]any
 var (
 	_ pluginiface.MetadataProvider   = (*doubanV2Provider)(nil)
 	_ pluginiface.MetadataProvider   = (*baikeProvider)(nil)
-	_ pluginiface.MetadataProvider   = (*calibreMetaProvider)(nil)
 	_ pluginiface.MetadataProvider   = (*xhsdProvider)(nil)
 	_ pluginiface.MetadataProvider   = (*tomatoMetaProvider)(nil)
 	_ pluginiface.MetadataProvider   = (*qimaoProvider)(nil)

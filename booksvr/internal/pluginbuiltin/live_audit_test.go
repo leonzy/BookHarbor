@@ -65,7 +65,7 @@ func TestAuditLivePublicServices(t *testing.T) {
 		var err error
 		probed := false
 		switch id {
-		case "talebook.combo.open-library", "talebook.meta.douban-v2", "talebook.meta.baike", "talebook.meta.xhsd", "talebook.meta.tomato", "talebook.meta.qimao", "talebook.meta.neodb", "talebook.meta.calibre":
+		case "talebook.combo.open-library", "talebook.meta.douban-v2", "talebook.meta.baike", "talebook.meta.xhsd", "talebook.meta.tomato", "talebook.meta.qimao", "talebook.meta.neodb", "bookharbor.meta.google-books", "bookharbor.meta.amazon":
 			var rows []plugindomain.BookMetadata
 			rows, err = p.(pluginiface.MetadataProvider).SearchBooks(plugindomain.MetadataQuery{Title: "西游记", ISBN: "9787020008735"}, ctx)
 			count = len(rows)
