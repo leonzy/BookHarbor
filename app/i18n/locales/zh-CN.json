@@ -2438,5 +2438,20 @@
     "directory": "目录：",
     "filename": "文件：",
     "member": "ZIP 内路径："
+  },
+  "lectureRecheck": {
+      "title": "讲座 TXT 书名与作者复核",
+      "progress": "已核查 {checked} / {total} 本",
+      "completeDiscovery": "已完成同类文件发现",
+      "discovering": "正在发现同类文件，总数仍会增加",
+      "pending": "待核查",
+      "repaired": "已修正",
+      "correct": "原本正确",
+      "no_evidence": "正文证据不足",
+      "protected": "人工修改保护",
+      "conflict": "信息冲突未覆盖",
+      "unreadable": "来源不可读待重试",
+      "deleted": "书籍已删除",
+      "explanation": "仅修正有依据的书名与作者。证据不足和冲突保留原信息；来源不可读延后重试，不删除书籍。正常导入与元数据补全继续进行。"
   }
 }

@@ -25,6 +25,8 @@ func EnsureMetadataSchema(db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS metadata_enrichment_due ON metadata_enrichment_jobs(status,next_at,book_id)`,
 		`CREATE INDEX IF NOT EXISTS metadata_review_cursor ON metadata_enrichment_jobs(book_id) WHERE status='needs_review'`,
 		`CREATE TABLE IF NOT EXISTS metadata_enrichment_lease(id INTEGER PRIMARY KEY,owner TEXT NOT NULL,expires INTEGER NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS metadata_lecture_rechecks(book_id INTEGER PRIMARY KEY,source_name TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',reason TEXT NOT NULL DEFAULT '',next_at INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL DEFAULT(unixepoch()))`,
+		`CREATE INDEX IF NOT EXISTS metadata_lecture_due ON metadata_lecture_rechecks(status,next_at,book_id)`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			return err
@@ -211,14 +213,14 @@ func fillMissingMetadata(db *sql.DB, id int64, m importmeta.Metadata, expected m
 			return nil, err
 		}
 		title, author := localmeta.DatedLectureFilename(oldTitle)
-		if title != "" && m.Title == title && len(m.Authors) == 1 && m.Authors[0] == author {
+		if title != "" && m.Title == title && localmeta.LectureAuthorsMatch(m.Authors, author) {
 			var currentAuthor string
 			var work sql.NullInt64
 			if err = tx.QueryRow(`SELECT coalesce(author_sort,''),work_id FROM books WHERE id=?`, id).Scan(&currentAuthor, &work); err != nil {
 				return nil, err
 			}
-			if currentAuthor == author {
-				changedTitle, e := repairTitleTx(tx, id, oldTitle, title, author, work)
+			if currentAuthor == strings.Join(m.Authors, " & ") {
+				changedTitle, e := repairTitleTx(tx, id, oldTitle, title, currentAuthor, work)
 				if e != nil {
 					return nil, e
 				}

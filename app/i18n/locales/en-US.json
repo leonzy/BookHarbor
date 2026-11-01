@@ -2432,5 +2432,20 @@
     "directory": "Directory:",
     "filename": "File:",
     "member": "Path inside ZIP:"
+  },
+  "lectureRecheck": {
+      "title": "Lecture TXT title and author recheck",
+      "progress": "Checked {checked} / {total} books",
+      "completeDiscovery": "Candidate discovery complete",
+      "discovering": "Discovering candidates; the total may increase",
+      "pending": "Pending",
+      "repaired": "Repaired",
+      "correct": "Already correct",
+      "no_evidence": "Insufficient body evidence",
+      "protected": "Manual edits protected",
+      "conflict": "Conflicting information preserved",
+      "unreadable": "Source unreadable; retry pending",
+      "deleted": "Book deleted",
+      "explanation": "Only supported title and author corrections are applied. Insufficient evidence and conflicts preserve existing information. Unreadable sources are retried without deleting books. Import and metadata enrichment continue."
   }
 }

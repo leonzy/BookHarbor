@@ -297,7 +297,15 @@ func ReadMetadata(ctx context.Context, path, format string) (importmeta.Metadata
 		return importmeta.Metadata{}, err
 	}
 	mi, _ := embeddedMetadata(physical, strings.ToLower(format))
-	return localmeta.Supplement(ctx, physical, format, mi), nil
+	logicalName := path
+	if sourcefile.IsReference(path) {
+		ref, e := sourcefile.Decode(path)
+		if e != nil {
+			return importmeta.Metadata{}, e
+		}
+		logicalName = ref.Name
+	}
+	return localmeta.Supplement(ctx, physical, format, mi, logicalName), nil
 }
 
 // embeddedMetadata 按格式分派到对应的内嵌元数据解析器。

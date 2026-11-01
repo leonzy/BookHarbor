@@ -20,6 +20,7 @@ import (
 
 	"golang.org/x/net/html"
 	"golang.org/x/text/encoding/simplifiedchinese"
+	textunicode "golang.org/x/text/encoding/unicode"
 	"talebook/booksvr/internal/epubpath"
 	"talebook/booksvr/internal/importmeta"
 )
@@ -200,7 +201,9 @@ func Merge(m *importmeta.Metadata, other importmeta.Metadata) {
 }
 
 func visible(data []byte) string {
-	if !utf8.Valid(data) {
+	if bytes.HasPrefix(data, []byte{0xff, 0xfe}) || bytes.HasPrefix(data, []byte{0xfe, 0xff}) {
+		data, _ = textunicode.UTF16(textunicode.LittleEndian, textunicode.ExpectBOM).NewDecoder().Bytes(data)
+	} else if !utf8.Valid(data) {
 		data, _ = simplifiedchinese.GB18030.NewDecoder().Bytes(data)
 	}
 	root, e := html.Parse(bytes.NewReader(data))
@@ -528,7 +531,11 @@ func palmText(path string) string {
 	return visible(out)
 }
 
-func Supplement(ctx context.Context, path, format string, m importmeta.Metadata) importmeta.Metadata {
+func Supplement(ctx context.Context, path, format string, m importmeta.Metadata, logicalNames ...string) importmeta.Metadata {
+	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	if len(logicalNames) > 0 {
+		name = strings.TrimSuffix(filepath.Base(logicalNames[0]), filepath.Ext(logicalNames[0]))
+	}
 	m.ISBN = ISBN(m.ISBN)
 	// An ISBN in the publisher slot is a common malformed package, not a publisher.
 	if v := ISBN(m.Publisher); v != "" {
@@ -550,12 +557,11 @@ func Supplement(ctx context.Context, path, format string, m importmeta.Metadata)
 			if e == nil {
 				b, _ := io.ReadAll(io.LimitReader(f, TextLimit))
 				f.Close()
-				if !bytes.Contains(b, []byte{0}) {
+				if !bytes.Contains(b, []byte{0}) || bytes.HasPrefix(b, []byte{0xff, 0xfe}) || bytes.HasPrefix(b, []byte{0xfe, 0xff}) {
 					text := visible(b)
 					Merge(&m, FromText(text))
-					name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 					hint := lectureText(name, text)
-					if hint.Title != "" && (MissingAuthors(m.Authors) || (len(m.Authors) == 1 && m.Authors[0] == hint.Authors[0])) {
+					if hint.Title != "" && (MissingAuthors(m.Authors) || strings.Join(m.Authors, " & ") == strings.Join(hint.Authors, " & ")) {
 						if m.Title == "" || m.Title == name {
 							m.Title = hint.Title
 						}
@@ -565,7 +571,6 @@ func Supplement(ctx context.Context, path, format string, m importmeta.Metadata)
 			}
 		}
 	}
-	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	// Filename is last, and only explicit labels supply author/ISBN hints.
 	Merge(&m, FromText(name))
 	if m.Title == "" {

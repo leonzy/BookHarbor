@@ -79,6 +79,10 @@ func MetadataEnrichmentStatus(db *sql.DB, opts ServeOptions, userDB ...*sql.DB) 
 		if e != nil {
 			return nil, e
 		}
-		return map[string]any{"err": "ok", "total_books": total, "files_checked": checked, "files_remaining": remaining, "counts": counts, "network_retries": retries, "network_applied_books": applied, "last_activity_at": latest, "worker_active": expires > time.Now().Unix() && !strings.HasPrefix(owner, "maintenance:") && !strings.HasPrefix(owner, "deployment:"), "network_enabled": settingBool(settings, "auto_fill_meta", false), "local_interval_seconds": 1, "network_interval_seconds": 0, "source_default_interval_seconds": 5, "network_max_concurrency": metadataSourceConcurrency, "sources": sources, "written_books": written, "overwrite_existing": false}, nil
+		lecture, e := lectureRecheckStatus(db)
+		if e != nil {
+			return nil, e
+		}
+		return map[string]any{"err": "ok", "total_books": total, "files_checked": checked, "files_remaining": remaining, "counts": counts, "network_retries": retries, "network_applied_books": applied, "last_activity_at": latest, "worker_active": expires > time.Now().Unix() && !strings.HasPrefix(owner, "maintenance:") && !strings.HasPrefix(owner, "deployment:"), "network_enabled": settingBool(settings, "auto_fill_meta", false), "local_interval_seconds": 1, "network_interval_seconds": 0, "source_default_interval_seconds": 5, "network_max_concurrency": metadataSourceConcurrency, "sources": sources, "written_books": written, "overwrite_existing": false, "lecture_recheck": lecture}, nil
 	}
 }

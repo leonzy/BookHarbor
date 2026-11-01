@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Talebook 内部方案模板：用于记录原始诉求、目标边界、实现方案、风险与测试结果。" />
+    <link rel="icon" href="data:," />
+    <title>已导入讲座TXT的全批次限速复核 · ACTIVE</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><header class="hero"><h1>已导入讲座TXT的全批次限速复核</h1><p>2026-11-01 · booksvr · ACTIVE · 用户要求全部同类TXT重新核查，不覆盖人工，不影响导入/联网补全</p></header><section class="card"><h2>原始诉求与基线</h2><p>数据库索引发现252本有效六位日期+标题-中文姓名TXT，251本尚无核查任务，1本已正确。均无人工字段锁，251本作者佚名。只读预检旧规则仅确认32本，其余常见主讲人简介无冒号、中文冒号姓名、标题空格/标点/上下集及少量多人主讲。不是只回退游标重跑一本。实际发现补充两本文件名尾部有空格的同类TXT，合计254本；比较数据库退回标题时允许其已规范化的首尾空白，来源路径本身仍须完全相同。</p></section><section class="card"><h2>方案与边界</h2><p>新增持久化逐本复核表与独立发现游标，启动时固定book_formats高水位；按主键小批发现，仅数据库一次遍历，不遍历宿主目录。每个正常工作器tick最多额外复核1本，继续正常历史核查、新导入与联网任务，既有游标不回退。状态包含待处理、已修正、原本正确、无正文佐证、人工保护、冲突、来源不可读及删除。重启按游标和账本继续，不重复已完成结果；不可读延后重试，不改来源缺失状态。</p><p>正文验证兼容无冒号的主讲人简介和姓名后冒号；标题匹配可归一化空格/标点及末尾集数，优先独立标题证据与首段主讲人一致；对于同时包含主讲人/人物简介、内容简介分节的讲座导出，姓名明确一致时允许保留文件名中的明确标题，正文若有冲突的《标题》（全文）则拒绝。UTF-16 BOM文本先正确解码。支持主讲简介、姓名内空格、教授/院士后缀与明确院士头衔前置；无标题的简介必须仍有明确姓名和内容简介分节。没有可靠主讲人证据的文件保留并标明原因，不猜作者。多人文件必须从明确人物简介列表取人，不以“等”猜造作者。普通数字/连字符书名不拆。</p><p>只复核TXT；读取ZIP时保留逻辑文件名提示、32MiB与共享临时预算，及时释放。仅在验证成功且身份字段未人工保护时复用现有文件补全流程。改名/补作者按原规则让对应书重排联网，不重置正在运行来源阶段；已有正确书不改其任务状态。已知不同作者或自定义标题无可靠自动来源证据时归冲突，不覆盖。</p><p>管理页增加独立进度和结果分布，沿用当前10秒轮询，无新增全库查询或外部请求。影响localmeta/scan/library schema/httpapi、前端组件与三语言、spec/元数据.md。保留OPDS草稿。</p></section><section class="card"><h2>验证计划</h2><p>验证范围：发现边界/高水位/幂等/恢复、逐本限速、正文证据/无证据/多主讲/人工保护/并发人工保存/不可读不删书、普通文件/ZIP逻辑名、旧正常任务与游标；Go和Linux相关包、前端测试/lint/构建，真实252本核查完成与逐本审计、原文件哈希及进程保持、实际管理页和interface-review full。</p></section><section class="card"><h2>测试结果与部署记录</h2><p>已通过：Windows Go localmeta/httpapi/scan 定向回归（Lecture、ReadMetadataLecture、Metadata、BookRef），四个相关包 go vet；Linux/amd64 普通 talebook 用户、nice19、GOMAXPROCS1、无网络无生产挂载隔离运行 localmeta/library/scan 全包与 httpapi 定向回归。新增最后的文件名尾部空格兼容再次通过 Windows/Linux httpapi 回归。前端 MetadataLectureRecheck 与 MetadataProgress 共14例通过，三语言插值编译通过；两组件 ESLint 无错误，Nuxt generate 成功。部署脚本18例通过，spec25篇通过。构建告警为既有 Browserslist/依赖提示，无构建失败。</p><p>实际部署只替换元数据监听和 SPA；导入 PID95/start17082、阅读 PID22/start13745 均保持。发现游标一次性达到格式快照高水位483025并完成，不回退正常历史游标。修正文件名尾空格后，再次更新元数据进程，队列从原结果44本继续，没有重置；正式运行已完成254本：240本修正、1本原本正确、13本证据不足保留原信息，待处理/不可读/删除均0。逐本核对254份来源路径/大小/mtime/SHA256全部一致，240本修正的标题、作者及来源审计全部通过，13本与原值一致；受保护的16/17书籍及字段锁均未变。正常历史游标从129805继续推进超过130298，导入/阅读进程保持。两本空白误判修正后仅复核15本证据不足记录，恢复2本，未重置238本已修正任务。当前 ELF SHA256：b3dd9e2451f56553d6a01f8f9aa71d9d1c76d6adda217aeefeac14fe85bc03d7。部署仍包含之前未提交的 OPDS 兼容草稿，不将其列为本次提交内容。</p></section><section class="card"><h2>interface-review full</h2><p>按项目要求显式使用 interface-review → better-interface，及六个 owning skills。目标为当前分支相对 origin/main 的全部本地变更：base/head b5be63af，0个未推送提交、27个变更文件，包含未跟踪文件、OPDS草稿、部署脚本及存储迁移文档；不只审新组件。无锁文件、生成产物或二进制进入范围。扩展消费者：MetadataProgress、插件中心、后台进度API与来源限速/人工确认区、书籍详情、OPDS根/分页目录、部署和方案文档。准则为 AGENTS.md、app/CLAUDE.md 与现有 Nuxt/Vuetify 设计惯例。</p><div class="table-wrap" tabindex="0" role="region" aria-label="界面审查结果"><table><thead><tr><th>领域</th><th>证据与边界</th><th>结果</th></tr></thead><tbody><tr><td>Accessibility</td><td>原生details/summary与dl，键盘Enter开关、可见焦点，空/错误/缺省状态、320px渲染；新增接口不提供来源路径</td><td>Clear</td></tr><tr><td>Layout</td><td>真实管理页默认宽与320×760；窄屏document.scrollWidth305≤320、统计区无内部溢出，已恢复viewport</td><td>Clear</td></tr><tr><td>Writing</td><td>八种状态与发现未结束提示，中文/英文/俄文编译及计数，未把未修正称为成功；OPDS机器目录与文档文案静态审查</td><td>Clear</td></tr><tr><td>Typography</td><td>继承Roboto、正文0.875rem、原生折叠标题与计数层级；窄屏换行可读</td><td>Clear</td></tr><tr><td>Colors</td><td>新区域继承rgba黑0.87，实测白色背景，约16:1；不以颜色传递结果。未做全站暗色主题审查</td><td>Clear（仅新区域浅色状态）</td></tr><tr><td>UI</td><td>实际展开/收起、原生箭头/焦点、每10秒沿用轮询，无新增运动/图标库/请求；方案文档仅静态审查，未逐页渲染</td><td>Clear</td></tr></tbody></table></div><p>已核对增删两侧：没有移除人工保护、现有进度/错误提示、旧来源和导入入口。考虑但拒绝：将无证据视为人工确认（没有候选会误导）；额外进度轮询（已有10秒轮询）；为折叠控件增加自制ARIA/动画（原生语义足够）。没有新增或回归的可行动界面问题；没有HIGH/MEDIUM遗留。正式结果与预检逐项比较发现两本姓名后的空白分隔被过度规范化，属于功能回归：改为只跳过姓名内部空白，保留姓名后的分隔，增加尾部空白用例；仅重试本批证据不足的少量记录，不回退正常任务。最终实测254/254与240/1/13状态已在真实管理页核验并截图。最终复核scope仍为全部27份本地变更，已重读最后的空白修正增删侧，无新增/回归界面问题，Verdict: Approve。Chrome DevTools MCP不可用，实际渲染以CUA内置浏览器真实后端完成；未使用mock验收。静态文档与其他OPDS客户端运行状态不宣称已全量渲染验证。</p></section><section class="card"><h2>结果与限制</h2><p>当前同类批次已结束，可在插件中心 → 全库元数据补全 → 讲座TXT书名与作者复核查看结果。截图：C:/Users/leon/bookharbor-lecture-batch-fixed.png。私有逐本审计保存在容器 /data/maintenance/20261101-lecture-batch-recheck/ ，包含来源前后哈希、身份变化及重试前记录，不进入公共仓库。</p><p>13本没有自动改写，不将它们宣称为修正成功：包括无明确主讲人资料、正文与文件名不一致、倒置文件名，以及一份实际为OLE二进制的伪TXT。未放宽为无正文佐证的批量猜作者，也未触碰原文件。未在正式服务上模拟挂载掉线或人为修改读者数据；对应保护以隔离测试与只读生产对照验证。QA容器已验证无生产挂载后移除，临时只读检查ELF也已删除。后台正常补全与导入服务保留。</p><p>生产查询计划：候选发现命中book_formats整数主键范围；复核命中metadata_lecture_due，少量候选排序使用临时B树。发现结束后不再遍历格式表。日志未发现panic、SQL逻辑错误、缺表或数据库锁错误。25篇spec校验通过，221份暂存设计文档校验通过。</p></section></main></body></html>

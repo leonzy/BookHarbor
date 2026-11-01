@@ -247,7 +247,7 @@ func (m *metadataWorker) local(ctx context.Context, id int64, force ...bool) err
 			}
 		}
 		info, e := sourcefile.Stat(path)
-		if e != nil || info.IsDir() {
+		if e != nil || !info.Mode().IsRegular() {
 			continue
 		}
 		metadata, e := scan.ReadMetadata(ctx, path, format)
@@ -263,7 +263,20 @@ func (m *metadataWorker) local(ctx context.Context, id int64, force ...bool) err
 	if !readable {
 		return m.saveJob(id, "file_retry", "来源文件暂不可读、未挂载或超过 ZIP 临时读取预算，未修改来源状态", time.Hour)
 	}
-	changed, err := library.FillMissingMetadata(m.w.libraryDB, id, found, "file")
+	return m.applyLocalMetadata(id, found, existing)
+}
+
+func (m *metadataWorker) applyLocalMetadata(id int64, found importmeta.Metadata, existing string, expected ...map[string]string) error {
+	var changed []string
+	var err error
+	if len(expected) > 0 {
+		changed, err = library.FillMissingMetadataGuarded(m.w.libraryDB, id, found, expected[0], "file")
+		if err == nil && changed == nil {
+			return nil
+		}
+	} else {
+		changed, err = library.FillMissingMetadata(m.w.libraryDB, id, found, "file")
+	}
 	if err == sql.ErrNoRows {
 		return nil
 	}
@@ -314,6 +327,9 @@ func (m *metadataWorker) step(ctx context.Context) error {
 	if err := m.reclassifyReviewBatch(); err != nil {
 		return err
 	}
+	if err := m.discoverLectureRechecks(); err != nil {
+		return err
+	}
 	id, cursor, err := m.nextBook()
 	if err != nil {
 		return err
@@ -340,7 +356,7 @@ func (m *metadataWorker) step(ctx context.Context) error {
 		}
 	}
 
-	return nil
+	return m.recheckLectureOne(ctx)
 }
 
 func normalizeMetadataName(s string) string {
