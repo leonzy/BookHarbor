@@ -152,32 +152,28 @@ func TestXhsdBuildMetadata(t *testing.T) {
 	})
 
 	t.Run("no_author", func(t *testing.T) {
-		mi := src.BuildMetadata(&XhsdBookInfo{Title: "T", ISBN: "1"}, false)
+		mi := src.BuildMetadata(&XhsdBookInfo{Title: "T", ISBN: "9787536692930"}, false)
 		if !reflect.DeepEqual(mi["authors"], []any{"佚名"}) {
 			t.Errorf("authors = %v", mi["authors"])
 		}
 	})
 
 	t.Run("empty_author", func(t *testing.T) {
-		mi := src.BuildMetadata(&XhsdBookInfo{Title: "T", Author: "", ISBN: "1"}, false)
+		mi := src.BuildMetadata(&XhsdBookInfo{Title: "T", Author: "", ISBN: "9787536692930"}, false)
 		if !reflect.DeepEqual(mi["authors"], []any{"佚名"}) {
 			t.Errorf("authors = %v", mi["authors"])
 		}
 	})
 
 	t.Run("no_isbn", func(t *testing.T) {
-		mi := src.BuildMetadata(&XhsdBookInfo{Title: "T", Author: "A"}, false)
-		if mi["isbn"] != XhsdISBN {
-			t.Errorf("isbn = %v, want %s", mi["isbn"], XhsdISBN)
-		}
-		// provider_value 取原始 ISBN（空），不回落到占位符。
-		if mi["provider_value"] != "" {
-			t.Errorf("provider_value = %v, want 空串", mi["provider_value"])
+		mi := src.BuildMetadata(&XhsdBookInfo{Title: "T", Author: "A", URL: "https://item.xhsd.com/1"}, false)
+		if mi["isbn"] != "" || mi["provider_value"] != "https://item.xhsd.com/1" {
+			t.Fatal("missing ISBN needs a usable product identifier, not a placeholder", mi)
 		}
 	})
 
 	t.Run("no_cover", func(t *testing.T) {
-		mi := src.BuildMetadata(&XhsdBookInfo{Title: "T", Author: "A", ISBN: "1"}, false)
+		mi := src.BuildMetadata(&XhsdBookInfo{Title: "T", Author: "A", ISBN: "9787536692930"}, false)
 		if mi["cover_url"] != "" {
 			t.Errorf("cover_url = %v, want 空串", mi["cover_url"])
 		}

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Talebook 内部方案模板：用于记录原始诉求、目标边界、实现方案、风险与测试结果。" />
+    <link rel="icon" href="data:," />
+    <title>〔方案标题〕 · WIP</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><header class="hero"><h1>新华书店无ISBN候选的稳定标识与设置修复</h1><p>2026-11-01 · booksvr · ACTIVE · 用户在14456《自由与毁灭》选择新华书店候选，报“请选择来源和图书”</p></header><section class="card"><h2>原始诉求与证据</h2><p>候选有标题/封面/作者/出版社，却没有结构化ISBN。既有BuildMetadata把实际ISBN直接用作provider_value，缺失时为空；设置接口要求标识非空，所以在执行前即拒绝。这与来源网络失败无关。</p></section><section class="card"><h2>方案与边界</h2><p>优先以实际有效ISBN标识商品；ISBN缺失/无效时，用受信任的https://item.xhsd.com商品详情地址作备用标识。ISBN字段保持空，不回填查询参数或伪造占位ISBN。Fetch同时支持原ISBN和受信任详情地址；限制协议、域名、端口、凭据及fragment，不放开任意URL抓取；没有可用ISBN/商品地址的候选不发布。</p><p>保留标题/作者/版本相关性检查、代理封面主机限制和人工修改保护。用户明确选定的14456新华候选在修复后进行实际设置验收，保存前记录现有元数据/封面，不改变别的书与后台任务。涉及metasource/xhsd.go、Go测试与spec/插件/元数据源.md；无前端字段/交互改动。保留OPDS草稿。</p></section><section class="card"><h2>验证计划</h2><p>验证覆盖：真实ISBN优先、无ISBN但有效详情URL的搜索→取详情→设置、无效来源拒绝、查询ISBN不当作返回ISBN、无身份候选不发布；既有元数据/版本/封面回归、Linux相关包、vet、真实14456设置与封面，导入/阅读进程及元数据游标保持；完整本地差异interface-review full。</p></section><section class="card"><h2>测试与生产验收</h2><p>Windows新华来源及受信任地址用例、BookReference接口回归通过；metasource与metabase整包通过。pluginbuiltin整包的既有WatchFolder增量用例在Windows因本地路径语义失败，因此用部署目标Linux复核：metasource整包、pluginbuiltin整包、HTTP中所有BookRef与Metadata用例均通过。测试在无生产挂载/无网络、1CPU/768MiB隔离容器以普通用户执行。go vet -p3 ./internal/metasource ./internal/httpapi通过。spec检查25篇通过，无前端源代码改动，不重复前端构建。</p><p>新增测试覆盖真实有效ISBN优先、格式化ISBN规范化、无ISBN的商品地址搜索→详情往返、查询ISBN只出现在HTML时不作为出版ISBN、原ISBN查询兼容、无可用标识不发布。拒绝陌生域名/相似域名/HTTP/非443端口/凭据/fragment/根地址/私有地址且不发送网络请求。HTTP回归用真正的XhsdSource.BuildMetadata生成无ISBN候选，经现有运行时与bookRefer设置成功，原书文件内容保持。</p><p>部署SHA256 8ad441185f6460536b802e79fc837acdae912da321cdbb9f7aea3f22bcf0c72f，只更新元数据维护服务。主导入PID95/start17082、阅读PID22/start13745保持；游标从124327推进至124381，初始/新增游标439973、历史分类标志保持。样本16/17人工字段/锁、源文件路径/大小/mtime/哈希保持。无容器重建。测试容器已清理。</p><p>真实用户书14456：先保存元数据/锁/格式与源文件哈希、已有管理封面到本地bookharbor-xinhua-book14456-before.json；重新搜索得到商品https://item.xhsd.com/items/110000100268477，作者(澳)彼得·麦克菲、出版社中信出版社。按用户选择点击“设置书籍信息及图片”成功：标题自由与毁灭(法国大革命1789-1799)(精)，作者/出版社/简介更新，封面实际更换。原有效ISBN9787508697536保留，EPUB源路径、4.7MiB文件哈希、格式登记均保持；人工保护字段集合未减少。操作后保存在after.json。没有把无ISBN候选变成伪ISBN。桌面实际截图C:/Users/leon/bookharbor-xinhua-setting-fixed.png，未将单测mock当作生产体验。</p></section>
+<section class="card"><h2>interface-review full：Scope and Coverage</h2><p>显式执行interface-review full，以better-interface及六个已读取领域技能审查。origin/main=HEAD=856581ad3b8d4b312b6eb238ad07f8c47639f22b，领先提交0；全本地15文件（8已跟踪、7新文件），包含本次来源/接口测试/规格/方案和旧OPDS、部署脚本、用户存储草稿，没有生成物或锁文件排除。git merge-base、rev-list、diff、status、ls-files只读；未fetch、切换、stash或worktree，无审查过程.git写入。遵循AGENTS.md与元数据源规格。消费者扩展五类：互联网候选弹窗、应用后书籍详情、后台来源任务、OPDS导航流程、离线方案文档；其他插件界面不展开。增删两侧均读过；不移除界面文字/语义/焦点。</p><table><thead><tr><th>领域</th><th>证据</th><th>结果</th></tr></thead><tbody><tr><td>Accessibility</td><td>控件/标签/焦点/键盘未改变，复用已有设置菜单</td><td>Not reviewed: no evidence in the change scope</td></tr><tr><td>Layout</td><td>无模板和布局改动</td><td>Not reviewed: no evidence in the change scope；默认实际页面未溢出</td></tr><tr><td>Writing</td><td>ISBN缺失不编造占位，空标识候选不再发布；规格与既有错误状态</td><td>Clear</td></tr><tr><td>Typography</td><td>未改字体/字阶/数字排版</td><td>Not reviewed: no evidence in the change scope</td></tr><tr><td>Colors</td><td>未改主题或颜色</td><td>Not reviewed: no evidence in the change scope</td></tr><tr><td>UI</td><td>真实候选搜索/菜单/应用成功/详情刷新与封面显示；无标识/失败场景Go测试</td><td>Clear，未声称所有来源无失败</td></tr></tbody></table><h3>Findings</h3><p>No actionable interface findings in this change. 无Introduced/Regression HIGH/MEDIUM/LOW。</p><h3>Considered but Rejected</h3><p>只隐藏所有无ISBN候选：商品详情有可靠来源标识，不应失去可选结果。用查询ISBN补标识及字段：无法证明商品实际ISBN，保留独立证据。接受任意网址当标识：超出来源权限，限定新华商品域名并沿用安全HTTP策略。</p><h3>Verification</h3><p>实际14456页面操作、源文件及已有ISBN/保护核对通过；Linux来源/插件整包、接口与元数据回归、vet及规格检查通过。Chrome DevTools MCP不可用，使用现有CUA内置浏览器验证真实Docker后端。未验证深色/窄屏/200%缩放（未改前端），OPDS真机分页仍是独立未完成任务。暫存方案快照在提交前检查，不纳入其他WIP。</p><h3>Verdict</h3><p>Approve。已宣称的覆盖通过，未测试状态已列出。</p><details><summary>完整本地清单</summary><pre> M booksvr/internal/httpapi/opds.go
+ M booksvr/internal/httpapi/opds_test.go
+ M booksvr/internal/metasource/xhsd.go
+ M booksvr/internal/metasource/xhsd_test.go
+ M scripts/deploy_metadata_enrichment.py
+ M &quot;spec/\345\244\226\351\203\250\350\256\277\351\227\256.md&quot;
+ M &quot;spec/\346\217\222\344\273\266/\345\205\203\346\225\260\346\215\256\346\272\220.md&quot;
+ M tests/test_deploy_metadata_enrichment.py
+?? booksvr/internal/httpapi/opds_pages.go
+?? booksvr/internal/httpapi/opds_pages_test.go
+?? booksvr/internal/httpapi/xinhua_reference_test.go
+?? booksvr/internal/metasource/xhsd_identity_test.go
+?? design/booksvr/20261030-opds-page-directories.wip.html
+?? design/booksvr/20261101-xinhua-candidate-identity.wip.html
+?? design/docker/20261025-storage-migration.active.html
+</pre></details></section></main></body></html>

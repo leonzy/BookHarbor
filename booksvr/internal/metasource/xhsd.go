@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"talebook/booksvr/internal/htmlx"
+	"talebook/booksvr/internal/localmeta"
 	"talebook/booksvr/internal/metabase"
 	"talebook/booksvr/internal/safehttp"
 )
@@ -397,7 +398,7 @@ func xhsdAttrGroups(data map[string]any) []map[string]any {
 
 // BuildMetadata 复刻 _metadata。
 func (s *XhsdSource) BuildMetadata(info *XhsdBookInfo, copyImage bool) map[string]any {
-	if info.Title == "" {
+	if info == nil || info.Title == "" {
 		return nil
 	}
 
@@ -406,9 +407,13 @@ func (s *XhsdSource) BuildMetadata(info *XhsdBookInfo, copyImage bool) map[strin
 		author = "佚名"
 	}
 
-	isbn := info.ISBN
-	if isbn == "" {
-		isbn = XhsdISBN
+	isbn := localmeta.ISBN(info.ISBN)
+	identity := isbn
+	if identity == "" {
+		identity = trustedXhsdDetailURL(info.URL)
+	}
+	if identity == "" {
+		return nil
 	}
 
 	mi := map[string]any{
@@ -423,7 +428,7 @@ func (s *XhsdSource) BuildMetadata(info *XhsdBookInfo, copyImage bool) map[strin
 		"website":        info.URL,
 		"source":         "新华书店",
 		"provider_key":   XhsdKey,
-		"provider_value": info.ISBN,
+		"provider_value": identity,
 	}
 
 	coverURL := info.Cover
@@ -484,9 +489,28 @@ func (s *XhsdSource) GetCover(coverURL string, copyImage bool) *metabase.CoverRe
 	return &metabase.CoverResult{Extension: imgFmt, Content: img}
 }
 
-// Fetch 复刻 _fetch：按 ISBN 精确查询。
+// Product URLs identify records whose detail page does not expose an ISBN.
+// Keep this independent from ISBN evidence and restrict fetches to the product host.
+func trustedXhsdDetailURL(value string) string {
+	u, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || !strings.EqualFold(u.Scheme, "https") || u.Opaque != "" || u.User != nil ||
+		!strings.EqualFold(u.Hostname(), "item.xhsd.com") || (u.Port() != "" && u.Port() != "443") ||
+		u.Fragment != "" || u.Path == "" || u.Path == "/" {
+		return ""
+	}
+	u.Scheme, u.Host = "https", "item.xhsd.com"
+	return u.String()
+}
+
+// Fetch supports ISBN identifiers and trusted product URLs without inventing ISBNs.
 func (s *XhsdSource) Fetch(externalID string, copyImage bool) map[string]any {
-	return s.GetBookByISBN(externalID, copyImage)
+	if detailURL := trustedXhsdDetailURL(externalID); detailURL != "" {
+		return s.BuildMetadata(s.parseDetailPage(detailURL, ""), copyImage)
+	}
+	if isbn := localmeta.ISBN(externalID); isbn != "" {
+		return s.GetBookByISBN(isbn, copyImage)
+	}
+	return nil
 }
 
 // Search 复刻 _search：优先 ISBN，其次标题（标题非 13 位 ISBN 时会被 get_book 跳过）。
