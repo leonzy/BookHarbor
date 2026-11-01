@@ -50,6 +50,68 @@ func TestTxtReaderInitializesAndReadsChapters(t *testing.T) {
 	}
 }
 
+func TestTxtPrintedTOCPointsToLaterBodyAndKeepsEveryByte(t *testing.T) {
+	titles := []string{"第一章 开始", "第二章 继续", "第三章 转折", "第四章 结尾"}
+	text := "作品简介\n"
+	for _, title := range titles {
+		text += title + "\n\n"
+	}
+	text += "目录后的短说明\n"
+	for i, title := range titles {
+		text += title + " \n"
+		if i == 0 {
+			text += "第一卷 组织篇\n"
+		}
+		text += strings.Repeat("真实正文", 30) + "\n"
+	}
+	chapters := txtChapters(text)
+	if len(chapters) != 5 {
+		t.Fatal(chapters)
+	}
+	var restored strings.Builder
+	for i, c := range chapters {
+		start, end := c["start"].(int), c["end"].(int)
+		restored.WriteString(text[start:end])
+		if i > 0 && !strings.Contains(text[start:end], "真实正文") {
+			t.Fatal("TOC entry still used as chapter", c)
+		}
+		if i > 0 && start != chapters[i-1]["end"] {
+			t.Fatal("non-contiguous offsets")
+		}
+	}
+	if restored.String() != text {
+		t.Fatal("source bytes lost")
+	}
+}
+
+func TestTxtPrintedTOCDoesNotHideRealRepeatedOrShortChapters(t *testing.T) {
+	for _, body := range []string{strings.Repeat("真正的章节内容", 30), "短诗"} {
+		text := ""
+		for n := 0; n < 2; n++ {
+			for _, title := range []string{"第一章 开始", "第二章 继续", "第三章 结束"} {
+				text += title + "\n" + body + "\n"
+			}
+		}
+		if got := txtPrintedTOC(text); len(got) != 0 {
+			t.Fatal("real repeat mistaken for TOC", got)
+		}
+	}
+	late := strings.Repeat("序文", 33000) + "\n第一章\n第二章\n第三章\n"
+	for _, title := range []string{"第一章", "第二章", "第三章"} {
+		late += title + "\n" + strings.Repeat("正文", 80) + "\n"
+	}
+	if got := txtPrintedTOC(late); len(got) != 0 {
+		t.Fatal("middle-of-book headings treated as front matter", got)
+	}
+	text := strings.Repeat("第一章\n第二章\n第三章\n", 2)
+	if got := txtPrintedTOC(text); len(got) != 0 {
+		t.Fatal("empty source invented a body", got)
+	}
+	if got := txtPrintedTOC("第一章\n\n第一章\n" + strings.Repeat("正文", 80)); len(got) != 0 {
+		t.Fatal("isolated repeat removed", got)
+	}
+}
+
 func TestTxtInitVisibilityAndGuestPermission(t *testing.T) {
 	w, db := newWriteFixture(t)
 	owner := seedReader(t, db, "txt-owner", "test-password", true, true)

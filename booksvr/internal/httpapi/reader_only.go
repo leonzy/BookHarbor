@@ -39,7 +39,7 @@ func newReaderOnlyDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher
 	var specs []RouteSpec
 	for _, spec := range BookRouteSpecs(wiring.Config(opts.CDNURL)) {
 		switch spec.Pattern {
-		case rBookRead, rBookReaderBoot, rBookReaderRes:
+		case rBookRead, rBookReaderBoot, rBookReaderRes, rBookTxtInit, rBookTxtRead:
 			specs = append(specs, spec)
 		}
 	}

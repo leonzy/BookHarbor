@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Talebook 内部方案模板：用于记录原始诉求、目标边界、实现方案、风险与测试结果。" />
+    <link rel="icon" href="data:," />
+    <title>TXT印刷目录与正文重名章节识别 · ACTIVE</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><header class="hero"><h1>TXT印刷目录与正文重名章节识别</h1><p>2026-11-01 · booksvr · ACTIVE · 用户反馈170091各章只有标题，检查同类TXT</p></header><section class="card"><h2>原始诉求与证据</h2><p>原文件332451字节，GB18030，约17万字，前置66节目录与后面真实章节重名。原解析145个标题，前66项大多空白。同目录175本，已抽查160本的前512KiB，至少4本有密集空目录与后续正文重复。剩余15本检查完成，没有新增命中。175本均按最多512KiB只读检查，这不是对全库TXT的完整内容审计；规则自动适用于其他同格式书籍。</p></section><section class="card"><h2>方案与边界</h2><p>章节生成时只忽略前64KiB内开始的密集前置目录段：至少3个连续标题均在后文再次出现，其中至少3个后文有80个非空白字符，且前段至少2/3项没有正文。目录段中的短正文/部分说明保留在前言区；不删除任何原文、不改UTF-8字节偏移。普通重复卷章、短诗、单个重复标题、只有空目录的残缺文件不能凭重复标题合并。有已确认印刷目录时，连续且没有自有正文的父级标题与后继标题合并为一个阅读段，保留父标题导航及全部原文，避免篇/章切分仍留下空页面。保留原来的长文本分段、权限、人机验证与HTML转义。</p><p>复用reader-only增加TXT目录与正文两条现有路由及原有方法，不增加写书操作或迁移。部署新独立8005只读阅读监听，仅代理/api/book/txt/init与/api/read/txt；不停止导入、元数据或现有阅读监听。新ELF存入/data，Supervisor自动恢复。保存旧Nginx配置并校验，失败回滚。无需数据库批改或重导入。</p><p>影响txt_reader.go、reader_only.go、对应测试与spec/阅读器.md。保留OPDS、部署脚本等已有草稿，不提交它们。</p></section><section class="card"><h2>测试结果</h2><p>Windows通过 go test -p3 ./internal/httpapi -run ^TestTxt -count=1 和 go vet ./internal/httpapi。Linux/amd64隔离QA无生产挂载、network none、普通talebook/nice19/GOMAXPROCS1，运行 ^TestTxt|^TestReaderOnly|^TestNativeReader|^TestMetadata 全部通过。Windows现有TestReaderOnlyExistingDatabaseDoesNotMigrateOrCreate在新增路由构造之前的SQLite元表查询报out of memory；同项在生产同平台Linux通过，不将Windows该项宣称通过。新增用例覆盖密集目录、保留短说明、父子标题合并、字节连续不丢失、普通真实重复章节和短诗不误合并、空源不能伪造正文、64KiB以外不按前置目录处理；既有GB18030/HTML转义/访客私藏权限回归通过。
+</p><p>实测接口：170014/170034/170091/170095分别30/37/75/35段，4本均无空正文段，UTF-8范围从0连续覆盖666280/215273/488893/141140字节。每本首/中/末3个HTTP分段与完整正文对应字节一致。170091由146项降至75段；66个前置目录项与5个无自有正文的层级标题不再产生空页。真实浏览器打开第1节，正文正常显示；截图C:/Users/leon/bookharbor-txt-toc-fixed.png。原导入95/start17082、元数据35012及原阅读22/start13745进程保持，4份原TXT大小/mtime/SHA256一致。独立TXT只读监听8005常驻，现有8004补全和8002阅读未停止。部署ELF SHA256：daffeaab24d1273ee2ad88845b08ce02199cfb6febcc3716cc0f32122f6c3286；含已有未提交OPDS草稿，不计入本次提交。Nginx语法检查和两条精确路由验证通过，失败有配置回滚。</p></section><section class="card"><h2>interface-review full</h2><p>使用interface-review → better-interface及六个owner，范围当前分支相对origin/main的所有本地变化：base/head 8a0cae1c，0个未推送提交，14个变更文件（含OPDS及部署脚本草稿、未跟踪存储文档），未缩减为本次5个文件。无生成文件、锁文件或二进制进入范围。遵循AGENTS.md与现有Nuxt/Vuetify；检查增删两侧，扩展TXT阅读页/目录/正文API/reader-only权限与验证码、OPDS导航和分页、部署配置及方案文档。</p><p>Accessibility：新数据保留同一标题/范围结构、HTML转义和既有目录控件，实际点击第1节、阅读正文可达；没有新增控件、删除语义或新ARIA，Clear（非全站可访问性审计）。Layout：目录从146项减少，真实默认视口正文/导航可用，Clear；没有CSS变更，未另测所有主题或窄屏样式。Writing：保留原书标题与前言，章节指向真实正文，不将目录不足文件伪造为完整内容，Clear。Typography、Colors、UI动效：Not reviewed: no evidence in the change scope，没有新增字体、配色或动画规则；实际阅读截图只证明内容可见。未渲染全部静态设计文档。OPDS草稿沿用先前全量静态审查，不宣称所有外部客户端运行验证。</p><p>考虑并拒绝：直接删除原书目录（会改源内容）；全局按标题去重（会误合并真实重复卷章/短诗）；把前言自动跳过（会改变已有阅读内容）。原样保留普通书行为。没有新增或回归的HIGH/MEDIUM问题，No actionable interface findings in this change，Verdict: Approve。Chrome DevTools MCP不可用，真实渲染使用CUA。风险：没有重复正文证据的其他目录版式可能仍保留；未扫描全库原文件，也未在生产模拟挂载掉线。未改数据库元数据、原文件或导入/补全游标。</p></section></main></body></html>
