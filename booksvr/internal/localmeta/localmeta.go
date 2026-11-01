@@ -551,7 +551,16 @@ func Supplement(ctx context.Context, path, format string, m importmeta.Metadata)
 				b, _ := io.ReadAll(io.LimitReader(f, TextLimit))
 				f.Close()
 				if !bytes.Contains(b, []byte{0}) {
-					Merge(&m, FromText(visible(b)))
+					text := visible(b)
+					Merge(&m, FromText(text))
+					name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+					hint := lectureText(name, text)
+					if hint.Title != "" && (MissingAuthors(m.Authors) || (len(m.Authors) == 1 && m.Authors[0] == hint.Authors[0])) {
+						if m.Title == "" || m.Title == name {
+							m.Title = hint.Title
+						}
+						Merge(&m, hint)
+					}
 				}
 			}
 		}

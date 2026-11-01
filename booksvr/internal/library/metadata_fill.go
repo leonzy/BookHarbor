@@ -205,6 +205,29 @@ func fillMissingMetadata(db *sql.DB, id int64, m importmeta.Metadata, expected m
 			changed = append(changed, "authors")
 		}
 	}
+	if len(origin) > 0 && origin[0] == "file" && !locks["title"] {
+		var oldTitle string
+		if err := json.Unmarshal([]byte(before["title"]), &oldTitle); err != nil {
+			return nil, err
+		}
+		title, author := localmeta.DatedLectureFilename(oldTitle)
+		if title != "" && m.Title == title && len(m.Authors) == 1 && m.Authors[0] == author {
+			var currentAuthor string
+			var work sql.NullInt64
+			if err = tx.QueryRow(`SELECT coalesce(author_sort,''),work_id FROM books WHERE id=?`, id).Scan(&currentAuthor, &work); err != nil {
+				return nil, err
+			}
+			if currentAuthor == author {
+				changedTitle, e := repairTitleTx(tx, id, oldTitle, title, author, work)
+				if e != nil {
+					return nil, e
+				}
+				if changedTitle {
+					changed = append(changed, "title")
+				}
+			}
+		}
+	}
 	for _, f := range []struct{ field, value, table, col, link, linkcol string }{
 		{"publisher", m.Publisher, "publishers", "name", "books_publishers_link", "publisher"},
 		{"language", m.Language, "languages", "lang_code", "books_languages_link", "lang_code"},

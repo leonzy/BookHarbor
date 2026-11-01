@@ -15,9 +15,17 @@ func RepairTitle(db *sql.DB, id int64, oldTitle, newTitle, expectedAuthor string
 		return false, err
 	}
 	defer tx.Rollback()
+	ok, err := repairTitleTx(tx, id, oldTitle, newTitle, expectedAuthor, expectedWork)
+	if err != nil || !ok {
+		return ok, err
+	}
+	return true, tx.Commit()
+}
+
+func repairTitleTx(tx *sql.Tx, id int64, oldTitle, newTitle, expectedAuthor string, expectedWork sql.NullInt64) (bool, error) {
 	var title, author string
 	var work sql.NullInt64
-	if err = tx.QueryRow(`SELECT title, coalesce(author_sort,''), work_id FROM books WHERE id=?`, id).Scan(&title, &author, &work); err != nil {
+	if err := tx.QueryRow(`SELECT title, coalesce(author_sort,''), work_id FROM books WHERE id=?`, id).Scan(&title, &author, &work); err != nil {
 		return false, err
 	}
 	if title != oldTitle || author != expectedAuthor || work != expectedWork {
@@ -25,7 +33,7 @@ func RepairTitle(db *sql.DB, id int64, oldTitle, newTitle, expectedAuthor string
 	}
 	now := time.Now().Unix()
 	key := normalize.WorkKey(newTitle, author)
-	_, err = tx.Exec(`INSERT INTO works(title_norm,author_norm,work_key,display_title,display_author,created_at,updated_at)
+	_, err := tx.Exec(`INSERT INTO works(title_norm,author_norm,work_key,display_title,display_author,created_at,updated_at)
 	VALUES(?,?,?,?,?,?,?) ON CONFLICT(work_key) DO NOTHING`, normalize.NormalizeTitle(newTitle), normalize.NormalizeAuthor(author), key, newTitle, author, now, now)
 	if err != nil {
 		return false, err
@@ -38,5 +46,5 @@ func RepairTitle(db *sql.DB, id int64, oldTitle, newTitle, expectedAuthor string
 	if err != nil {
 		return false, err
 	}
-	return true, tx.Commit()
+	return true, nil
 }

@@ -272,7 +272,7 @@ func (m *metadataWorker) local(ctx context.Context, id int64, force ...bool) err
 	}
 	identityChanged := false
 	for _, field := range changed {
-		if field == "isbn" || field == "authors" {
+		if field == "title" || field == "isbn" || field == "authors" {
 			identityChanged = true
 		}
 	}
