@@ -13,7 +13,7 @@ var titleDecoration = regexp.MustCompile(`[（(【\[][^(）)】\]]*[）)】\]]`)
 func titleForms(title string) []string {
 	title = localmeta.FilenameTitle(title)
 	clean := titleDecoration.ReplaceAllString(title, "")
-	forms := []string{normalizeMetadataName(title), normalizeMetadataName(clean)}
+	forms := []string{normalizeMetadataName(title), normalizeMetadataName(clean), normalizeMetadataName(localmeta.SearchTitle(title))}
 	for _, v := range []string{title, clean} {
 		for _, part := range strings.FieldsFunc(v, func(r rune) bool { return r == ':' || r == '：' || r == '/' || r == '｜' }) {
 			if s := normalizeMetadataName(part); s != "" {

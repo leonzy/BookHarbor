@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 
+	"talebook/booksvr/internal/localmeta"
 	"talebook/booksvr/internal/plugindomain"
 	"talebook/booksvr/internal/pluginiface"
 	"talebook/booksvr/internal/pluginproto"
@@ -447,7 +448,7 @@ func pluginBookQuery(ctx *Context) (map[string]any, error) {
 	}
 
 	query := map[string]any{
-		"title":     pluginTruncate(strings.TrimSpace(pluginStr(raw["title"])), 300),
+		"title":     pluginTruncate(localmeta.SearchTitle(pluginStr(raw["title"])), 300),
 		"isbn":      pluginTruncate(strings.TrimSpace(pluginStr(raw["isbn"])), 64),
 		"publisher": pluginTruncate(strings.TrimSpace(pluginStr(raw["publisher"])), 300),
 	}

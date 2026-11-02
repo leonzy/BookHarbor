@@ -401,7 +401,7 @@ func matchingMetadata(book library.BookData, candidates []map[string]any) map[st
 			continue
 		}
 		match := current != "" && current == isbn
-		if !match && normalizeMetadataName(localmeta.FilenameTitle(book.Title)) == normalizeMetadataName(localmeta.FilenameTitle(stringOf(candidate["title"]))) && !localmeta.MissingAuthors(book.Authors) {
+		if !match && normalizeMetadataName(localmeta.SearchTitle(book.Title)) == normalizeMetadataName(localmeta.SearchTitle(stringOf(candidate["title"]))) && !localmeta.MissingAuthors(book.Authors) {
 			for _, a := range book.Authors {
 				if localmeta.UnknownAuthor(a) {
 					continue
