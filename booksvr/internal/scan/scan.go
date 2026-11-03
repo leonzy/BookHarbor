@@ -8,6 +8,7 @@
 package scan
 
 import (
+	"context"
 	"crypto/md5"
 	"crypto/sha256"
 	"database/sql"
@@ -19,6 +20,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"talebook/booksvr/internal/importmeta"
@@ -229,6 +231,8 @@ type Result struct {
 
 // Service 复刻 ScanService 的扫描部分。
 type Service struct {
+	directoryTask      atomic.Pointer[activeDirectoryTask]
+	CheckDirectoryRoot func(context.Context, string) error
 	// DB 是用户库句柄。
 	DB *sql.DB
 	// LibraryDB 是书库句柄，用于重复检测；为 nil 时跳过重复检测。
@@ -245,9 +249,10 @@ type Service struct {
 	// SavedImportMode 是配置中已保存的导入模式（index/copy/move）。
 	SavedImportMode string
 	// Clock 可注入，便于测试；为 nil 时用 time.Now。
-	Clock      func() time.Time
-	progressMu sync.RWMutex
-	progress   Progress
+	Clock       func() time.Time
+	progressMu  sync.RWMutex
+	directoryMu sync.Mutex
+	progress    Progress
 	// Now 返回当前时间字符串。
 	now func() string
 }
@@ -399,7 +404,7 @@ func (s *Service) processFileRow(row *userdb.ScanFile, filePath string) (string,
 	}
 
 	// 媒体分析：签名、容器结构与资源预算。
-	format := strings.ToLower(strings.TrimPrefix(filepath.Ext(row.Path), "."))
+	format := scanRowFormat(row, row.Path)
 	analysisBefore, _ := os.Stat(filePath)
 	analysis, err := media.AnalyzeFile(filePath, format)
 	if err != nil {

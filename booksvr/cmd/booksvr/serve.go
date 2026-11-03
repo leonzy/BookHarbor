@@ -288,6 +288,7 @@ func runServe(args []string, out io.Writer) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	return httpapi.Serve(ctx, httpapi.ServeOptions{
+		PersistentScan:     true,
 		ReaderOnly:         opts.ReaderOnly,
 		PluginFeaturesOnly: opts.PluginFeaturesOnly,
 		MetadataOnly:       opts.MetadataOnly,

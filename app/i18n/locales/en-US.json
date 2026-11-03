@@ -852,11 +852,11 @@
       },
       "message": {
         "importDirInfo": "Please put books in {0} directory. Supported formats: azw/azw3/epub/mobi/pdf/txt/djvu/uvz/cbz/zip/cbr/rar.",
-        "fullScanRunning": "Scanning in the background. Full imports automatically add discovered books. For a scan-only task, use Import all to queue automatic importing.",
+        "fullScanRunning": "Scanning directories. Completed results are retained.",
         "importRunning": "Importing books automatically in the background. You can close this page.",
         "scanProgress": "Current scan directory: {0} candidate files processed, {1} ZIP archives opened, {2} failures.",
         "fullImportQueued": "Full import queued. Scanning and importing will continue after the current task. No further clicks are needed.",
-        "importAsyncInfo": "No selection needed. Import all scans every configured directory and imports books in the background, including pending discoveries. ZIP files are unpacked automatically and retained. The task continues after you close this page.",
+        "importAsyncInfo": "No selection is needed. Import all processes pending records, then checks import directories incrementally. Tasks and directory snapshots are retained. ZIP members are extracted temporarily one at a time; originals stay in place.",
         "calibreInfo": "You can also use Calibre software (https://calibre-ebook.com/), but restart web service after use.",
         "selectFilesInfo": "Use Import all without selecting books, or select specific books if needed.",
         "selectedCount": "Selected: {0}",
@@ -983,6 +983,50 @@
         "failed": "The task failed. Check the failed records before retrying.",
         "stopPending": "Stopping",
         "paused": "Paused"
+      },
+      "incremental": {
+        "target": "Scan only this directory (optional)",
+        "targetHint": "Leave empty for all import directories, or enter a container path such as /books1/collection.",
+        "resume": "Continue previous task",
+        "scan": "Incremental scan",
+        "full": "Full check…",
+        "fullHint": "Enumerate all files in the selected scope to check additions and changes. Existing books are retained and will not be imported again. This may take time.",
+        "allDirectories": "All import directories",
+        "cancel": "Cancel",
+        "startFull": "Start full check",
+        "progress": "Directory scan progress",
+        "baselineHint": "This scope has no directory snapshot yet. Creating the initial baseline can be paused and resumed. Later incremental scans skip unchanged directories.",
+        "eventGap": "Some filesystem events may be missing. A manual full check can detect files overwritten while monitoring was unavailable.",
+        "countHint": "Check counts are cumulative and may include rechecks after a directory changes. Passed checks do not mean imported books; imported books are deduplicated.",
+        "mode": {
+          "incremental": "Incremental scan",
+          "baseline": "Creating directory baseline",
+          "full": "Full check"
+        },
+        "state": {
+          "queued": "Queued",
+          "running": "Running",
+          "paused": "Paused; can continue",
+          "waiting": "Waiting for directory recovery",
+          "failed": "Failed; can retry",
+          "done": "Completed"
+        },
+        "phase": {
+          "scanning": "Checking files",
+          "importing": "Importing batch"
+        },
+        "count": {
+          "directories": "Directories checked",
+          "enumerated": "Directories read",
+          "pending": "Pending directories / paths",
+          "files": "Files checked",
+          "ready": "Passed checks",
+          "imported": "Books imported",
+          "skipped": "Existing / duplicate files skipped",
+          "failed": "Failed / unreadable"
+        },
+        "resumeTargetHint": "Leave empty to continue the previous task, or enter another import directory.",
+        "fullTitle": "Full check"
       }
     },
     "settings": {
@@ -2434,18 +2478,18 @@
     "member": "Path inside ZIP:"
   },
   "lectureRecheck": {
-      "title": "Lecture TXT title and author recheck",
-      "progress": "Checked {checked} / {total} books",
-      "completeDiscovery": "Candidate discovery complete",
-      "discovering": "Discovering candidates; the total may increase",
-      "pending": "Pending",
-      "repaired": "Repaired",
-      "correct": "Already correct",
-      "no_evidence": "Insufficient body evidence",
-      "protected": "Manual edits protected",
-      "conflict": "Conflicting information preserved",
-      "unreadable": "Source unreadable; retry pending",
-      "deleted": "Book deleted",
-      "explanation": "Only supported title and author corrections are applied. Insufficient evidence and conflicts preserve existing information. Unreadable sources are retried without deleting books. Import and metadata enrichment continue."
+    "title": "Lecture TXT title and author recheck",
+    "progress": "Checked {checked} / {total} books",
+    "completeDiscovery": "Candidate discovery complete",
+    "discovering": "Discovering candidates; the total may increase",
+    "pending": "Pending",
+    "repaired": "Repaired",
+    "correct": "Already correct",
+    "no_evidence": "Insufficient body evidence",
+    "protected": "Manual edits protected",
+    "conflict": "Conflicting information preserved",
+    "unreadable": "Source unreadable; retry pending",
+    "deleted": "Book deleted",
+    "explanation": "Only supported title and author corrections are applied. Insufficient evidence and conflicts preserve existing information. Unreadable sources are retried without deleting books. Import and metadata enrichment continue."
   }
 }

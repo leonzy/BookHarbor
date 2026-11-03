@@ -61,6 +61,7 @@
                 </v-chip>
             </div>
             <ImportStatistics :summary="statistics" />
+            <ImportScanProgress :progress="watch_status.scan_queue" />
             <v-alert
                 v-if="directoryAlert"
                 class="mt-3"
@@ -74,7 +75,7 @@
                 {{ t('admin.imports.message.importAsyncInfo') }}
             </div>
             <v-alert
-                v-if="backgroundTask"
+                v-if="backgroundTask && !watch_status.scan_queue"
                 class="mt-3"
                 type="info"
                 variant="tonal"
@@ -84,22 +85,13 @@
                 <div class="text-high-emphasis">
                     {{ t(!watch_status.manual_library_import_running && !watch_status.manual_scan_running && !watch_status.manual_import_running ? 'admin.imports.message.autoWatchRunning' : watch_status.manual_library_import_phase === 'queued' && watch_status.manual_library_import_running ? 'admin.imports.message.fullImportQueued' : backgroundTask === 'scan' ? 'admin.imports.message.fullScanRunning' : 'admin.imports.message.importRunning') }}
                 </div>
-                <div
-                    v-if="watch_status.scan_progress?.directory"
-                    class="text-high-emphasis imports-progress"
-                >
-                    {{ t('admin.imports.message.scanProgress', [watch_status.scan_progress.processed || 0, watch_status.scan_progress.archives || 0, watch_status.scan_progress.failed || 0]) }}
-                    <div class="directory-path">
-                        {{ watch_status.scan_progress.current || watch_status.scan_progress.directory }}
-                    </div>
-                </div>
                 <div class="text-high-emphasis imports-progress">
                     {{ t('admin.imports.message.importProgress', [count_done, count_todo, count_failed, count_skipped]) }}
                 </div>
             </v-alert>
         </v-card-text>
         <v-alert
-            v-if="watch_status.paused"
+            v-if="watch_status.paused && !watch_status.scan_queue"
             type="info"
             variant="tonal"
             class="ma-4"
@@ -107,6 +99,13 @@
         >
             {{ t(backgroundTask ? 'admin.imports.task.stopping' : 'admin.imports.task.stopped') }}
         </v-alert>
+        <div class="px-4 pb-3">
+            <ImportScanActions
+                :progress="watch_status.scan_queue"
+                :disabled="loading || backgroundTask !== null || importActionsDisabled"
+                @run="scan_books"
+            />
+        </div>
         <v-card-actions class="imports-actions">
             <v-btn
                 v-if="backgroundTask"
@@ -128,16 +127,7 @@
                     mdi-reload
                 </v-icon>{{ t('admin.imports.button.refresh') }}
             </v-btn>
-            <v-btn
-                :disabled="loading || backgroundTask !== null || importActionsDisabled"
-                variant="elevated"
-                color="primary"
-                @click="scan_books"
-            >
-                <v-icon start>
-                    mdi-file-find
-                </v-icon>{{ t('admin.imports.button.scanBooks') }}
-            </v-btn>
+
             <v-btn
                 :disabled="loading"
                 variant="elevated"
@@ -1115,10 +1105,15 @@ const chooseCurrentDirectory = () => {
     directoryPickerVisible.value = false;
 };
 
-const scan_books = () => {
+const scan_books = (request = {}) => {
+    if (request.resumeImport) {
+        import_books('all');
+        return;
+    }
     loading.value = true;
     $backend('/admin/scan/run', {
         method: 'POST',
+        body: JSON.stringify({ path: request.path || '', mode: request.mode || 'incremental' }),
     }).then((rsp) => {
         if (rsp.err !== 'ok') {
             if ($alert) $alert('error', rsp.msg);

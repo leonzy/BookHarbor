@@ -9,10 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"sync"
 	"time"
 
 	"talebook/booksvr/internal/importdir"
+	"talebook/booksvr/internal/library"
 	"talebook/booksvr/internal/scan"
 	"talebook/booksvr/internal/userdb"
 )
@@ -40,12 +42,55 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 	if err := scan.EnsureQueryIndexes(db); err != nil {
 		log.Printf("scan: 创建导入查询索引失败，保留导入任务并继续运行: %v", err)
 	}
+	if opts.PersistentScan {
+		if err := opts.ScanService().EnsureDirectoryQueue(); err != nil {
+			log.Printf("scan: 目录队列初始化失败: %v", err)
+			cancel()
+			return opts, func() {}
+		}
+		opts.ScanService().CheckDirectoryRoot = func(c context.Context, path string) error {
+			service := opts.ScanService()
+			if service.LibraryDB == nil {
+				return nil
+			}
+			var roots []string
+			for _, r := range importdir.ConfiguredAllowedRoots(LiveImportDir(opts.ImportDir, opts.SettingsPath)) {
+				if importdir.IsWithin(path, r) {
+					roots = append(roots, r)
+				}
+			}
+			if len(roots) == 0 {
+				return fmt.Errorf("%w: 该任务目录已不在当前导入配置中", scan.ErrDirectoryUnavailable)
+			}
+			health, err := library.CheckSourceRoots(c, service.LibraryDB, roots)
+			if err != nil {
+				return err
+			}
+			for r, status := range health {
+				if status != "ok" {
+					return fmt.Errorf("%w: %s (%s)", scan.ErrDirectoryUnavailable, r, status)
+				}
+			}
+			return nil
+		}
+	}
 	var workMu, statusMu sync.Mutex
 	var activeCancel context.CancelFunc
 	var generation uint64
 	var pendingPaths = map[string]bool{}
 	var pendingFull bool
 	opts.QueueSourcePaths = func(paths []string, full bool) {
+		if opts.PersistentScan {
+			var roots []string
+			if full {
+				roots = importdir.ConfiguredAllowedRoots(LiveImportDir(opts.ImportDir, opts.SettingsPath))
+			}
+			if err := opts.ScanService().RememberDirectoryChanges(paths, roots); err != nil {
+				log.Printf("scan: 保存文件变化事件失败: %v", err)
+			} else {
+				return
+			}
+		}
 		statusMu.Lock()
 		defer statusMu.Unlock()
 		if full || len(pendingPaths)+len(paths) > 10000 {
@@ -84,6 +129,21 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 		}
 		if service := opts.ScanService(); service != nil {
 			copy["scan_progress"] = service.Progress()
+			if opts.PersistentScan {
+				if progress, e := service.DirectoryProgress(); e == nil && progress != nil {
+					copy["scan_queue"] = progress
+					if progress.State == "running" {
+						copy["manual_scan_running"] = !progress.AutoImport
+						copy["manual_library_import_running"] = progress.AutoImport
+						copy["manual_library_import_phase"] = progress.Phase
+						copy["state"] = progress.Phase
+						copy["running"] = 1
+						if stopped, _ := copy["stop_requested"].(bool); !stopped {
+							copy["paused"] = false
+						}
+					}
+				}
+			}
 		}
 		return copy
 	}
@@ -188,6 +248,7 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 			return err
 		}
 		paused = false
+		status["stop_requested"] = false
 		return nil
 	}
 	opts.CancelImportTask = func() error {
@@ -204,10 +265,16 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 		if _, err = tx.Exec(`UPDATE import_resume_job SET state='cancelled',error='' WHERE id=1`); err != nil {
 			return err
 		}
+		if opts.PersistentScan {
+			if _, err = tx.Exec(`UPDATE scan_directory_control SET stop_generation=stop_generation+1 WHERE id=1`); err != nil {
+				return err
+			}
+		}
 		if err = tx.Commit(); err != nil {
 			return err
 		}
 		paused = true
+		status["stop_requested"] = true
 		generation++
 		if activeCancel != nil {
 			activeCancel()
@@ -233,10 +300,26 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 		return startImport(h, id, remove, mode)
 	}
 	opts.StartScan = func(path string, n int) error {
+		if opts.PersistentScan {
+			if _, err := opts.ScanService().PrepareDirectoryScan(path, false); err != nil {
+				return err
+			}
+		}
 		if err := resume(); err != nil {
 			return err
 		}
 		return enqueue("scan", func(c context.Context) error { return scanWith(c, path, n) })
+	}
+	if opts.PersistentScan {
+		opts.StartFullScan = func(path string, n int) error {
+			if _, err := opts.ScanService().PrepareDirectoryScan(path, true); err != nil {
+				return err
+			}
+			if err := resume(); err != nil {
+				return err
+			}
+			return enqueue("scan", func(c context.Context) error { return scanWith(scan.WithFullDirectoryCheck(c), path, n) })
+		}
 	}
 	opts.StartImport = func(h []string, id int64, remove bool, mode string) error {
 		if err := resume(); err != nil {
@@ -261,6 +344,24 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 	var resumeMode string
 	if !paused && db.QueryRow(`SELECT user_id,mode FROM import_resume_job WHERE id=1 AND state='active'`).Scan(&resumeID, &resumeMode) == nil {
 		opts.StartLibraryImport(resumeID, resumeMode)
+	} else if !paused && opts.PersistentScan {
+		var autoPending bool
+		if e := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM scan_directory_runs WHERE state<>'done' AND auto_import=1)`).Scan(&autoPending); e == nil && autoPending {
+			settings := LoadSettings(opts.SettingsPath)
+			id := int64(toIntSetting(settings, "import_watch_user_id", 0))
+			if id > 0 {
+				opts.StartLibraryImport(id, normalizeImportMode(LiveImportDir(opts.ImportDir, opts.SettingsPath)))
+			} else {
+				update("failed", "请重新保存自动监控设置以确认续跑管理员", 0, 1)
+			}
+		} else if scopes, e := opts.ScanService().PendingDirectoryScopes(); e == nil {
+			for _, path := range scopes {
+				if e = opts.StartScan(path, 500); e != nil {
+					log.Printf("scan: 等待恢复目录任务: %v", e)
+					break
+				}
+			}
+		}
 	}
 	done := make(chan struct{})
 	go func() {
@@ -270,6 +371,10 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 		var next time.Time
 		var autoInitialized bool
 		var autoRoots []string
+		if opts.PersistentScan {
+			autoInitialized = true
+			autoRoots = importdir.ConfiguredAllowedRoots(LiveImportDir(opts.ImportDir, opts.SettingsPath))
+		}
 		var lastStamp [2]settingsFileStamp
 		for {
 			select {
@@ -310,6 +415,48 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 			}
 			statusMu.Unlock()
 			lastStamp = stamp
+			if opts.PersistentScan {
+				dirty, e := opts.ScanService().DirectoryDirtyPaths(ctx, currentRoots, 256)
+				if e != nil {
+					update("failed", e.Error(), 0, 1)
+					next = time.Now().Add(time.Second)
+					continue
+				}
+				paths = append(paths, dirty...)
+				if full {
+					for _, root := range currentRoots {
+						known := false
+						if autoInitialized {
+							for _, old := range autoRoots {
+								if root == old {
+									known = true
+									break
+								}
+							}
+						}
+						if !known {
+							paths = append(paths, root)
+						}
+					}
+				}
+				full = false
+				set := map[string]bool{}
+				var unique []string
+				for _, p := range paths {
+					if !set[p] {
+						set[p] = true
+						unique = append(unique, p)
+					}
+				}
+				sort.Strings(unique)
+				paths = unique
+				if len(paths) == 0 {
+					autoInitialized = true
+					autoRoots = append([]string(nil), currentRoots...)
+					next = time.Now().Add(30 * time.Second)
+					continue
+				}
+			}
 			if !full && len(paths) == 0 {
 				continue
 			}
@@ -380,12 +527,15 @@ func runLibraryImport(ctx context.Context, opts ServeOptions, db *sql.DB, settin
 	if err != nil || reader == nil || !reader.Admin {
 		return fmt.Errorf("导入的管理员账号不可用")
 	}
+	if opts.PersistentScan && opts.ScanService().ExternalDirectoryScanActive() {
+		return fmt.Errorf("当前有目录扫描导入正在运行，请先停止或等待完成")
+	}
 	dir := LiveImportDir(opts.ImportDir, opts.SettingsPath)
 	if mode != "" {
 		dir.ImportMode, dir.SavedImportMode = mode, mode
 	}
 	roots := importdir.ConfiguredAllowedRoots(dir)
-	if service := opts.ScanService(); service != nil && opts.incrementalImportPaths == nil {
+	if service := opts.ScanService(); service != nil && opts.incrementalImportPaths == nil && !opts.PersistentScan {
 		if _, err := service.RecheckCompatibilityFailures(ctx, roots); err != nil {
 			return err
 		}
@@ -395,13 +545,42 @@ func runLibraryImport(ctx context.Context, opts ServeOptions, db *sql.DB, settin
 			phase(value)
 		}
 	}
+	var activeScanScope string
 	drain := func() error {
+		eligibleRoots := roots
+		if opts.PersistentScan && opts.ScanService().CheckDirectoryRoot != nil {
+			eligibleRoots = nil
+			var unavailable []error
+			for _, root := range roots {
+				if e := opts.ScanService().CheckDirectoryRoot(ctx, root); e == nil {
+					eligibleRoots = append(eligibleRoots, root)
+				} else {
+					unavailable = append(unavailable, e)
+				}
+			}
+			if len(eligibleRoots) == 0 {
+				return &importRootsUnavailable{errors.Join(unavailable...)}
+			}
+		}
+		if opts.PersistentScan && activeScanScope != "" {
+			allowed := false
+			for _, r := range eligibleRoots {
+				if importdir.IsWithin(activeScanScope, r) {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				return scan.ErrDirectoryUnavailable
+			}
+
+		}
 		var afterID int64
 		for {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			rows, err := opts.ScanService().RecoveredReadyBatch(roots, 500)
+			rows, err := opts.ScanService().RecoveredReadyBatch(eligibleRoots, 500, activeScanScope)
 			priority := len(rows) > 0
 			if err == nil && !priority {
 				rows, err = opts.ScanService().ReadyBatch(afterID, 500)
@@ -417,8 +596,8 @@ func runLibraryImport(ctx context.Context, opts ServeOptions, db *sql.DB, settin
 				if !priority {
 					afterID = row.ID
 				}
-				for _, root := range roots {
-					if importdir.IsWithin(row.Path, root) {
+				for _, root := range eligibleRoots {
+					if scan.SourceWithin(row, root) && (activeScanScope == "" || scan.SourceWithin(row, activeScanScope)) {
 						hashes = append(hashes, row.Hash)
 						break
 					}
@@ -434,7 +613,7 @@ func runLibraryImport(ctx context.Context, opts ServeOptions, db *sql.DB, settin
 	}
 	// The injected legacy scanner may not support checkpoints. Its compatibility
 	// path scans once then drains once; production always wires the callback.
-	if opts.StartScanBatchContext != nil {
+	if opts.StartScanBatchContext != nil && !opts.PersistentScan {
 		if err := drain(); err != nil {
 			return err
 		}
@@ -442,6 +621,23 @@ func runLibraryImport(ctx context.Context, opts ServeOptions, db *sql.DB, settin
 	var problems []error
 	scanned := make([]string, 0, len(roots))
 	scanRoots := roots
+	if opts.PersistentScan && opts.incrementalImportPaths == nil {
+		pending, e := opts.ScanService().PendingDirectoryScopes()
+		if e != nil {
+			return e
+		}
+		if len(pending) > 0 {
+			scanRoots = nil
+			for _, p := range pending {
+				for _, r := range roots {
+					if importdir.IsWithin(p, r) {
+						scanRoots = append(scanRoots, p)
+						break
+					}
+				}
+			}
+		}
+	}
 	if opts.incrementalImportPaths != nil {
 		scanRoots = nil
 		for _, p := range opts.incrementalImportPaths {
@@ -475,13 +671,14 @@ func runLibraryImport(ctx context.Context, opts ServeOptions, db *sql.DB, settin
 		} else if !info.IsDir() {
 			checkRoot = filepath.Dir(root)
 		}
-		if check := importdir.CheckImportDirectory(checkRoot, dir); check.Status == "error" {
+		if check := checkScanDirectory(checkRoot, dir); check.Status == "error" {
 			problems = append(problems, fmt.Errorf("%s: %s", root, check.Msg))
 			continue
 		}
 		scanned = append(scanned, root)
 		setPhase("scanning")
 		if opts.StartScanBatchContext != nil {
+			activeScanScope = root
 			err = opts.StartScanBatchContext(ctx, root, dir.ScanBatchSize, func() error {
 				if err := drain(); err != nil {
 					return err
@@ -489,15 +686,22 @@ func runLibraryImport(ctx context.Context, opts ServeOptions, db *sql.DB, settin
 				setPhase("scanning")
 				return nil
 			})
+			activeScanScope = ""
 		} else {
 			err = startScan(root, dir.ScanBatchSize)
 		}
 		if err != nil {
+			if errors.Is(err, scan.ErrDirectoryUnavailable) {
+				problems = append(problems, err)
+				continue
+			}
 			return err
 		}
 	}
-	if err := drain(); err != nil {
-		return err
+	if !opts.PersistentScan {
+		if err := drain(); err != nil {
+			return err
+		}
 	}
 	if len(problems) > 0 {
 		return &importRootsUnavailable{errors.Join(problems...)}

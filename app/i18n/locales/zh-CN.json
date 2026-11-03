@@ -872,11 +872,11 @@
       },
       "message": {
         "importDirInfo": "请将需要导入的书籍放入{0}目录中。 支持的格式为 azw/azw3/epub/mobi/pdf/txt/djvu/uvz/cbz/zip/cbr/rar 。",
-        "fullScanRunning": "正在后台扫描。全量导入任务会自动把扫描到的书籍入库；单独扫描时可点击“全部导入”接续处理。",
+        "fullScanRunning": "正在扫描目录，已完成结果会保留。",
         "importRunning": "正在后台自动导入书籍，关闭页面后仍会继续。",
         "scanProgress": "当前扫描目录：已处理 {0} 个候选文件，打开 {1} 个 ZIP，失败 {2} 项。",
         "fullImportQueued": "全部导入已排队，当前任务结束后会自动扫描并入库，无需再次点击。",
-        "importAsyncInfo": "无需选择书籍，点击“全部导入”即可在后台扫描全部配置目录并自动入库，已有待处理书籍也会导入。ZIP 会自动解压识别，原压缩包保留；关闭页面后任务继续。",
+        "importAsyncInfo": "无需选择书籍。“全部导入”先处理待导入记录，再增量检查导入目录。任务与目录快照会保留；ZIP 按单本临时解压，原文件保持原位。",
         "calibreInfo": "另外，还可以使用 PC 版 Calibre 软件 (https://calibre-ebook.com/) 管理书籍，但是请注意：使用完 PC 版后，需重启 Web 版方可生效。",
         "selectFilesInfo": "可直接点击“全部导入”，无需勾选；也可以按需选择部分书籍。",
         "selectedCount": "共选择了{0}个",
@@ -1003,6 +1003,50 @@
         "failed": "任务异常结束，请检查失败记录后重试。",
         "stopPending": "停止中",
         "paused": "已暂停"
+      },
+      "incremental": {
+        "target": "仅扫描此目录（可选）",
+        "targetHint": "留空检查全部导入目录；填写容器路径，例如 /books1/collection。",
+        "resume": "继续上次任务",
+        "scan": "增量扫描",
+        "full": "全量核对…",
+        "fullHint": "重新枚举所选范围内的全部文件，核对新增和变化。已有书籍不会被清空或重复导入。此操作可能较慢。",
+        "allDirectories": "全部导入目录",
+        "cancel": "取消",
+        "startFull": "开始全量核对",
+        "progress": "目录扫描进度",
+        "baselineHint": "该范围尚未建立目录快照，正在建立一次基线。可以停止后继续；后续增量扫描会跳过未变化目录。",
+        "eventGap": "检测到监控事件缺口。可手动全量核对，确认监控中断期间原地修改的文件。",
+        "countHint": "检查量按本次检查次数累计，目录变化时可能复核；通过检查不等于入库，实际入库按图书去重。",
+        "mode": {
+          "incremental": "增量扫描",
+          "baseline": "建立目录基线",
+          "full": "全量核对"
+        },
+        "state": {
+          "queued": "等待执行",
+          "running": "运行中",
+          "paused": "已暂停，可继续",
+          "waiting": "等待目录恢复",
+          "failed": "任务失败，可重试",
+          "done": "已完成"
+        },
+        "phase": {
+          "scanning": "检查文件",
+          "importing": "批量入库"
+        },
+        "count": {
+          "directories": "已检查目录",
+          "enumerated": "已读取目录",
+          "pending": "待处理目录／路径",
+          "files": "已检查文件",
+          "ready": "通过检查",
+          "imported": "实际入库",
+          "skipped": "已有／重复跳过",
+          "failed": "失败／不可读"
+        },
+        "resumeTargetHint": "留空继续上次任务，或填写另一个导入目录。",
+        "fullTitle": "全量核对"
       }
     },
     "settings": {
@@ -2440,18 +2484,18 @@
     "member": "ZIP 内路径："
   },
   "lectureRecheck": {
-      "title": "讲座 TXT 书名与作者复核",
-      "progress": "已核查 {checked} / {total} 本",
-      "completeDiscovery": "已完成同类文件发现",
-      "discovering": "正在发现同类文件，总数仍会增加",
-      "pending": "待核查",
-      "repaired": "已修正",
-      "correct": "原本正确",
-      "no_evidence": "正文证据不足",
-      "protected": "人工修改保护",
-      "conflict": "信息冲突未覆盖",
-      "unreadable": "来源不可读待重试",
-      "deleted": "书籍已删除",
-      "explanation": "仅修正有依据的书名与作者。证据不足和冲突保留原信息；来源不可读延后重试，不删除书籍。正常导入与元数据补全继续进行。"
+    "title": "讲座 TXT 书名与作者复核",
+    "progress": "已核查 {checked} / {total} 本",
+    "completeDiscovery": "已完成同类文件发现",
+    "discovering": "正在发现同类文件，总数仍会增加",
+    "pending": "待核查",
+    "repaired": "已修正",
+    "correct": "原本正确",
+    "no_evidence": "正文证据不足",
+    "protected": "人工修改保护",
+    "conflict": "信息冲突未覆盖",
+    "unreadable": "来源不可读待重试",
+    "deleted": "书籍已删除",
+    "explanation": "仅修正有依据的书名与作者。证据不足和冲突保留原信息；来源不可读延后重试，不删除书籍。正常导入与元数据补全继续进行。"
   }
 }

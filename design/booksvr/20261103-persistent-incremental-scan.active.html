@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="BookHarbor 增量目录任务队列及进度方案。" />
+    <link rel="icon" href="data:," />
+    <title>持久增量扫描与断点继续 · WIP</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><h1>持久增量扫描与断点继续</h1><p>创建日期：2026-11-03 · 模块：booksvr / app · 状态：ACTIVE · 来源：用户要求默认增量、停止继续、独立全量核对，并优先导入 Amazon book 20001-25000</p><h2>原始诉求</h2><p>当前手动扫描及全部导入每次重新遍历所有目录树，无法从停止位置恢复，新增目录看不到具体进度。元数据补全不得被中断。</p><h2>目标与设计决策</h2><ul><li>扫描目录任务、目录快照、当前文件游标及累计结果持久保存于用户库。默认检查已知目录状态，仅枚举变化或未知目录；新子目录递归加入队列。原路径的已完成记录按大小和时间核对，索引书籍保留 ID、人工字段保护和来源同步职责。</li><li>停止后保留待处理任务和当前目录游标；继续时仅恢复未完成目录。目录在暂停期间变化则重读该目录，避免遗漏新增文件。服务重启后在未主动暂停时继续任务。没有历史目录快照时建立一次明确可见的基线；不把未知状态静默当作已扫描。</li><li>全量核对独立入口，明确说明会重新枚举全部文件；检查并识别变化，不清空书库、不重新导入所有书。指定目录受现有导入目录和健康保护约束。</li><li>优先单独处理 /books1/Amazon book 20001-25000，仅索引原文件并逐批导入。实测发现的扩展名截断文件先检查真实头部，只有确认 MOBI 容器才按 AZW3 接纳，保留源文件名。</li><li>界面显示扫描类型、运行/暂停/完成/等待挂载、已检查目录、已检查文件、新登记、已有跳过、失败、待处理目录及当前路径；总量发现中不显示虚假百分比。默认按钮为增量扫描或继续，单独菜单提供全量核对确认。</li></ul><h2>实现细化</h2><p>用户补充：扫描模式必须对任意配置目录通用，不硬编码 Amazon。请求通过 path 与 mode 指定范围和模式；Amazon 仅作为本次现场任务参数。前端提示使用通用示例 /books1/collection。</p><p>目标目录使用同一持久队列先行运行限速索引导入。跨进程扫描租约禁止双重执行；停止代号由运行者每秒检查，页面可停止先行任务，再由正式服务继续。扫描阶段和导入批次阶段、是否自动导入写入进度。文件系统事件持久保存，暂停和重启不丢失已收到的变化；候选处理成功才确认相应事件版本。无事件监控时原地覆盖内容不能仅由目录修改时间发现，需要明确的全量核对补偿，事件溢出显示需要全量补偿的提示，不静默将默认扫描变成全量；显式全量核对成功后确认相应缺口。</p><p>普通文件和压缩包以不同任务类型排队，全部普通目录/文件先处理，ZIP 成员仍在有界批次处入库并更新持久进度。显式全量核对保留兼容性失败复核，默认增量不重复全库失败核查。发布使用已测试二进制替换主服务，元数据补全服务和阅读服务不重启；临时 Amazon 执行者停止到持久游标后由正式队列继续，避免两个导入者重叠。</p><p>入库结果通过候选 ID 关联到具体目录任务，分别合并扫描与入库阶段的跳过和失败，不以时间范围猜测归属。ZIP 成员按所属归档判断任务范围；临时 Amazon 执行者已处理的记录在接管时显式纳入任务关联。</p><p>自动导入启动时仅恢复未完成任务和持久事件，不因进程重启重新枚举所有配置根目录；设置新增根目录时只为新增范围建立基线。事件缺口仅提示显式全量核对。正常停止释放租约，异常退出留下的租约在异步任务中等待到期后自动续跑，不把短暂租约等待记为永久失败。</p><h2>实现边界</h2><p>变更 scan、httpapi 导入调度、Go CLI 接线、导入页及中英文文案。沿用数据库写入序列和挂载健康保护，不把离线当成空目录或删除；扫描不负责删除书库记录。元数据补全独立服务不重启。更新 spec/书库.md；按 interface-review full 模式审查相对 origin/main 的全部本地变更，不提交无关 OPDS 工作。</p><p>真实界面审查发现确认弹窗的名称挂在内部容器，且程序化打开未提供原生触发器焦点恢复。改用 Vuetify activator 插槽，将名称放在 dialog 根节点，并关闭该弹窗过渡以保留减少动画偏好；增加 DOM 断言后重新测试与发布前端。</p><p>现场复核发现旧目录预检会创建写测试临时文件并枚举目录，导致每次手动扫描先改变目录 mtime，使未变化目录也被重新读取。扫描入口和后台导入改用浅层只读预检，仅打开目录并读取至多一个条目；设置页详细诊断保持原有行为。新增保留 mtime 的接口回归，再重新执行 Go 与现场增量验证。</p><p>窄屏和键盘复核确认原组件库仅用浅色覆盖层提示按钮焦点，新增扫描和确认控件补充 2px 主题前景色外框与 2px 间距；避免依赖低对比覆盖层。复测明暗色焦点与窄屏。</p><p>明亮主题测得默认辅助文字 rgba(0,0,0,.87) 再乘 .6 透明度，合成后约 4.29:1，低于普通文字 4.5:1；本控件标签和辅助文案改为完整继承主题前景色，不改变全局主题。主按钮白字与 #1976D2 为约 4.60:1。</p><p>重复 Linux 包测试捕获一项隔离夹具问题：ZIP 批次运行超过心跳周期时，普通 :memory: SQLite 新连接会得到空库。新目录队列测试限制内存夹具单连接，保留心跳并重跑整个扫描包；生产文件数据库不受该夹具限制影响。</p><p>最终主进程启动首试遇到与补全并行写入造成的短暂 SQLITE_BUSY，已回退旧二进制恢复服务，元数据进程未重启。发布控制器改为等待 Supervisor 有界重试和真实监听就绪，超过期限才回退，避免把首次短暂退避当作最终失败。</p><h2>测试结果</h2>
+<p class="verified">代码、隔离回归、真实部署及现场验收已完成。Amazon 整批导入继续后台执行，没有将尚未完成的导入写成完成。</p>
+<ul>
+<li>Windows：Go 定向测试 TestDirectoryQueue、TestPersistentAutoRestart、TestScanRun、TestLibraryImport、TestAutomaticFull、TestManualImportStop 通过；预检修复后 HTTP 定向回归通过；目录队列再执行 -count=3 通过。go vet ./internal/scan ./internal/httpapi ./cmd/booksvr 通过。</li>
+<li>Linux：隔离 Docker，网络关闭、无生产 bind、单 CPU、768MiB、有界临时空间；scan、httpapi、cmd/booksvr 完整包测试通过。复测捕获 :memory: 多连接夹具问题，修正夹具后完整 scan 包重新通过；HTTP 与 CLI 无后续产品修改。损坏 ZIP、缺失文件日志属于预期失败用例。</li>
+<li>前端：node node_modules/vitest/vitest.mjs run test/components/ImportScanActions.spec.ts test/components/ImportScanProgress.spec.ts，最终 9/9 通过；新增组件及 imports.vue eslint 无错误；nuxt generate 通过。保留既有 Browserslist、NuxtLinkLocale 和 bundle 大小警告。</li>
+<li>python scripts/check_spec.py：25 篇通过；git diff --check 通过；最终提交索引的方案集合另运行 check_design_docs 门禁。</li>
+<li>真实管理员 API/UI：自建空目录全量 mode=full、enumerated=1、files=0、imported=0。只读预检修复后，同目录增量 mode=incremental、enumerated=0、files=0。记录已保存，测试空目录及其三条完成任务已清理，未删除用户图书。</li>
+<li>真实停止/继续：任务 ID 1 在 3,701 个文件处停止；更新后点击继续，仍是 ID 1、同一范围，检查数增至 3,833、实际入库 2,049 并继续增长。暂停期间当前目录变化允许复核，因此累计读取数可能增加。</li>
+<li>元数据 PID 91660、start tick 30342916 不变；history_cursor 从 246383 推进到 246835。阅读/插件进程 22、35487、36429 的 PID/start tick 均不变；书籍 16、17、200026 抽样人工锁、书名、路径与部署前一致。</li>
+<li>保持现有容器，仅替换主服务及前端；最终主 PID 94206，二进制 SHA256 ed0132ae58cb28574a0e057a40635a9d4d43eb372ddb2403fed46e0d0705015e。入口修复仅匹配原 release，不阻止未来正式升级。临时先行导入者及 Supervisor 配置已移除；自建 QA 容器核对标签、无 bind 和无运行测试后移除。</li>
+<li>证据：/data/maintenance/20261103-persistent-incremental-scan/ 中 deployment.json、frontend-reviewed-deployment.json、live-directory-tests.json、final-verification.json。宿主机对应 /vol2/1000/bookharbor/data/maintenance/20261103-persistent-incremental-scan/ 。载荷保留原有未提交 OPDS 兼容代码，本次提交不纳入这些无关文件。</li>
+</ul>
+<h2>Interface Review · full</h2>
+<h3>Scope and Coverage</h3>
+<p>Target：branch + working。Base origin/main 与 HEAD 均为 43b710ddb6a8c5dadea63ed052320c0aaf98ea1c；0 个分支提交，19 个实际 tracked 差异、14 个 untracked，共 33 文件。Dockerfile 状态噪声无文本差异；生成资产不在版本差异内。范围包括全部本地 Go/Vue/语言/规格/方案，也读了原有 OPDS、部署脚本与测试、外部访问规格及存储迁移文档，保留无关改动。</p>
+<p>约定：AGENTS.md、app/CLAUDE.md；Nuxt 4 / Vue 3 / Vuetify 3。使用 interface-review、better-interface 和六个 owning skills。扩展 imports.vue、ImportStatistics、useImportTask、AppHeader、default layout 五个消费者；新增扫描键仅用于导入流，没有其他新增键消费者遗漏。</p>
+<div class="table-wrap"><table><tr><th>Domain</th><th>Evidence inspected</th><th>Result</th></tr>
+<tr><td>Accessibility</td><td>真实字段标签、原生按钮、命名 dialog、Tab、Escape、焦点返回；最终确认按钮有 2px 黑色外框。状态带文本及 polite status。</td><td>Clear；屏幕阅读器与强制颜色模式 Not verified。</td></tr>
+<tr><td>Layout</td><td>运行/暂停、空数据、等待/错误组件用例；稳定 320px 断点 clientWidth=scrollWidth=305，新区域在 32–273px，长路径换行、按钮与弹窗可达。</td><td>Clear；200% 浏览器缩放独立操作 Not verified，已验证 320px 重排。</td></tr>
+<tr><td>Writing</td><td>增量/基线/继续/全量确认/事件缺口/恢复/计数口径，三语言键和组件测试，对照旧说明保留 ZIP 和仅索引含义。</td><td>Clear。</td></tr>
+<tr><td>Typography</td><td>输入 16px、说明 14px、tabular-nums、overflow-wrap，真实长路径和窄屏；无字体替换。</td><td>Clear；英俄文编译和组件通过，未切换全部生产页面。</td></tr>
+<tr><td>Colors</td><td>明暗主题实测并恢复明亮；主按钮白字/#1976D2=4.60:1，正文约 #212121/#fff=16.10:1；最终标签/说明 opacity=1；暗色正文白字/#212121=16.10:1。</td><td>Clear；未改全局主题。</td></tr>
+<tr><td>UI</td><td>继承卡片/按钮密度，明确扫描/入库阶段，无假百分比；全量次级确认；该弹窗关闭过渡。</td><td>Clear；其他产品动画未审查。</td></tr></table></div>
+<h3>Findings</h3>
+<p>No actionable interface findings in this change. 没有遗留 Introduced / Regression HIGH 或 MEDIUM。</p>
+<p>已修复并复测：ImportScanActions.vue:27 的 dialog 名称与 activator 焦点恢复；:87 的新增按钮焦点外框；:86 标签与说明 opacity=1，修复默认透明叠加后约 4.29:1 的文字对比。上述发现属于新增控件，非把旧 token 问题转移给无关页面。</p>
+<h3>Considered but Rejected</h3>
+<div class="table-wrap"><table><tr><th>Location</th><th>Candidate</th><th>Rejected because</th></tr><tr><td>ImportScanProgress.vue</td><td>百分比</td><td>发现总量未知，使用具体计数和路径。</td></tr><tr><td>ImportScanActions.vue</td><td>默认填 Amazon</td><td>用户要求通用，目录仅为现场任务参数。</td></tr><tr><td>扫描页统计</td><td>通过即已导入</td><td>入库仍可能查重，分别呈现。</td></tr></table></div>
+<h3>Pre-existing</h3>
+<p>HIGH / Accessibility：AppHeader.vue:142 旧主题按钮无可访问名称，HEAD 与 AX 均确认，非本次引入。手机旧表格显示 $vuetify.dataTable.sortBy 也为既有行为。单列，不计入本次 verdict。</p>
+<h3>Verification</h3>
+<p>只读 Git：symbolic-ref refs/remotes/origin/HEAD → origin/main；merge-base → 43b710d…；rev-list origin/main..HEAD → 0；diff --name-status HEAD、ls-files --others --exclude-standard、diff、show HEAD:app/components/AppHeader.vue 对照删除侧。Review 未 fetch、checkout、stash 或写 .git。</p>
+<p>实际入口 http://192.168.1.96:8850/admin/imports，CUA Chrome DevTools Protocol Network/Runtime 检查 153 个事件，无异常或 HTTP 4xx/5xx。真实停止、继续、目录全量/增量、空目录、运行/暂停、弹窗键盘、窄屏、明暗主题已验证。截图 C:/Users/leon/bookharbor-incremental-scan-final.png 。隔离覆盖等待挂载与错误，未在生产卸载挂载。无关 OPDS 客户端、无关内部 HTML 未现场渲染，不声称这些视觉或客户端行为通过。</p>
+<h3>Verdict</h3><p class="verified">Approve</p>
+</main></body></html>

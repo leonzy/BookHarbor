@@ -4,7 +4,9 @@
 package httpapi
 
 import (
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -35,7 +37,8 @@ type ScanConfig struct {
 	// WatchStatus 返回自动监控状态；为 nil 时返回「关闭」。
 	WatchStatus func() map[string]any
 	// StartScan 启动一次异步扫描；为 nil 时返回服务不可用。
-	StartScan func(path string, limit int) error
+	StartScan     func(path string, limit int) error
+	StartFullScan func(path string, limit int) error
 	// StartImport 启动一次异步导入；为 nil 时返回服务不可用。
 	StartImport        func(hashlist []string, userID int64, deleteAfter bool, importMode string) error
 	StartLibraryImport func(int64, string) error
@@ -163,6 +166,32 @@ func ScanRunHandler(cfg ScanConfig) HandlerFunc {
 			limit = 500
 		}
 		roots := importdir.ConfiguredAllowedRoots(cfg.Dir)
+		body := jsonBody(ctx)
+		mode := firstNonEmpty(toStr(body["mode"]), "incremental")
+		if mode != "incremental" && mode != "full" {
+			return map[string]any{"err": "params.invalid", "msg": "请选择增量扫描或全量核对"}, nil
+		}
+		start := cfg.StartScan
+		if mode == "full" {
+			start = cfg.StartFullScan
+			if start == nil {
+				return map[string]any{"err": "service.unavailable", "msg": "全量核对服务不可用"}, nil
+			}
+		}
+		if path := strings.TrimSpace(toStr(body["path"])); path != "" {
+			path = importdir.NormalizePath(path)
+			within := false
+			for _, r := range roots {
+				if importdir.IsWithin(path, r) {
+					within = true
+					break
+				}
+			}
+			if !within {
+				return map[string]any{"err": "params.path", "msg": "请先将该目录加入导入目录设置"}, nil
+			}
+			roots = []string{path}
+		}
 		scanRoots := make([]string, 0, len(roots))
 		for _, path := range roots {
 			covered := false
@@ -179,13 +208,15 @@ func ScanRunHandler(cfg ScanConfig) HandlerFunc {
 		for _, path := range scanRoots {
 			checkCfg := cfg.Dir
 			checkCfg.AllowedRoots = roots
-			check := importdir.CheckImportDirectory(path, checkCfg)
+			check := checkScanDirectory(path, checkCfg)
 			if check.Status == "error" {
 				return map[string]any{
 					"err": "params.path", "msg": check.Msg, "directory_check": check,
 				}, nil
 			}
-			if err := cfg.StartScan(path, limit); err != nil {
+		}
+		for _, path := range scanRoots {
+			if err := start(path, limit); err != nil {
 				return nil, err
 			}
 		}
@@ -434,4 +465,42 @@ func toBool(v any) bool {
 		return val != 0
 	}
 	return false
+}
+
+// Scan preflight must not change directory stamps or traverse the source tree.
+// Detailed diagnostics (including write checks) belong to the settings page.
+func checkScanDirectory(path string, cfg importdir.Config) importdir.DirectoryResult {
+	normalized := importdir.NormalizePath(path)
+	result := importdir.DirectoryResult{Path: normalized, AllowedRoots: importdir.ConfiguredAllowedRoots(cfg), InAllowedRoots: true, Status: "error"}
+	info, err := os.Lstat(normalized)
+	if err != nil {
+		result.Msg = "目录暂不可用，请检查挂载与目录权限后继续。"
+		return result
+	}
+	result.Exists = true
+	result.IsSymlink = info.Mode()&os.ModeSymlink != 0
+	result.IsDir = info.IsDir()
+	if !result.IsDir || result.IsSymlink {
+		result.Msg = "请选择可直接读取的目录，不跟随软链接。"
+		return result
+	}
+	f, err := os.Open(normalized)
+	if err == nil {
+		_, err = f.Readdirnames(1)
+		closeErr := f.Close()
+		if err == io.EOF {
+			err = nil
+		}
+		if err == nil {
+			err = closeErr
+		}
+	}
+	if err != nil {
+		result.Msg = "无法读取该目录，请检查目录权限后继续。"
+		return result
+	}
+	result.Readable = true
+	result.Status = "ok"
+	result.Msg = "目录可读取。"
+	return result
 }

@@ -2,9 +2,7 @@ package scan
 
 import (
 	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"talebook/booksvr/internal/importmeta"
 	"talebook/booksvr/internal/media"
@@ -43,7 +41,7 @@ func (s *Service) prepareBatch(rows []*userdb.ScanFile) []*preparedImport {
 			if p.err != nil {
 				return
 			}
-			format := strings.ToLower(strings.TrimPrefix(filepath.Ext(row.Path), "."))
+			format := scanRowFormat(row, row.Path)
 			p.analysis, p.err = cachedAnalysis(row, row.Path, format)
 			if p.err == nil {
 				p.metadata, p.gone = s.importMetadata(row.Path, format)

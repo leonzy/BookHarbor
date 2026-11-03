@@ -30,7 +30,9 @@ import (
 
 // ServeOptions 是 Serve 的装配参数。
 type ServeOptions struct {
-	MetadataOnly bool
+	PersistentScan bool
+	StartFullScan  func(string, int) error
+	MetadataOnly   bool
 	// ReaderOnly serves reading routes without migrations or background workers.
 	ReaderOnly bool
 	// PluginFeaturesOnly serves authenticated feature calls without background workers.
@@ -642,6 +644,7 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 		Service:            opts.ScanService,
 		WatchStatus:        opts.ImportWatchStatus,
 		StartScan:          opts.StartScan,
+		StartFullScan:      opts.StartFullScan,
 		StartImport:        opts.StartImport,
 		StartLibraryImport: opts.StartLibraryImport,
 		CancelImportTask:   opts.CancelImportTask,

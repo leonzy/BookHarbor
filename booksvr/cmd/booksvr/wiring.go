@@ -99,16 +99,13 @@ func (w *serviceWiring) serviceSet() httpapi.ServiceSet {
 	return httpapi.ServiceSet{
 		ScanService: func() *scan.Service { return w.scanService },
 		StartScan: func(path string, limit int) error {
-			_, err := w.scanService.ScanAll(context.Background(), path, limit)
-			return err
+			return w.scanService.ScanDirectoryQueue(context.Background(), path, false, limit, nil)
 		},
 		StartScanContext: func(ctx context.Context, path string, batchSize int) error {
-			_, err := w.scanService.ScanAll(ctx, path, batchSize)
-			return err
+			return w.scanService.ScanDirectoryQueue(ctx, path, scan.IsFullDirectoryCheck(ctx), batchSize, nil)
 		},
 		StartScanBatchContext: func(ctx context.Context, path string, batchSize int, afterBatch func() error) error {
-			_, err := w.scanService.ScanAllWithCallback(ctx, path, batchSize, afterBatch)
-			return err
+			return w.scanService.ScanDirectoryQueue(ctx, path, scan.IsFullDirectoryCheck(ctx), batchSize, afterBatch)
 		},
 		StartImport: func(hashlist []string, userID int64, deleteAfter bool, importMode string) error {
 			_, err := w.scanService.Import(hashlist, userID, deleteAfter, importMode)

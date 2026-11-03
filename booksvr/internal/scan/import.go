@@ -69,11 +69,18 @@ func (s *Service) ImportContext(ctx context.Context, hashlist []string, userID i
 	}
 
 	// 统一打上本次导入的任务 ID。
+	task := s.directoryTask.Load()
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return res, err
 	}
 	for _, row := range rows {
+		if task != nil && SourceWithin(row, task.scope) {
+			if _, e := tx.ExecContext(ctx, `INSERT OR IGNORE INTO scan_directory_imports(job_id,scan_file_id) VALUES(?,?)`, task.id, row.ID); e != nil {
+				tx.Rollback()
+				return res, e
+			}
+		}
 		row.ImportID = res.ImportID
 		if _, err := tx.ExecContext(ctx, `UPDATE scanfiles SET import_id=? WHERE id=? AND status='ready'`, res.ImportID, row.ID); err != nil {
 			tx.Rollback()
@@ -184,7 +191,7 @@ func (s *Service) importRowPrepared(row *userdb.ScanFile, userID int64, mode str
 		return row.Status, 0, saveScanFile(s.DB, row)
 	}
 	defer cleanup()
-	format := strings.ToLower(strings.TrimPrefix(filepath.Ext(fpath), "."))
+	format := scanRowFormat(row, fpath)
 
 	row.Status = userdb.ScanStatusImporting
 	setRowData(row, "import_mode", mode)
