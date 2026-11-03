@@ -6,13 +6,40 @@ import (
 	"time"
 )
 
+const metadataJobsStatusSQL = `SELECT j.status,count(*),max(j.updated_at) FROM metadata_enrichment_jobs j JOIN books b ON b.id=j.book_id GROUP BY j.status`
+
+// Materialize only failed source candidates before joining the checked-book
+// queue. Starting from all pending books multiplies work by every source.
+const metadataRetryCountSQL = `SELECT count(*) FROM
+	(SELECT DISTINCT book_id FROM metadata_source_jobs
+	 WHERE phase<>'done' AND attempts>0 AND (outcome='source_failed' OR last_error='来源请求失败')) s
+	JOIN books b ON b.id=s.book_id JOIN metadata_enrichment_jobs j ON j.book_id=s.book_id
+	WHERE j.status IN ('network_pending','partial')`
+
+const metadataNetworkWriteCountSQL = `SELECT count(DISTINCT w.book_id) FROM metadata_enrichment_writes w JOIN books b ON b.id=w.book_id WHERE w.origin LIKE 'network:%'`
+
+// Build once at worker initialization, never in a progress request. Covering
+// indexes avoid fetching large job/write payloads merely to count them.
+func ensureMetadataProgressIndexes(db *sql.DB) error {
+	for _, query := range []string{
+		`CREATE INDEX IF NOT EXISTS metadata_progress_status ON metadata_enrichment_jobs(status,updated_at,book_id)`,
+		`CREATE INDEX IF NOT EXISTS metadata_progress_retry ON metadata_source_jobs(book_id) WHERE phase<>'done' AND attempts>0 AND (outcome='source_failed' OR last_error='来源请求失败')`,
+		`CREATE INDEX IF NOT EXISTS metadata_progress_network_writes ON metadata_enrichment_writes(origin COLLATE NOCASE,book_id)`,
+	} {
+		if _, err := db.Exec(query); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func MetadataEnrichmentStatus(db *sql.DB, opts ServeOptions, userDB ...*sql.DB) HandlerFunc {
 	return func(ctx *Context) (map[string]any, error) {
 		var total, checked, latest, applied, retries int64
 		if e := db.QueryRow(`SELECT count(*) FROM books`).Scan(&total); e != nil {
 			return nil, e
 		}
-		rows, e := db.Query(`SELECT j.status,count(*),max(j.updated_at) FROM metadata_enrichment_jobs j JOIN books b ON b.id=j.book_id GROUP BY j.status`)
+		rows, e := db.Query(metadataJobsStatusSQL)
 		if e != nil {
 			return nil, e
 		}
@@ -35,10 +62,10 @@ func MetadataEnrichmentStatus(db *sql.DB, opts ServeOptions, userDB ...*sql.DB) 
 		if e != nil {
 			return nil, e
 		}
-		if e = db.QueryRow(`SELECT count(DISTINCT s.book_id) FROM metadata_source_jobs s JOIN books b ON b.id=s.book_id JOIN metadata_enrichment_jobs j ON j.book_id=s.book_id WHERE s.phase<>'done' AND s.attempts>0 AND (s.outcome='source_failed' OR s.last_error='来源请求失败') AND j.status IN ('network_pending','partial')`).Scan(&retries); e != nil {
+		if e = db.QueryRow(metadataRetryCountSQL).Scan(&retries); e != nil {
 			return nil, e
 		}
-		if e = db.QueryRow(`SELECT count(DISTINCT w.book_id) FROM metadata_enrichment_writes w JOIN books b ON b.id=w.book_id WHERE w.origin LIKE 'network:%'`).Scan(&applied); e != nil {
+		if e = db.QueryRow(metadataNetworkWriteCountSQL).Scan(&applied); e != nil {
 			return nil, e
 		}
 		var owner string

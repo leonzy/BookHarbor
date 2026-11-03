@@ -38,6 +38,9 @@ func startMetadataWorker(ctx context.Context, opts ServeOptions, db, userDB *sql
 	if err := library.EnsureMetadataSchema(db); err != nil {
 		return nil, err
 	}
+	if err := ensureMetadataProgressIndexes(db); err != nil {
+		return nil, err
+	}
 	w := newBookWiring(userDB, db, opts.Settings, opts.PluginRegistry).withSettingsPath(opts.SettingsPath)
 	w.libraryRoot = opts.LibraryRoot
 	token := make([]byte, 16)
