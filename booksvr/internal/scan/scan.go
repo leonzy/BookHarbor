@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"talebook/booksvr/internal/importmeta"
+	"talebook/booksvr/internal/library"
 	"talebook/booksvr/internal/media"
 	"talebook/booksvr/internal/userdb"
 )
@@ -501,6 +502,11 @@ func (s *Service) bookExists(bookID int64) bool {
 //
 // 书库中已有同名书且作者一致、且已含该格式时，把 book_id 写入并返回 true。
 func (s *Service) markExisting(row *userdb.ScanFile, mi importmeta.Metadata) (bool, error) {
+	// Filename equality is not file equality. Rich identity matching belongs
+	// to import, after embedded metadata has been read; SHA256 ran above.
+	if library.IdentityAvailable(s.LibraryDB) {
+		return false, nil
+	}
 	if s.LibraryDB == nil {
 		return false, nil
 	}

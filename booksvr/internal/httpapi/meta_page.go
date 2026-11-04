@@ -17,6 +17,7 @@ func metaRenderQuery(ctx *Context, cfg MetaConfig, q library.BrowseQuery, title 
 		return nil, err
 	}
 	q.Excluded = private
+	q.GroupWorks = true
 	bc := cfg.Book
 	bc.Settings = cfg.Settings
 	q.SizeSort = bookSizeSort(ctx)
@@ -28,6 +29,10 @@ func metaRenderQuery(ctx *Context, cfg MetaConfig, q library.BrowseQuery, title 
 	}
 	books, err := metaLoadBooks(cfg, ids)
 	if err != nil {
+		return nil, err
+	}
+	bc.LibraryDB = cfg.DB
+	if err = bookAttachIdentityCards(bc, ctx, books); err != nil {
 		return nil, err
 	}
 	books, err = attachReadingStates(ctx, books)

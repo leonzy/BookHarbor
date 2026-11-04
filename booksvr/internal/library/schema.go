@@ -121,7 +121,10 @@ func Migrate(db *sql.DB) error {
 	if err := EnsureOpdsClock(db); err != nil {
 		return err
 	}
-	return migrateBookDirectoryIndex(db)
+	if err := migrateBookDirectoryIndex(db); err != nil {
+		return err
+	}
+	return EnsureIdentitySchema(db)
 }
 
 // columnExists reports whether the named column is present on the table.

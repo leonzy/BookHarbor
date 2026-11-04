@@ -4,6 +4,7 @@ package scan
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -236,7 +237,7 @@ func (s *Service) importRowPrepared(row *userdb.ScanFile, userID int64, mode str
 	}
 
 	// 再次检查重复书籍。
-	sameAuthorID, exist, err := s.findSameAuthorBook(mi, format)
+	sameAuthorID, exist, err := s.findSameAuthorBook(mi, format, userID)
 	if err != nil {
 		return "", 0, err
 	}
@@ -426,7 +427,14 @@ func epubMetadata(fpath string) (importmeta.Metadata, bool) {
 // findSameAuthorBook 复刻 _do_import 的重复检测。
 //
 // 返回 (同名同作者的书籍 ID, 是否已存在该格式)。
-func (s *Service) findSameAuthorBook(mi importmeta.Metadata, format string) (int64, bool, error) {
+func (s *Service) findSameAuthorBook(mi importmeta.Metadata, format string, userIDs ...int64) (int64, bool, error) {
+	if library.IdentityAvailable(s.LibraryDB) {
+		var id int64
+		if len(userIDs) > 0 {
+			id = userIDs[0]
+		}
+		return s.identityImportMatch(mi, format, id)
+	}
 	if s.LibraryDB == nil {
 		return 0, false, nil
 	}
@@ -785,10 +793,26 @@ func (s *Service) addExternalIndexRecord(mi importmeta.Metadata, fpath, format s
 		return 0, false, fmt.Errorf("scan: 建立索引记录需要书库句柄")
 	}
 	if existingBookID > 0 {
-		if err := s.addFormatToBook(existingBookID, format, fpath); err != nil {
-			return 0, false, err
+		if library.IdentityAvailable(s.LibraryDB) {
+			info, e := sourcefile.Stat(fpath)
+			if e != nil {
+				return 0, false, e
+			}
+			e = library.AddIdentityFormat(s.LibraryDB, existingBookID, identityMetadata(mi), format, fpath, info.Size(), info.ModTime().Unix())
+			if e == nil {
+				return existingBookID, false, nil
+			}
+			if !errors.Is(e, library.ErrIdentityChanged) && !errors.Is(e, library.ErrFormatExists) && !errors.Is(e, sql.ErrNoRows) {
+				return 0, false, e
+			}
+			// Metadata or format occupancy changed after lookup. Keep the file
+			// as a new version instead of overwriting or dropping it.
+		} else {
+			if err := s.addFormatToBook(existingBookID, format, fpath); err != nil {
+				return 0, false, err
+			}
+			return existingBookID, false, nil
 		}
-		return existingBookID, false, nil
 	}
 	author := ""
 	if len(mi.Authors) > 0 {

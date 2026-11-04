@@ -107,6 +107,9 @@ func MergeBooks(db *sql.DB, targetBookID int64, bookIDs []int64) (int64, error) 
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := LockIdentity(tx, append([]int64{targetBookID}, bookIDs...)); err != nil {
+		return 0, err
+	}
 	for _, id := range bookIDs {
 		if id == targetBookID {
 			continue
@@ -139,8 +142,16 @@ func SplitBook(db *sql.DB, bookID int64) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if err := SetBookWorkID(db, bookID, newWorkID); err != nil {
+	tx, err := db.Begin()
+	if err != nil {
 		return 0, err
 	}
-	return newWorkID, nil
+	defer tx.Rollback()
+	if err := LockIdentity(tx, []int64{bookID}); err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`UPDATE books SET work_id=? WHERE id=?`, newWorkID, bookID); err != nil {
+		return 0, err
+	}
+	return newWorkID, tx.Commit()
 }

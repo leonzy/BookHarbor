@@ -853,6 +853,8 @@
                     :book-id="Number(book.id)"
                 />
 
+                <BookVersions :versions="book.versions || []" />
+
                 <!-- Zone 4: Introduction and annotations -->
                 <section
                     class="book-introduction"
@@ -905,6 +907,7 @@ import BookCards_Small from '~/components/BookCards_Small.vue';
 import BookConvertDialog from '~/components/BookConvertDialog.vue';
 import BookDetailActions from '~/components/BookDetailActions.vue';
 import BookStorageLocations from '~/components/BookStorageLocations.vue';
+import BookVersions from '~/components/BookVersions.vue';
 import AnnotationPanel from '~/components/AnnotationPanel.vue';
 import { READING_STATE, useBookReadingState } from '~/composables/useBookReadingState';
 import { readerPathForBook } from '~/utils/comic-reader';

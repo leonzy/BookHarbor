@@ -44,7 +44,7 @@ func personalizedIndex(cfg BookConfig, ctx *Context) (map[string]any, error) {
 	}
 	nRecent, nRec := count("recent", "MAIN_PAGE_RECENT_COUNT"), count("random", "MAIN_PAGE_RANDOM_COUNT")
 	// The newest list uses indexed order, rather than sampling from the newest 100.
-	recent, total, err := cfg.BrowsePage(ctx, library.BrowseQuery{Excluded: private, Start: 0, Size: nRecent, TimestampSort: true})
+	recent, total, err := cfg.BrowsePage(ctx, library.BrowseQuery{GroupWorks: true, Excluded: private, Start: 0, Size: nRecent, TimestampSort: true})
 	if err != nil {
 		return nil, err
 	}

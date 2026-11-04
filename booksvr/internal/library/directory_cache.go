@@ -307,6 +307,18 @@ func (c *BookDirectoryCache) BrowsePage(ctx context.Context, current string, rec
 		return nil, nil, 0, err
 	}
 	var hidden int
+	groupSQL, e := identityHiddenSQL(ctx, c.db, "1=1")
+	if e != nil {
+		return nil, nil, 0, e
+	}
+	if groupSQL != "" {
+		order := ""
+		if len(sizeSort) > 0 {
+			order = sizeSort[0]
+		}
+		page, n, e := BrowseBooks(ctx, c.db, BrowseQuery{GroupWorks: true, DirectoryNode: nodeID, DirectoryRecursive: recursive, Excluded: excluded, Start: start, Size: size, SizeSort: order})
+		return dirs, page, n, e
+	}
 	if len(private) > 0 {
 		if err = c.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM book_directory_members WHERE node_id=?`+restriction+` AND book_id IN (SELECT value FROM json_each(?))`, nodeID, visibility).Scan(&hidden); err != nil {
 			return nil, nil, 0, err

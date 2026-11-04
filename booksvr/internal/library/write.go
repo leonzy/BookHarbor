@@ -366,6 +366,10 @@ func DeleteBook(db *sql.DB, bookID int64) error {
 //
 // 同时写入新 schema 的 book_formats 与 Calibre 的 data 表，保证两边一致。
 func AddFormat(db *sql.DB, bookID int64, format, path string, size, mtime int64) error {
+	return addFormatGuarded(db, bookID, format, path, size, mtime)
+}
+
+func addFormatGuarded(db *sql.DB, bookID int64, format, path string, size, mtime int64, guards ...func(*sql.Tx) error) error {
 	format = NormalizeFormatName(format)
 	if format == "" {
 		return errors.New("library: AddFormat 需要 format")
@@ -374,7 +378,7 @@ func AddFormat(db *sql.DB, bookID int64, format, path string, size, mtime int64)
 		return errors.New("library: AddFormat 需要 path")
 	}
 
-	if err := RegisterFormat(db, bookID, format, path, size, mtime); err != nil {
+	if err := RegisterFormat(db, bookID, format, path, size, mtime, guards...); err != nil {
 		return err
 	}
 

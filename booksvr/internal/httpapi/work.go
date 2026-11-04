@@ -219,6 +219,21 @@ func (s *WorkService) WorkDetail(workID int64) (*WorkDetailResponse, error) {
 		versions = append(versions, v)
 	}
 
+	if len(versions) == 0 {
+		return &WorkDetailResponse{Err: ErrWorkNotFound}, nil
+	}
+	if len(versions) != len(ids) {
+		// A work can have been named by a private member. Derive summaries only
+		// from a version this reader may see, including its normalized fields.
+		var title, author string
+		if err = s.DB.QueryRow(`SELECT title,author_sort FROM books WHERE id=?`, versions[0].ID).Scan(&title, &author); err != nil {
+			return nil, err
+		}
+		work.DisplayTitle = title
+		work.DisplayAuthor = author
+		work.TitleNorm = normalize.NormalizeTitle(title)
+		work.AuthorNorm = normalize.NormalizeAuthor(author)
+	}
 	return &WorkDetailResponse{
 		Err: "ok",
 		Work: WorkSummary{
@@ -236,13 +251,25 @@ func (s *WorkService) WorkDetail(workID int64) (*WorkDetailResponse, error) {
 
 // BookVersions 实现 GET /api/book/{id}/versions，返回同作品下其他版本。
 func (s *WorkService) BookVersions(bookID int64) (*BookVersionsResponse, error) {
-	workID, err := library.GetBookWorkID(s.DB, bookID)
+	visible, err := s.visible(bookID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return &BookVersionsResponse{Err: ErrBookNotFound}, nil
-		}
 		return nil, err
 	}
+	if !visible {
+		return &BookVersionsResponse{Err: ErrBookNotFound}, nil
+	}
+	var work sql.NullInt64
+	err = s.DB.QueryRow(`SELECT work_id FROM books WHERE id=?`, bookID).Scan(&work)
+	if errors.Is(err, sql.ErrNoRows) {
+		return &BookVersionsResponse{Err: ErrBookNotFound}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !work.Valid {
+		return &BookVersionsResponse{Err: "ok", Versions: []VersionSummary{}}, nil
+	}
+	workID := work.Int64
 
 	ids, err := library.ListVersions(s.DB, workID)
 	if err != nil {

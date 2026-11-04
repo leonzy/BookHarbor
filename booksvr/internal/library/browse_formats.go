@@ -202,6 +202,19 @@ func browseSimpleFormat(q BrowseQuery) bool {
 }
 
 func browseFormatPage(ctx context.Context, db *sql.DB, q BrowseQuery) ([]int64, int, error) {
+	groupHidden := ""
+	groupArgs := []any{}
+	if q.GroupWorks {
+		base, args, e := q.where(ctx, db)
+		if e != nil {
+			return nil, 0, e
+		}
+		groupHidden, e = identityHiddenSQL(ctx, db, base)
+		if e != nil {
+			return nil, 0, e
+		}
+		groupArgs = args
+	}
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, 0, err
@@ -228,6 +241,16 @@ func browseFormatPage(ctx context.Context, db *sql.DB, q BrowseQuery) ([]int64, 
 		total -= hidden
 		where += ` AND book_id NOT IN (SELECT value FROM json_each(?))`
 		args = append(args, raw)
+	}
+	if groupHidden != "" {
+		var duplicate int
+		countArgs := append(append([]any{}, args...), groupArgs...)
+		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM book_browse_formats WHERE `+where+` AND book_id IN (`+groupHidden+`)`, countArgs...).Scan(&duplicate); err != nil {
+			return nil, 0, err
+		}
+		total -= duplicate
+		where += ` AND book_id NOT IN (` + groupHidden + `)`
+		args = append(args, groupArgs...)
 	}
 	if q.Start < 0 {
 		q.Start = 0

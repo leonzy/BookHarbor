@@ -11,18 +11,21 @@ import (
 // BrowseQuery keeps filtering, visibility and paging in SQLite. Candidates is
 // optional; a non-nil empty slice deliberately matches no books.
 type BrowseQuery struct {
-	Filters       map[string]string
-	Category      string
-	Names         []string
-	Format        string
-	FormatFilter  bool // true for literal category names, including empty or 全部
-	Excluded      map[int64]bool
-	Candidates    []int64
-	TimestampSort bool
-	TitleSort     bool
-	SizeSort      string
-	RatingSort    bool
-	Start, Size   int
+	GroupWorks         bool // catalog cards, after visibility/filtering and before paging
+	DirectoryNode      int64
+	DirectoryRecursive bool
+	Filters            map[string]string
+	Category           string
+	Names              []string
+	Format             string
+	FormatFilter       bool // true for literal category names, including empty or 全部
+	Excluded           map[int64]bool
+	Candidates         []int64
+	TimestampSort      bool
+	TitleSort          bool
+	SizeSort           string
+	RatingSort         bool
+	Start, Size        int
 }
 
 func jsonIDs(ids []int64) string {
@@ -36,6 +39,14 @@ func jsonIDs(ids []int64) string {
 func (q BrowseQuery) where(ctx context.Context, db *sql.DB) (string, []any, error) {
 	parts := []string{"1=1"}
 	args := []any{}
+	if q.DirectoryNode > 0 {
+		direct := " AND direct=1"
+		if q.DirectoryRecursive {
+			direct = ""
+		}
+		parts = append(parts, `b.id IN (SELECT book_id FROM book_directory_members WHERE node_id=?`+direct+`)`)
+		args = append(args, q.DirectoryNode)
+	}
 	if q.Candidates != nil {
 		parts = append(parts, "b.id IN (SELECT value FROM json_each(?))")
 		args = append(args, jsonIDs(q.Candidates))
@@ -112,7 +123,7 @@ func (q BrowseQuery) where(ctx context.Context, db *sql.DB) (string, []any, erro
 // BrowseBooks returns only one page of IDs and the exact filtered count from
 // one read transaction. No read transaction is held while formatting cards.
 func BrowseBooks(ctx context.Context, db *sql.DB, q BrowseQuery) ([]int64, int, error) {
-	if browseSimpleFormat(q) {
+	if (!q.GroupWorks || q.SizeSort == "") && browseSimpleFormat(q) {
 		var indexed int
 		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='book_browse_formats'").Scan(&indexed); err != nil {
 			return nil, 0, err
@@ -125,6 +136,18 @@ func BrowseBooks(ctx context.Context, db *sql.DB, q BrowseQuery) ([]int64, int, 
 	if err != nil {
 		return nil, 0, err
 	}
+	baseWhere, baseArgs := where, append([]any{}, args...)
+	hidden := ""
+	if q.GroupWorks {
+		hidden, err = identityHiddenSQL(ctx, db, where)
+		if err != nil {
+			return nil, 0, err
+		}
+		if hidden != "" {
+			where += " AND b.id NOT IN (" + hidden + ")"
+			args = append(args, baseArgs...)
+		}
+	}
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, 0, err
@@ -133,7 +156,8 @@ func BrowseBooks(ctx context.Context, db *sql.DB, q BrowseQuery) ([]int64, int, 
 	var total int
 	countSQL := "SELECT count(*) FROM books b WHERE " + where
 	countArgs := args
-	unfiltered := !q.FormatFilter && q.Candidates == nil && q.Category == "" && (q.Format == "" || q.Format == "全部")
+	fastCount := false
+	unfiltered := q.DirectoryNode == 0 && !q.FormatFilter && q.Candidates == nil && q.Category == "" && (q.Format == "" || q.Format == "全部")
 	for _, value := range q.Filters {
 		if value != "" && value != "全部" {
 			unfiltered = false
@@ -145,6 +169,7 @@ func BrowseBooks(ctx context.Context, db *sql.DB, q BrowseQuery) ([]int64, int, 
 			return nil, 0, err
 		}
 		if indexed > 0 {
+			fastCount = true
 			countSQL = "SELECT (SELECT count(*) FROM books)-(SELECT count(*) FROM book_unavailable_sources)"
 			countArgs = nil
 			hidden := []int64{}
@@ -158,6 +183,11 @@ func BrowseBooks(ctx context.Context, db *sql.DB, q BrowseQuery) ([]int64, int, 
 				countArgs = []any{jsonIDs(hidden)}
 			}
 		}
+	}
+	if fastCount && hidden != "" {
+		// Keep the existing O(1) base count; only inspect indexed group members.
+		countSQL = "SELECT (" + countSQL + ")-(SELECT count(*) FROM books b WHERE " + baseWhere + " AND b.id IN (" + hidden + "))"
+		countArgs = append(append(append([]any{}, countArgs...), baseArgs...), baseArgs...)
 	}
 	if err = tx.QueryRowContext(ctx, countSQL, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err
@@ -186,11 +216,25 @@ func BrowseBooks(ctx context.Context, db *sql.DB, q BrowseQuery) ([]int64, int, 
 		q.Size = 1
 	}
 	from := "books b"
+	selectArgs := []any{}
 	if q.SizeSort != "" {
 		from = "book_sort_sizes z CROSS JOIN books b ON b.id=z.book_id"
 		order = sizeOrderSQL(q.SizeSort, "z")
+		if hidden != "" {
+			visible, visibleArgs, e := (BrowseQuery{Excluded: q.Excluded}).where(ctx, db)
+			if e != nil {
+				return nil, 0, e
+			}
+			from += ` LEFT JOIN (SELECT k.managed_work,MAX(sz.size) size FROM book_identity_keys k JOIN books b ON b.id=k.book_id AND b.work_id=k.managed_work JOIN book_sort_sizes sz ON sz.book_id=b.id WHERE k.managed_work>0 AND (` + visible + `) GROUP BY k.managed_work) gs ON gs.managed_work=b.work_id AND EXISTS(SELECT 1 FROM book_identity_keys k WHERE k.book_id=b.id AND k.managed_work=b.work_id AND k.managed_work>0)`
+			selectArgs = append(selectArgs, visibleArgs...)
+			direction := "DESC"
+			if q.SizeSort == "asc" {
+				direction = "ASC"
+			}
+			order = `(COALESCE(gs.size,z.size)>0) DESC,COALESCE(gs.size,z.size) ` + direction + `,b.id DESC`
+		}
 	}
-	pageArgs := append(append([]any{}, args...), q.Size, q.Start)
+	pageArgs := append(append(selectArgs, args...), q.Size, q.Start)
 	rows, err := tx.QueryContext(ctx, "SELECT b.id FROM "+from+" WHERE "+where+" ORDER BY "+order+" LIMIT ? OFFSET ?", pageArgs...)
 	if err != nil {
 		return nil, 0, err

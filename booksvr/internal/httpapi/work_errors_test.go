@@ -28,21 +28,19 @@ func TestVersionSummaryScanError(t *testing.T) {
 	}
 }
 
-// TestBookVersionsWorkIDNullError 覆盖 BookVersions 里
-// GetBookWorkID 返回非 ErrNoRows 错误的分支（work_id 为 NULL）。
-func TestBookVersionsWorkIDNullError(t *testing.T) {
+// TestBookVersionsWorkIDNullIsEmpty: 未归组的书正常返回空版本列表。
+func TestBookVersionsWorkIDNullIsEmpty(t *testing.T) {
 	db := newTestDB(t)
 	_, bookA, _ := seedWork(t, db)
 
-	// work_id 置 NULL：GetBookWorkID 返回 "book N has no work_id"，
-	// 这是非 ErrNoRows 的错误，因此 BookVersions 直接返回 error。
+	// 单独的书尚未分配作品 ID，不代表接口故障。
 	if _, err := db.Exec(`UPDATE books SET work_id = NULL`); err != nil {
 		t.Fatalf("null work_id: %v", err)
 	}
 
 	svc := &WorkService{DB: db}
-	if _, err := svc.BookVersions(bookA); err == nil {
-		t.Error("work_id 为 NULL 时 BookVersions 应返回 error")
+	if result, err := svc.BookVersions(bookA); err != nil || result.Err != "ok" || len(result.Versions) != 0 {
+		t.Fatalf("未归组书的版本列表: %+v %v", result, err)
 	}
 }
 

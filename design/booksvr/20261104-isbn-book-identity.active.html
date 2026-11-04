@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="ISBN 优先识别、历史同书核查、列表合并及权限与运行任务保护的实现和验证记录。" />
+    <link rel="icon" href="data:," />
+    <title>ISBN 优先识别与同书列表合并 · ACTIVE</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><h1>ISBN 优先识别与同书列表合并</h1><p>创建日期：2026-11-04 · 模块：booksvr / app · 状态：ACTIVE · 来源：用户要求按 ISBN 优先、冲突保护、书名净化、补全后重判及历史核查方案实现。</p>
+<h2>原始诉求</h2><p>442136 EPUB、442137 MOBI、250408 AZW3 的 ISBN 都是 9787213101625，却因宣传语、作者缺失和未接入归组而被当成不同书。当前导入先要求书名完全相同，没有使用 ISBN；book_formats 每本每格式唯一，不能覆盖已有同格式文件。</p>
+<h2>目标与方案</h2><ul><li>校验 ISBN 并统一 ISBN-10/13，按带索引的 ISBN 优先找候选；同时核对净化书名、作者交集、语言及卷册/修订信息。无 ISBN 时只在净化书名一致且可信作者集合一致时匹配；有效不同 ISBN 不据此强并为同一版本。</li><li>直接文件哈希相同仍按现有重复规则处理。匹配同书且格式空缺时复用书号；同格式的不同文件新建版本记录，关联同一作品，原文件和旧书号不删除。历史记录通过作品关联集中展示，不批量迁移用户阅读记录、不覆盖人工元数据；列表按确认的作品合并展示，版本和文件入口保留。</li><li>以轻量身份索引和持久增量队列处理已有记录。数据库触发器捕获旧补全进程的元数据写入，避免为新功能重启补全服务；主进程限速处理队列，短事务、租约防重入、游标续跑。显式人工分组/拆分加入保护，不被后台撤回。</li><li>书籍详情返回有界同书版本及各自文件下载、大小、受权限保护的存储路径。逐版本校验可见性，私藏信息不能通过公有书详情泄漏；导入不得复用其他用户私有书目。</li><li>冲突与不确定结果保留原记录并记录原因；ISBN 单独相同不能抹去明显不同的书名、作者、语言或卷册。不对原文件复制、移动、改名。</li></ul>
+<h2>影响范围</h2><p>纯函数身份规则、library 索引/队列/归组、scan 导入匹配、主服务后台调度、书籍详情和前端版本组件、spec/书籍.md 与 spec/书库.md。保留工作区无关 OPDS 改动，不随本任务提交。</p>
+<h2>实现细化</h2><p>身份查询索引区分 ISBN 与书名/作者，常见书名的候选上限不能挤掉有效 ISBN 命中；多候选不一致则保留版本。格式登记在获得 SQLite 写锁后复核身份，变化或槽位被占用时改建版本，不覆盖已有文件。历史游标与事件版本持久化，每两秒最多处理十本，普通队列与延期重试分别使用索引；作品单例只建立身份索引，不为每本书制造空作品。新增纯规则、导入流程、历史归组、旧写入者事件、租约、人工拆分保护、私藏与存储路径测试。</p><p>只读现场预检确认 442136 对应三个成员：250408、442136、442137，依据为 ISBN；未创建身份表，书名、文件与人工锁保持不变。当前补全进程实际 PID 为 22（容器于 11 月 4 日重新启动），后续保护以本次快照为准。版本链接使用继承的前景色和下划线，避免暗色背景上的默认蓝字对比不足。现网详情由独立补全服务代理，部署只把详情读取切回新版主服务，编辑、检索、补全及阅读代理保持独立。</p><p>部署后已关联作品 243，原文件和人工字段保留，补全 PID 22 不变。检查被自动归组启用的旧作品 API 时发现摘要可能来自不可见成员，且查询私有书的其他版本未先检查当前书。补齐摘要按可见成员生成、全私有作品隐藏、当前书权限和单例空版本处理，再重跑相关接口与发布主进程。</p><h2>测试结果</h2><p>通过：Linux 隔离容器内 bookidentity、library、scan、httpapi、cmd/booksvr 五个包全量测试（每个二进制 -test.count=1 -test.timeout=300s）；权限补充后 HTTP 相关用例复测通过。随后列表与性能修正又执行 Windows 相关测试、go vet，最终 Linux library 全包通过。测试容器无生产挂载、断网、单 CPU、768MiB 内存。未执行与本改动无关的全仓所有 Go 包；未把测试编译或部署管理脚本称为 Python 后端测试。</p><p>前端执行 node node_modules/vitest/vitest.mjs run test/components/BookVersions.spec.ts，3/3 通过；在 app 工作目录执行 eslint 检查新组件和详情页通过；Nuxt generate 通过。25 篇 spec 校验通过。早期 CLI Windows file URI 测试失败已修正并重测通过；原来单例空 work_id 的接口测试按正确的空版本响应更新。独立只读预检确认 442136 的三个成员且未写 schema。</p>
+<section><h2>用户反馈与方案修订：列表合并</h2><p>用户指出已识别作品依旧显示多张重复卡片。现场确认作品 4200 已包含 385213、446498、446499、446500，但列表仍按书号展开；446869 也已完成身份处理。因此取消原先“列表仍按版本计数”的决定：浏览、分类和搜索在筛选与权限检查后、分页前按已确认作品折叠为一条，计数同步折叠；每张卡片展示可见成员的格式大小，详情保留全部文件入口和原书号。不能仅对当前页去重，否则分页和总数会错误。目录浏览只折叠选中范围里的成员，不能用目录外或私有成员把当前条目隐藏。人工元数据、原文件、阅读记录不搬迁。缺失作者且无可信 ISBN 的不确定记录仍保留，避免误合。</p></section>
+<section><h2>大库验收的查询修正</h2><p>实际格式列表发现 SQLite 将内层格式集合放入关联子查询，约九千个已归组成员各自展开十余万条格式候选，导致 25 秒超时；小样本正确性测试不足以暴露这个问题。修正为只针对已归组成员的筛选集合 MATERIALIZED 一次，并固定 managed_work 的部分索引入口，再按组选择代表。只读生产快照核查原查询八秒主动中止；一次物化后的同一计数约 1.08 秒，随后增加强制部分索引，继续测试与部署。该问题已加入查询计划回归断言。</p></section><section><h2>interface-review full：范围与覆盖</h2>
+<p>按 AGENTS.md、app/CLAUDE.md 和项目 interface-review → better-interface 流程，以 full 模式检查整个本地分支相对 origin/main 的变更：默认分支由 origin/HEAD 确认为 main，基点和 HEAD 均为 12118a93f2fc3600cfd383a6e27c88866d9a8237，领先提交 0；28 个实际修改的已跟踪文件、21 个未跟踪文件，共 49 个有效文件；Dockerfile 的无文本差异状态不计入。范围包含未纳入本次提交的 OPDS、部署脚本和存储方案改动的静态审查，未将它们冒充本次实现。生成的 .nuxt、.output、二进制及截图不纳入源码审查。</p>
+<p>使用 Nuxt/Vue/Vuetify 现有语义和主题，未引入设计系统。直接消费者扩展上限五个：书籍详情、书库/搜索卡片、分类书目、文件目录书目、下载与存储信息；共享头栏只用于实际页面操作，未扩大为全站重构。逐项检查 diff 删除侧，未删除原有 aria、焦点、换行或下载入口。OPDS 的原生客户端界面未在本任务重验。</p>
+<table><tr><th>领域</th><th>证据</th><th>结果</th></tr>
+<tr><td>Accessibility</td><td>版本 section 可访问名称、h2/h3、原生链接、逐文件下载标签；线上键盘 Tab 焦点为 2px 实线。私有成员、游客路径和空列表有测试。</td><td>本改动无待修项</td></tr>
+<tr><td>Layout</td><td>真实 1265px 页面与 320px 视口；窄屏文档 client/scroll 均 305px，版本区域 client/scroll 均 273px；长宣传书名与绝对路径完整换行。</td><td>本改动无待修项</td></tr>
+<tr><td>Writing</td><td>三种语言的版本说明、文件位置和下载名称；明确保留书号和阅读记录，不把后台归组称为删书。</td><td>本改动无待修项</td></tr>
+<tr><td>Typography</td><td>链接 16px、路径 .875rem；文字放大 200% 时链接 32px，文档 client/scroll 均 1265px，区域 client/scroll 均 993px；恢复原字号。</td><td>本改动无待修项</td></tr>
+<tr><td>Colors</td><td>链接继承前景并有下划线。浅色为黑色 .87/白底；暗色为白色/#121212，焦点同主题前景；已切换并恢复主题。</td><td>本改动无待修项</td></tr>
+<tr><td>UI</td><td>使用既有卡片和格式大小组件；新增区域无固定高度、无新动画，窄屏按正文顺序阅读。</td><td>本改动无待修项</td></tr></table>
+<h3>已修复及排除项</h3><p>首轮“关联后列表仍重复”属于用户目标未完成，已补分页前折叠；初版蓝字在暗色对比不足，已改继承前景；被启用的旧作品接口存在私有摘要泄漏，已补权限和测试。这些问题均不得遗留到 ACTIVE。考虑过截断原书名、覆盖同格式文件、对游客展示路径、删除历史书号，分别因可读性、质量保留、权限与阅读记录保护而排除。共享 AppHeader.vue:142 的无名称主题按钮在基点已存在，是 Pre-existing，不计入此次裁决；未改该控件。</p>
+<p>已验证：真实详情长内容、暗/亮主题、键盘、320px、200% 文字、空版本组件、游客与私藏 API。Not verified：真实屏幕阅读器、浏览器整体 200% 缩放、强制颜色、英文/俄文整页、无关 OPDS 客户端。最终版本已重复检查全部本地变更及删除侧，并完成真实卡片、详情和对应接口验证：No actionable interface findings in this change；无 Introduced / Regression HIGH、MEDIUM、LOW 待处理项。Verdict: Approve。</p></section><section><h2>分类排序路径补充</h2><p>物化修正后分类接口已不超时，但 EPUB 分类仍耗时约 10.9 秒：通用查询绕过了已有评分排序覆盖索引。恢复格式页原有排名索引及缓存总数，只针对确认组减去重复数量、过滤重复成员；按大小排序仍使用可见组内最大文件。新增含私有代表替代的格式排名回归测试，Windows 相关测试、go vet 与 Linux library 全包均通过。</p></section><section><h2>最终部署与现场验收</h2><p>2026-11-04 主服务运行 identity-da797a7f9f50/booksvr，SHA256 da797a7f9f50aa1b4579ae4ea1d055a1bc38e41bf8fa20a52cc3d3db4cb997e2；仅主服务热更新，未重启容器、补全、阅读或插件进程。原 EPUB/MOBI/AZW3 的认证下载前缀预检成功，原有三条书名、路径、出版日期、格式记录与人工字段锁和最初快照一致。最终元数据游标 271308，较最初 266994 前进；补全 PID 22 与启动 tick 14239 未变，阅读进程 PID 23/25、插件 24 未变。更新期间主服务曾首次 spawn 未就绪，由既定启动重试后恢复，最终 socket/API 验证通过。</p><p>历史身份索引已处理 74966 条，队列仍有 379449 条，不能把发现游标到尾部当作全库核查完成。已确认的 446869/190951 和逻辑思考作品仅各显示一张组卡片；作者和 ISBN 均缺失的 PDF 未强并。最终文件目录例子的实际书目折叠总数为 1。真实搜索截图保存为 C:/Users/leon/bookharbor-isbn-versions-final.png；CDP 最终搜索没有运行时异常或 HTTP 4xx/5xx，事件无截断。主服务和补全独立执行，导入数据与续跑状态不清空。</p><table><tr><th>验收入口</th><th>合并后总数</th><th>实测耗时</th></tr><tr><td>麻省理工创新思考力<td>2<td>5.031 秒</tr><tr><td>逻辑思考的100个关键<td>3<td>4.109 秒</tr><tr><td>/api/library?size=3<td>412010<td>0.516 秒</tr><tr><td>/api/library?size=3&amp;start=3<td>412010<td>0.453 秒</tr><tr><td>/api/format/EPUB?size=3<td>115540<td>4.391 秒</tr><tr><td>/api/library?size=3&amp;sort=size_desc<td>412010<td>4.015 秒</tr><tr><td>/api/library/directories?path=%2Fbooks1%2Fzhishikoo%2F%E9%BA%BB%E7%9C%81%E7%90%86%E5%B7%A5%E5%88%9B%E6%96%B0%E6%80%9D%E8%80%83%E5%8A%9B&amp;size=3<td>1<td>0.5 秒</tr><tr><td>/api/book/446869<td>None<td>0.0 秒</tr><tr><td>/api/book/442136<td>None<td>0.032 秒</tr></table><p>这些是补全并行运行时的单次现场测量。普通书库与目录约半秒；格式分类、大小排序和全文检索仍约 4–5 秒，有继续优化空间，不宣称所有入口均为亚秒。此任务未删除源文件、未覆盖同格式较优文件，未修改无关 OPDS 或存储方案。</p></section></main></body></html>

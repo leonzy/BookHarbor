@@ -620,6 +620,11 @@ func BookDetailHandler(cfg BookConfig) HandlerFunc {
 		// 与 Python 的 BookFormatter.get_files 一致；前端 pages/book/[bid]/index.vue
 		// 直接读 file.format.toLowerCase()，传字符串会导致 500。
 		d["files"] = bookFileEntries(cfg, ctx, *book)
+		versions, err := bookIdentityVersions(cfg, ctx, bookID)
+		if err != nil {
+			return nil, err
+		}
+		d["versions"] = versions
 		// 分类页链接（Python 的 BookFormatter.format 用 api_url 拼）。
 		d["author_url"] = cfg.CDNURL + "/author/" + val(book.AuthorSort, UnknownText)
 		d["publisher_url"] = cfg.CDNURL + "/publisher/" + val(book.Publisher, UnknownText)

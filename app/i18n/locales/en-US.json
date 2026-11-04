@@ -2491,5 +2491,11 @@
     "unreadable": "Source unreadable; retry pending",
     "deleted": "Book deleted",
     "explanation": "Only supported title and author corrections are applied. Insufficient evidence and conflicts preserve existing information. Unreadable sources are retried without deleting books. Import and metadata enrichment continue."
+  },
+  "bookVersions": {
+    "title": "Other versions of this work",
+    "description": "Each version keeps its book ID, files and reading history. Select a format to download its file, or the title to open its details.",
+    "download": "Download {title} as {format}",
+    "location": "File location:"
   }
 }

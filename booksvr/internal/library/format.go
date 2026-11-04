@@ -28,7 +28,7 @@ var ErrFormatExists = errors.New("format already registered for this book")
 // RegisterFormat records a source file for a book WITHOUT copying, renaming or
 // rewriting it. The stored path is absolute so that the library no longer
 // depends on a single library root directory.
-func RegisterFormat(db *sql.DB, bookID int64, format, path string, size, mtime int64) error {
+func RegisterFormat(db *sql.DB, bookID int64, format, path string, size, mtime int64, guards ...func(*sql.Tx) error) error {
 	// Normalize defensively: callers may pass "epub" while the stored value is
 	// "EPUB", and the UNIQUE(book_id, format) constraint is case-sensitive.
 	format = NormalizeFormatName(format)
@@ -65,6 +65,23 @@ func RegisterFormat(db *sql.DB, bookID int64, format, path string, size, mtime i
 		return err
 	}
 	defer tx.Rollback()
+	if len(guards) > 0 {
+		if _, err = tx.Exec(`UPDATE books SET id=id WHERE id=?`, bookID); err != nil {
+			return err
+		}
+		for _, guard := range guards {
+			if err = guard(tx); err != nil {
+				return err
+			}
+		}
+		var occupied bool
+		if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM book_formats WHERE book_id=? AND format=?)`, bookID, format).Scan(&occupied); err != nil {
+			return err
+		}
+		if occupied {
+			return ErrFormatExists
+		}
+	}
 	inserted, err := tx.Exec(`INSERT INTO book_formats (book_id,format,path,size,mtime) VALUES (?,?,?,?,?)`, bookID, format, abs, size, mtime)
 	if err != nil {
 		return fmt.Errorf("insert format: %w", err)

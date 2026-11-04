@@ -256,6 +256,8 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 		defer stopCovers()
 		stopDirectories := attachDirectoryWorker(ctx, db, opts.LibraryRoot, opts.Out)
 		defer stopDirectories()
+		stopIdentity := attachIdentityWorker(ctx, db, opts.Out)
+		defer stopIdentity()
 		if opts.ScanService != nil {
 			if service := opts.ScanService(); service != nil {
 				service.DeferCovers = true

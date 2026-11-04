@@ -42,6 +42,7 @@ const usage = `booksvr - Talebook library storage layer
   repair-source-baseline 核对并显式确认来源挂载身份
   sync-sources        完整核对来源文件（运维与隔离验证）
   repair-mobi-titles  预览或恢复旧偏移错误产生的 MOBI 书名
+  book-identity       只读预检或显式关联同书版本
   reindex-normalize   重算全库归一化键并重建作品归组，输出差异报告
 
 全局选项:
@@ -87,6 +88,8 @@ func Run(args []string) error {
 		return runRebaseline(args[2:], os.Stdout)
 	case "repair-mobi-titles":
 		return runRepairMobi(args[2:], os.Stdout)
+	case "book-identity":
+		return runBookIdentity(args[2:], os.Stdout)
 	case "reindex-normalize":
 		return runReindexNormalize(args[2:], os.Stdout)
 	default:

@@ -431,6 +431,11 @@ func bookRenderList(cfg BookConfig, ctx *Context, ids []int64, title string, sor
 		}
 	}
 	count := len(filtered)
+	filtered, err = library.CollapseIdentityIDs(cfg.LibraryDB, filtered)
+	if err != nil {
+		return nil, err
+	}
+	count = len(filtered)
 	page := bookSlice(filtered, start, start+delta)
 	return bookRenderResolvedPage(cfg, ctx, page, title, count, sortByID)
 }
@@ -455,6 +460,9 @@ func bookRenderResolvedPage(cfg BookConfig, ctx *Context, page []int64, title st
 		sort.SliceStable(values, func(i, j int) bool {
 			return int64Of(values[i]["id"]) > int64Of(values[j]["id"])
 		})
+	}
+	if err = bookAttachIdentityCards(cfg, ctx, values); err != nil {
+		return nil, err
 	}
 	values, err = bookAttachStates(cfg, ctx, values)
 	if err != nil {
@@ -1185,6 +1193,7 @@ func bookBrowsePage(cfg BookConfig, ctx *Context, q library.BrowseQuery, title s
 		}
 	}
 	q.SizeSort = bookSizeSort(ctx)
+	q.GroupWorks = true
 	q.Start = bookArgumentStart(ctx)
 	q.Size = bookPageDelta(ctx, bookMaxPageSize(cfg))
 	ids, total, err := cfg.BrowsePage(ctx, q)
