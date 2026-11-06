@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="BookHarbor 主服务内存优化：真实堆采样、来源核对分配优化、短生命周期完整核对进程与生产验证。" />
+    <link rel="icon" href="data:," />
+    <title>主服务内存采样与分配路径优化 · ACTIVE</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><h1>主服务内存采样与分配路径优化</h1><p>创建日期：2026-11-06 · 模块：booksvr · 状态：ACTIVE · 需求来源：定位主服务内存占用原因，优化实际分配，保护导入、元数据补全和同书核查，测试部署并提交推送。</p><h2>原始诉求</h2><p>容器总计费约 2.5GiB，文件缓存约 1.77GiB，主服务匿名常驻约 536MiB、历史峰值约 1.5GiB；主服务未设置 Go 内存软限制，补全独立进程仅约 40MiB。不能仅靠限制或重启掩盖问题。</p><h2>目标和决策</h2><ul><li>先保存实际进程、任务检查点与内存时间序列；区分匿名驻留、文件缓存、存活对象、分配峰值和 SQLite 连接/临时查询开销，不把虚拟地址空间视为实际内存。</li><li>在隔离的真实数据库快照或有代表性的大库上复现并采集 Go profile，按证据改为有界分批、数据库筛选、连接复用或释放无用缓存。不给生产进程发送强制 GC、调试中止信号，不对系统 drop_caches。</li><li>变更不清空导入或核查队列，不改变元数据保护和合并规则；不重启独立运行的补全、阅读和插件进程。部署前核对导入状态，必要时在现有批次检查点完成后只热更新主服务，确保任务自动续跑。</li><li>以相同数据和操作对比优化前后分配量、峰值和驻留；补回归测试、幂等和续跑验证，最终写回实测而非理论值。</li></ul><h2>影响范围</h2><p>影响 booksvr 来源核对读取/准备、后台进程装配与私有诊断；document/memory-diagnostics.md 记录运维配置，spec/书库.md 仅更新实现对照的代码落点。用户 API 结果、权限、界面、元数据保护与合并规则不变。无界面影响的判断和豁免见后文。</p><h2>验证计划（实施前记录）</h2><p>原定验证项：连续驻留与任务采样、隔离 heap/alloc profile、同数据前后对比、相关 Go 测试和 vet、生产任务检查点及独立 PID 保护、部署后持续采样、设计与 spec 门禁、提交推送。</p><h2>采样结论与实施细化</h2><p>生产 smaps 确认主要驻留在 c000... 的 Go 堆映射，不是 SQLite 的外部 mmap。隔离容器以只读挂载查询 498113 条真实来源记录、489482 个物理路径；累计 loader 分配 1156489672 字节、准备缓存分配 211593480 字节，强制 GC 后仍存活 419608976 字节。pprof 的 alloc_space 主要为切片扩容/记录保存 482MiB、SQLite 字符串 319MiB、重复路径缓存 206MiB、filepath.Rel 93MiB、来源引用解码等。采样只运行原准备步骤，没有修改生产数据库或扫描原文件。</p><p>按证据优化：完整读取预分配记录切片并省掉无用的全库去重集合；绝对规范路径使用等价前缀判断，避免每条 filepath.Rel 分配；路径存在与先前存在状态用一份小标志表保存；只在缓存复用或显式移动事件实际需要时保存缓存；移动候选索引只建立在缺失来源需要的身份/大小上，仍保留全部同键候选以维持歧义保护。暂不更改 ISBN/元数据/挂载保护规则，也不依靠 GOMEMLIMIT 或周期强制 GC。</p><h2>定量复测与在线采样</h2><p>同一只读数据集、相同 CPU 和容器内存条件：记录数保持 498113，物理路径数保持 489482。累计分配从 1368083152 降至 651113248 字节（约减少 52.4%），存活堆从 419608976 降至 310494288 字节。该比较仅覆盖读取与准备阶段，不能冒充整个进程的最终驻留。继续部署前增加默认关闭的本地诊断：只在显式配置私有绝对目录时写运行时内存/连接池 JSON 和有界 heap profile，目录 0700、文件 0600，不开放任何 HTTP 诊断接口、不强制 GC、不改 Go 内存上限；用于验证现网稳定驻留与堆对象。此运维开关不是产品设置，不改变领域行为，使用范围与输出写入运维说明。新代码属于纯后端资源与私有运维诊断，无界面影响，依据为用户 API、文案、权限与前端代码均未改动；interface-review 豁免，剩余风险为大库查询和长时间后台复核的内存波动，需要现场复测。</p><h2>测试与首轮发布记录</h2><p>Linux 隔离容器内以 talebook 非 root 用户运行 library、scan、httpapi、sourcewatch、cmd/booksvr 五包全量测试，全部 PASS；容器无生产卷绑定，单 CPU、768MiB。Go vet 通过。新增准备缓存策略、按需索引与歧义保持、路径相对语义、删除同步不依赖返回文件列表、公开状态序列化一致、诊断文件权限/有界写入/取消/拒绝符号链接测试通过。诊断十分钟自动结束的最后调整经 Windows 同组单测验证，所用标准 context 超时不改变平台文件行为。</p><p>Windows 有三个权限/Unix 绝对路径用例在未修改 HEAD 导出的源码上同样失败；一个 Windows 创建时间身份的增量用例在未修改 HEAD 重复 30 次时也有同样的间歇失败。没有把这些已有平台限制当作新逻辑通过，真实 Linux 五包回归覆盖其对应行为。旧准备采样用例的哈希简写条件通过只读 SQL 核实与该数据集的生产条件差异为 0。</p><p>10 万条全部存在的来源，候选索引基准 previous 为 32679264 B/op、201062 allocs/op，needed_only 为 96 B/op、2 allocs/op。真实库对照记录数量完全一致。2026-11-06 仅在导入任务空闲、无 import_resume_job 活动行时热更新主进程，运行 memory-a5f294c6ae88/booksvr，SHA256 a5f294c6ae889a772877689f6e6a4563bc3d8683c18fe77972f552f6c414953f；导入控制、停止代数、扫描历史与来源健康身份保留；元数据 PID20/starttick16797、阅读21/23与插件22未变化。未新增内存上限或强制 GC。</p><p>真实接口：书库首两页、442136/446869 的版本列表、导入监控通过；独立旧补全进程的全库进度查询仍有 30 秒超时，未改该进程，此接口不记为通过，后台游标持续前进。线上 heap 已确认主要由来源核对的 loadSourceTracked/字符串/源引用组成；正在等待完整来源核对结束，不能用刚重启的内存冒充稳态。只读采样容器已移除；完整回归容器后续复用运行最终版本，最终回归通过后确认只剩休眠进程再移除。</p><h2>在线采样推动的第二轮方案</h2><p>完整来源核对超过十分钟，临时记录在 HTTP 主进程内仍存活，驻留可继续增长到约 1GiB，不能把准备阶段的 52% 改善当作最终稳态。在线 heap 已直接证实 loadSourceTracked 与 WalkDir 快照占绝大部分。采用短生命周期子进程隔离完整核对：以当前同版本可执行文件运行私有 source-sync-worker 命令，JSON stdin 传递已配置路径；目录遍历事件逐条通过 JSON stdout 交给主进程实时装入 inotify，结果只传计数、健康状态和目录列表，不传全文件清单。主进程持有的临时数据限于目录与有界协议消息，完整临时堆随子进程退出由操作系统释放，不依赖 GC 或限制。</p><p>子进程只打开已有数据库、注册 Calibre SQL 函数，不跑迁移，不启动导入/补全/合并；沿用完全相同的 SyncSourceFiles 健康复核和原子提交逻辑。增量核对仍在主进程。父上下文取消时结束子进程，未提交 SQLite 事务回滚，已有来源变更日志下次继续应用。失败由原有 source-worker 重试，不以内联重试重新拖大主堆。新增真实子进程协议、目录监听即时传递、取消不误标缺失、结果一致与字段校验测试。此轮等待当前完整核对进入安全边界后更新，保护其他独立进程不变。</p><h2>子进程协议的保护细化</h2><p>目录事件采用双向确认：子进程写出目录事件后，必须收到主进程安装监听完成的 continue 确认，才遍历目录内容。不能仅异步写入管道，否则可能在监听尚未安装时漏掉文件变化。测试在目录回调中延迟并创建新子目录，验证它被完整扫描；取消测试将真实工作子进程阻塞在目录事件处，取消父上下文后，书目缺失状态保持上次提交值。还覆盖含逗号根目录、结果一致、移动、无迁移、禁止创建缺失数据库、协议失败与有界 stderr。</p><p>复查中补齐省略返回文件清单与旧受限发现模式的兼容：必要的后备发现内部列表仍保留，只不返回给状态消费者，新增有限发现时改名仍能匹配的测试。完整工作请求不传无用的逐文件变更列表。工作连接保持原有 30 秒 SQLite 等待策略，读取与目录监听的主服务行为不变；Windows 现有库 URI 补齐盘符前缀，与只读 CLI 的既有处理一致。领域规格只更新书库的代码落点，未更改同步、权限与任务规则。</p><h2>最终版本验证</h2><p>最终源码（含双向监听确认、有限发现后备列表与 30 秒 SQLite 等待）重新构建 Linux 五包测试二进制；在无生产绑定、网络关闭、单 CPU、768MiB 的隔离容器里运行 library、scan、httpapi、sourcewatch、cmd/booksvr 全量回归，全部 PASS。日志中的坏 ZIP、关闭数据库与代理失败为故障注入测试的预期日志。Go vet 五包通过，25 篇领域规格校验通过。自动测试覆盖子进程真实启动/退出、目录监听确认、改名、取消回滚及缺失保护。回归容器已核对专属标签与空闲进程后删除。</p><p>首轮现场完整核对结束后 RSS 为 358172–360128 kB，历史峰值 1074576 kB；这说明减少准备分配虽有效，仍需释放完整任务的临时堆。2026-11-06 10:43，在来源核对已回到 watching、导入队列空闲的边界，仅更新主进程至 memory-002b006c240d/booksvr，SHA256 002b006c240d6807873d569794c8883aeaf0f929679a497401a8397b19be6c3a。新主 PID3496/starttick4596458，元数据20/starttick16797、阅读21/23、插件22均保持原 PID 与启动时间。</p><p>真实完整任务 PID3533 为主服务子进程，nice=10；首组采样在完整核对逐步占用 288596–540484 kB 时，主服务仍为 67900–79396 kB（峰值91512 kB）。元数据游标353531→353550，归组队列0–1条正常流转。导入仍保留原停止设置和已完成扫描206，没有清库、重排队列或重启整容器。容器总内存仍包含核对临时堆和可回收文件缓存，不宣称整个容器仅占这几十 MiB。</p><h2>现场复测与范围限制</h2><p>真实登录后重复访问书库前两页、书籍442136与446869详情/版本、导入监控均成功；版本列表与部署前一致，首两页耗时约2.7–3.2秒，与部署前相近。未触发新扫描、导入、全库补全重置或全库合并。完整来源核对期间，主进程 RSS 持续约66–85MiB（原始 kB 数据见采样记录），没有把临时工作堆带回 HTTP 服务。10:45:38 的同版本 pprof 统计 inuse_space 约21.8MiB，主要为目录监听、小量协议解码与封面解析，已没有全库 loadSourceTracked 快照。线上未调用强制 GC，未配置 GOMEMLIMIT/GOGC，未清理系统缓存。</p><p>最终核对元数据游标353526→353609，身份归组队列0，进程启动时间全部符合部署回执。导入当时已完成且处于停止设置，因此验证的是控制与检查点未改动，而非虚构一条运行中的导入。生产完整来源核对仍在后台继续，暂不声称本轮全库核对已经结束；同样的子进程成功退出与取消清理在真实子进程回归中已验证。总容器驻留会随临时核对堆和文件缓存波动，本次结论是主服务常驻与准备阶段实际分配的改善。</p><p>发布方式：为保护独立任务，仅在现有 BookHarbor 容器中切换主服务同版本构建的可执行文件及启动指向，未重启整容器。该构建保留工作区原有 OPDS 改动，本次提交仅包含内存优化相关文件；部署回执保存在私有维护目录。后续常规镜像构建自动包含本次源码，当前在线运行二进制已校验 SHA256。截图不适用：没有前端、文案或交互变更，公开状态 JSON 的字段/值形式有回归测试，私有目录列表不进入状态缓存。</p><h2>末组采样与完成状态</h2><p>随后末组四次采样：主服务 RSS 87036、87076、81120、82432 kB，峰值96180 kB；同时完整核对子进程 RSS 722736 kB，nice10，仍为 PID3496 的子进程。相对原主服务552744–555208 kB，实际主服务驻留下降约84–85%。元数据游标继续至353626、归组队列回到0；没有把核对暂停后的低值当成优化证明。全部目标代码、隔离回归、主服务部署、运行中核对的连续采样与任务检查点保护已完成；生产核对的最终结束时间不在本次已验证结论内。</p></main></body></html>

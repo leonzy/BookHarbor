@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"talebook/booksvr/internal/sourcefile"
@@ -88,6 +89,9 @@ type SourceSyncOptions struct {
 	DirectoryVisited            func(string) error
 	Moves                       []SourceMove
 	RefreshOffset, RefreshLimit int
+	// Background status consumers need counts and watched directories, not a
+	// retained string slice of every discovered file.
+	OmitFilePaths bool
 }
 
 type sourceDiskFile struct {
@@ -95,14 +99,20 @@ type sourceDiskFile struct {
 	size, mtime int64
 }
 type sourceTracked struct {
-	id, book                          int64
-	format, path, physical, key, hash string
-	size, mtime                       int64
-	missing                           int
-	ref                               *sourcefile.Reference
+	id, book                  int64
+	path, physical, key, hash string
+	size, mtime               int64
+	missing                   int
+	ref                       *sourcefile.Reference
 }
 
 func sourceWithin(path, root string) bool {
+	// On Unix, clean absolute paths have a component-boundary prefix test.
+	// filepath.Rel splits every long ebook path, allocating per row of a baseline.
+	if runtime.GOOS != "windows" && filepath.IsAbs(path) && filepath.IsAbs(root) {
+		path, root = filepath.Clean(path), filepath.Clean(root)
+		return path == root || strings.HasPrefix(path, strings.TrimRight(root, string(filepath.Separator))+string(filepath.Separator))
+	}
 	rel, err := filepath.Rel(root, path)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
@@ -209,27 +219,7 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 	if err != nil {
 		return result, err
 	}
-	known := map[string]bool{}
-	newMissing := map[string]bool{}
-	for _, t := range tracked {
-		known[t.physical] = true
-		if t.missing == 0 && (t.key != "" || strings.HasPrefix(t.hash, "sha256:")) {
-			newMissing[t.physical] = true
-		}
-	}
-	cached := map[string]sourceDiskFile{}
-	for _, t := range tracked {
-		if t.key != "" && t.missing == 0 {
-			cached[t.physical] = sourceDiskFile{t.physical, t.key, t.size, t.mtime}
-		}
-	}
-	transferred := map[string]sourceDiskFile{}
-	for path, info := range cached {
-		if moved := sourceMovedPath(path, option.Moves); moved != "" {
-			info.path = moved
-			transferred[moved] = info
-		}
-	}
+	known, cached, transferred := prepareSourceFiles(tracked, option, limited)
 	dirty := map[string]bool{}
 	for _, path := range option.ChangedPaths {
 		dirty[path] = true
@@ -253,8 +243,6 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 	}
 	snapshots := map[string]*rootSnapshot{}
 	allFiles := map[string]sourceDiskFile{}
-	byKey := map[string][]sourceDiskFile{}
-	bySize := map[int64][]sourceDiskFile{}
 	hashes := map[string]string{}
 	archiveCandidates := sourceArchiveCandidates{}
 	roots = normalizeSourceRoots(roots)
@@ -331,7 +319,9 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 				if d.Name() == ".talebook-source-health" {
 					return nil
 				}
-				snap.paths = append(snap.paths, path)
+				if !option.OmitFilePaths || !discoverAll {
+					snap.paths = append(snap.paths, path)
+				}
 				if limited && !option.FullDiscovery && d.Type()&os.ModeSymlink == 0 {
 					if info, ok := transferred[path]; ok {
 						snap.files[path] = info
@@ -342,7 +332,7 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 						return nil
 					}
 				}
-				candidate := discoverAll || known[path] || (option.PreviousPaths != nil && !option.PreviousPaths[path])
+				candidate := discoverAll || known[path] != 0 || (option.PreviousPaths != nil && !option.PreviousPaths[path])
 				if !candidate {
 					for _, changed := range option.ChangedPaths {
 						if filepath.Clean(changed) == root {
@@ -401,7 +391,7 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 					e = fmt.Errorf("链接来源失联，无法确认目标挂载健康")
 					break
 				}
-				if newMissing[path] && len(option.ChangedPaths) == 0 {
+				if known[path]&sourcePreviouslyPresent != 0 && len(option.ChangedPaths) == 0 {
 					missingNeedsDiscovery = true
 				}
 			} else if statErr != nil {
@@ -478,11 +468,11 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 		snapshots[root] = snap
 		result.Roots[root] = "ok"
 		result.Directories = append(result.Directories, snap.dirs...)
-		result.Files = append(result.Files, snap.paths...)
+		if !option.OmitFilePaths {
+			result.Files = append(result.Files, snap.paths...)
+		}
 		for path, f := range snap.files {
 			allFiles[path] = f
-			byKey[f.key] = append(byKey[f.key], f)
-			bySize[f.size] = append(bySize[f.size], f)
 		}
 	}
 	if option.Incremental {
@@ -507,12 +497,18 @@ func SyncSourceFiles(ctx context.Context, db *sql.DB, roots []string, libraryRoo
 		for _, f := range candidates {
 			result.Inspected++
 			allFiles[f.path] = f
-			byKey[f.key] = append(byKey[f.key], f)
-			bySize[f.size] = append(bySize[f.size], f)
 		}
 	}
 	// One physical source (including an archive shared by many books) is relocated
 	// once. SHA256 fallback reads only equal-sized unclaimed candidates.
+	byKey, bySize := sourceRelocationIndexes(tracked, allFiles, func(path string) bool {
+		for root := range snapshots {
+			if sourceWithin(path, root) {
+				return true
+			}
+		}
+		return false
+	})
 	relocated := map[string]string{}
 	claimed := map[string]string{}
 	origins := map[string]map[string]bool{}

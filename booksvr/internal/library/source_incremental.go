@@ -127,11 +127,20 @@ func refreshSourcePaths(ctx context.Context, db *sql.DB) error {
 	}
 }
 
-const sourceTrackedSelect = `SELECT f.id,f.book_id,f.format,f.path,COALESCE(f.hash,''),COALESCE(s.identity,''),COALESCE(s.size,f.size,0),COALESCE(s.mtime,0),COALESCE(s.missing,0) FROM book_formats f LEFT JOIN source_sync_formats s ON s.format_id=f.id`
+const sourceTrackedSelect = `SELECT f.id,f.book_id,f.path,COALESCE(f.hash,''),COALESCE(s.identity,''),COALESCE(s.size,f.size,0),COALESCE(s.mtime,0),COALESCE(s.missing,0) FROM book_formats f LEFT JOIN source_sync_formats s ON s.format_id=f.id`
 
 func loadSourceTracked(ctx context.Context, db *sql.DB, option SourceSyncOptions, libraryRoot string) ([]sourceTracked, error) {
 	var out []sourceTracked
-	seen := map[int64]bool{}
+	var seen map[int64]bool
+	if option.Incremental {
+		seen = map[int64]bool{}
+	} else {
+		var count int
+		if err := db.QueryRowContext(ctx, `SELECT count(*) FROM book_formats`).Scan(&count); err != nil {
+			return nil, err
+		}
+		out = make([]sourceTracked, 0, count)
+	}
 	queries := []string{sourceTrackedSelect}
 	args := [][]any{nil}
 	if option.Incremental {
@@ -149,25 +158,35 @@ func loadSourceTracked(ctx context.Context, db *sql.DB, option SourceSyncOptions
 			return nil, err
 		}
 		for rows.Next() {
-			var t sourceTracked
-			if err = rows.Scan(&t.id, &t.book, &t.format, &t.path, &t.hash, &t.key, &t.size, &t.mtime, &t.missing); err != nil {
+			// Scan into the final backing array, rather than escaping a temporary
+			// sourceTracked to the heap and then copying it for every single row.
+			index := len(out)
+			out = append(out, sourceTracked{})
+			t := &out[index]
+			discard := func() { out[index] = sourceTracked{}; out = out[:index] }
+			if err = rows.Scan(&t.id, &t.book, &t.path, &t.hash, &t.key, &t.size, &t.mtime, &t.missing); err != nil {
+				discard()
 				break
 			}
-			if seen[t.id] {
-				continue
+			if seen != nil {
+				if seen[t.id] {
+					discard()
+					continue
+				}
+				seen[t.id] = true
 			}
-			seen[t.id] = true
 			t.physical = t.path
 			if sourcefile.IsReference(t.path) {
 				r, e := sourcefile.Decode(t.path)
 				if e != nil {
+					discard()
 					continue
 				}
 				t.ref = &r
 				t.physical = r.Archive
 			}
-			if filepath.IsAbs(t.physical) && !(libraryRoot != "" && sourceWithin(t.physical, libraryRoot)) {
-				out = append(out, t)
+			if !filepath.IsAbs(t.physical) || libraryRoot != "" && sourceWithin(t.physical, libraryRoot) {
+				discard()
 			}
 		}
 		if err == nil {
@@ -223,7 +242,7 @@ func relocationSources(ctx context.Context, db *sql.DB, files map[string]sourceD
 		}
 		for rows.Next() {
 			var t sourceTracked
-			if err = rows.Scan(&t.id, &t.book, &t.format, &t.path, &t.hash, &t.key, &t.size, &t.mtime, &t.missing); err != nil {
+			if err = rows.Scan(&t.id, &t.book, &t.path, &t.hash, &t.key, &t.size, &t.mtime, &t.missing); err != nil {
 				break
 			}
 			if seen[t.id] {

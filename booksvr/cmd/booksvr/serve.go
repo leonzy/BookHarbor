@@ -287,18 +287,23 @@ func runServe(args []string, out io.Writer) error {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
 	return httpapi.Serve(ctx, httpapi.ServeOptions{
-		PersistentScan:     true,
-		ReaderOnly:         opts.ReaderOnly,
-		PluginFeaturesOnly: opts.PluginFeaturesOnly,
-		MetadataOnly:       opts.MetadataOnly,
-		DBPath:             opts.DBPath,
-		UserDBPath:         opts.UserDBPath,
-		Addr:               opts.Addr,
-		TornadoURL:         opts.TornadoURL,
-		ServeRoutes:        opts.ServeRoutes,
-		ServeAll:           opts.ServeAll,
-		CookieSecret:       opts.CookieSecret,
+		FullSourceSyncExecutable: executable,
+		PersistentScan:           true,
+		ReaderOnly:               opts.ReaderOnly,
+		PluginFeaturesOnly:       opts.PluginFeaturesOnly,
+		MetadataOnly:             opts.MetadataOnly,
+		DBPath:                   opts.DBPath,
+		UserDBPath:               opts.UserDBPath,
+		Addr:                     opts.Addr,
+		TornadoURL:               opts.TornadoURL,
+		ServeRoutes:              opts.ServeRoutes,
+		ServeAll:                 opts.ServeAll,
+		CookieSecret:             opts.CookieSecret,
 		Demo: httpapi.DemoModeConfig{
 			Enabled:         opts.DemoMode,
 			Username:        opts.DemoUsername,

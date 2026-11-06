@@ -30,9 +30,11 @@ import (
 
 // ServeOptions 是 Serve 的装配参数。
 type ServeOptions struct {
-	PersistentScan bool
-	StartFullScan  func(string, int) error
-	MetadataOnly   bool
+	// FullSourceSyncExecutable isolates full source snapshots from the HTTP heap.
+	FullSourceSyncExecutable string
+	PersistentScan           bool
+	StartFullScan            func(string, int) error
+	MetadataOnly             bool
 	// ReaderOnly serves reading routes without migrations or background workers.
 	ReaderOnly bool
 	// PluginFeaturesOnly serves authenticated feature calls without background workers.
@@ -249,6 +251,14 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 	}
 
 	if !opts.ReaderOnly && !opts.PluginFeaturesOnly && !opts.MetadataOnly {
+		stopDiagnostics, e := startMemoryDiagnostics(ctx, os.Getenv("BOOKSVR_MEMORY_PROFILE_DIR"), db, userDB, opts.Out)
+		if e != nil {
+			if opts.Out != nil {
+				fmt.Fprintf(opts.Out, "memory diagnostics disabled: %v\n", e)
+			}
+		} else {
+			defer stopDiagnostics()
+		}
 		stopCovers, err := attachCoverWorker(ctx, db, opts.LibraryRoot)
 		if err != nil {
 			return err

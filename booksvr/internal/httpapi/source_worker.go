@@ -107,7 +107,7 @@ func attachSourceWorker(parent context.Context, opts ServeOptions, books, users 
 					}
 					seeded = err == nil
 				}
-				option := library.SourceSyncOptions{ChangedPaths: changed, FullDiscovery: true, Incremental: !full, Moves: moves}
+				option := library.SourceSyncOptions{ChangedPaths: changed, FullDiscovery: true, Incremental: !full, Moves: moves, OmitFilePaths: true}
 				if watcher != nil {
 					option.DirectoryVisited = func(path string) error {
 						directories[path] = true // retain parents even if a deeper subtree is unreadable
@@ -119,7 +119,11 @@ func attachSourceWorker(parent context.Context, opts ServeOptions, books, users 
 					}
 				}
 				if err == nil {
-					result, err = library.SyncSourceFiles(ctx, books, roots, opts.LibraryRoot, option)
+					if full && opts.FullSourceSyncExecutable != "" {
+						result, err = runFullSourceProcess(ctx, []string{opts.FullSourceSyncExecutable, "source-sync-worker"}, sourceProcessRequest{Version: 1, DBPath: opts.DBPath, LibraryRoot: opts.LibraryRoot, Roots: roots}, option.DirectoryVisited)
+					} else {
+						result, err = library.SyncSourceFiles(ctx, books, roots, opts.LibraryRoot, option)
+					}
 				}
 				if err == nil {
 					// Preserve watches for protected roots. Only a healthy
@@ -202,7 +206,9 @@ func attachSourceWorker(parent context.Context, opts ServeOptions, books, users 
 			retry = err != nil
 			lastHealth = health
 			mu.Lock()
-			status["result"] = result
+			// These private fields are not serialized. Retaining them here pins
+			// an entire discovery snapshot until the next worker tick.
+			status["result"] = sourceStatusResult(result)
 			status["duration_ms"] = time.Since(started).Milliseconds()
 			status["state"] = "watching"
 			status["mode"] = "events+incremental"
@@ -250,6 +256,12 @@ func attachSourceWorker(parent context.Context, opts ServeOptions, books, users 
 		}
 	}()
 	return opts, func() { cancel(); <-done }
+}
+
+func sourceStatusResult(result library.SourceSyncResult) library.SourceSyncResult {
+	result.Files = nil
+	result.Directories = nil
+	return result
 }
 
 func flushSourceChanges(books, users *sql.DB) error {

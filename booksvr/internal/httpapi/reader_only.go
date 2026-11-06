@@ -12,13 +12,20 @@ import (
 // openExistingReaderDB deliberately does not migrate schemas, start discovery,
 // or create a missing database. The importing process owns those responsibilities.
 func openExistingReaderDB(path string) (*sql.DB, error) {
+	return openExistingDB(path, 5000)
+}
+
+func openExistingDB(path string, busyTimeout int) (*sql.DB, error) {
 	registerCalibreFunctions()
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
 	}
 	resource := url.URL{Scheme: "file", Path: filepath.ToSlash(absolute)}
-	db, err := sql.Open("sqlite", resource.String()+"?mode=rw&_pragma=busy_timeout(5000)")
+	if filepath.VolumeName(absolute) != "" {
+		resource.Path = "/" + resource.Path
+	}
+	db, err := sql.Open("sqlite", fmt.Sprintf("%s?mode=rw&_pragma=busy_timeout(%d)", resource.String(), busyTimeout))
 	if err != nil {
 		return nil, err
 	}
