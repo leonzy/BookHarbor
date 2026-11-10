@@ -62,7 +62,13 @@
             </div>
             <ImportStatistics :summary="statistics" />
             <ImportScanProgress :progress="watch_status.scan_queue" />
-            <ImportSizeAuditProgress :progress="sizeAudit || watch_status.size_audit" />
+            <ImportSizeAuditProgress
+                :progress="sizeAudit || watch_status.size_audit"
+                :minimum-kib="min_file_size_kib"
+                :starting="sizeAuditStarting"
+                :action-error="sizeAuditActionError"
+                @run="runSizeAudit"
+            />
             <v-alert
                 v-if="directoryAlert"
                 class="mt-3"
@@ -890,6 +896,22 @@ const getDataFromApi = (resume = true) => {
 };
 
 const sizeAudit = ref(null);
+const sizeAuditStarting = ref(false);
+const sizeAuditActionError = ref('');
+const runSizeAudit = async () => {
+    if (sizeAuditStarting.value) return;
+    sizeAuditStarting.value = true;
+    sizeAuditActionError.value = '';
+    try {
+        const rsp = await $backend('/admin/import/size-audit/run', { method: 'POST' });
+        if (pageDisposed) return;
+        if (rsp.err !== 'ok') throw new Error(rsp.msg || t('admin.imports.settings.auditRunFailed'));
+        sizeAudit.value = rsp.watch_status?.size_audit || sizeAudit.value;
+        await refreshSizeAudit();
+    } catch (error) {
+        if (!pageDisposed) sizeAuditActionError.value = error.message || t('admin.imports.settings.auditRunFailed');
+    } finally { sizeAuditStarting.value = false; }
+};
 let sizeAuditTimer = null;
 let sizeAuditSerial = 0;
 const refreshSizeAudit = async () => {

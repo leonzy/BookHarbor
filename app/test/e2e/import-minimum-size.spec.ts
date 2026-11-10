@@ -69,3 +69,50 @@ test('validates and persists minimum import size including zero', async ({ reque
     expect(ratios.warning).toBeGreaterThanOrEqual(4.5);
     await page.screenshot({ path: 'test-results/import-minimum-dark.png', fullPage: true, animations: 'disabled' });
 });
+
+
+test('run now continues the audit and never starts a book scan', async ({ request, page }) => {
+    await request.post('http://127.0.0.1:8080/_test/reset', { data: { installed: true } });
+    let audit = { state: 'running', checked: 3, total: 7, immediate_requested: false, waiting_reason: '' };
+    const posts: string[] = [];
+    page.on('request', req => { if (req.method() === 'POST') posts.push(req.url()); });
+    await page.route('**/api/admin/import/settings', route => route.fulfill({ json: { err: 'ok', settings: { import_directories: ['/books'], min_file_size_kib: 10, import_mode: 'index' } } }));
+    await page.route('**/api/admin/import/watch/status', route => route.fulfill({ json: { err: 'ok', watch_status: { state: 'importing', size_audit: audit } } }));
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let fail = false;
+    await page.route('**/api/admin/import/size-audit/run', async route => {
+        await held;
+        if (fail) return route.fulfill({ json: { err: 'busy', msg: '数据库忙，请稍后重试' } });
+        audit = { ...audit, immediate_requested: true, waiting_reason: 'import_batch' };
+        await route.fulfill({ json: { err: 'ok', watch_status: { size_audit: audit } } });
+    });
+    await page.goto('/admin/imports', { waitUntil: 'networkidle' });
+    const region = page.getByTestId('import-size-audit');
+    const run = page.getByTestId('run-size-audit');
+    await run.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(run).toBeFocused();
+    await expect(run).toHaveCSS('outline-width', '2px');
+    await expect(region).toContainText('已核查 3 个文件');
+    await run.click();
+    await expect(run).toBeDisabled();
+    release();
+    await expect(run).toBeEnabled();
+    await expect(region).toContainText('等待当前文件或导入批次完成');
+    await expect(region).toContainText('已核查 3 个文件');
+    audit = { ...audit, checked: 4, waiting_reason: '' };
+    await expect(region).toContainText('已核查 4 个文件', { timeout: 10000 });
+    await expect(region).toContainText('正在优先执行');
+    await region.screenshot({ path: 'test-results/audit-now-desktop.png', animations: 'disabled' });
+    await page.setViewportSize({ width: 320, height: 800 });
+    await expect(run).toBeInViewport();
+    await region.screenshot({ path: 'test-results/audit-now-mobile.png', animations: 'disabled' });
+    fail = true;
+    await run.click();
+    await expect(region.getByRole('alert')).toHaveText('数据库忙，请稍后重试');
+    await expect(run).toBeEnabled();
+    expect(posts.length).toBe(2);
+    expect(posts.every(url => url.endsWith('/api/admin/import/size-audit/run'))).toBe(true);
+});

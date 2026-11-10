@@ -54,6 +54,14 @@ func (s *Service) Import(hashlist []string, userID int64, deleteAfter bool, impo
 }
 
 func (s *Service) ImportContext(ctx context.Context, hashlist []string, userID int64, deleteAfter bool, importMode string) (ImportResult, error) {
+	result, err := s.importContext(ctx, hashlist, userID, deleteAfter, importMode)
+	if err == nil && ctx.Err() == nil && s.MaintenanceCheckpoint != nil {
+		s.MaintenanceCheckpoint(ctx)
+	}
+	return result, err
+}
+
+func (s *Service) importContext(ctx context.Context, hashlist []string, userID int64, deleteAfter bool, importMode string) (ImportResult, error) {
 	res := ImportResult{ImportID: s.clock().Unix()}
 	if s.LibraryDB == nil {
 		return res, fmt.Errorf("scan: 导入需要书库句柄")

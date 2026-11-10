@@ -564,7 +564,13 @@ func (s *Service) ScanDirectoryQueue(ctx context.Context, root string, full bool
 			if e = s.saveDirectoryProgress(tx, p); e != nil {
 				return e
 			}
-			return tx.Commit()
+			if e := tx.Commit(); e != nil {
+				return e
+			}
+			if s.MaintenanceCheckpoint != nil && ctx.Err() == nil {
+				s.MaintenanceCheckpoint(ctx)
+			}
+			return nil
 		}
 		steps := 0
 		lastCheckpoint := time.Now()

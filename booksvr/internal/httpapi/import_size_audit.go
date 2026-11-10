@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"talebook/booksvr/internal/importdir"
 	"talebook/booksvr/internal/library"
 	"talebook/booksvr/internal/sourcefile"
@@ -25,93 +27,211 @@ func importSizeAuditStatus(db *sql.DB) map[string]any {
 	if e != nil {
 		return map[string]any{"state": "error", "error": e.Error()}
 	}
-	return map[string]any{"state": state, "minimum_kib": minimum / 1024, "total": total, "checked": checked, "removed_formats": removed, "removed_books": books, "unreadable": unreadable, "error": message, "updated_at": updated}
+	immediate := state == "urgent"
+	if immediate {
+		state = "running"
+	}
+	return map[string]any{"immediate_requested": immediate, "state": state, "minimum_kib": minimum / 1024, "total": total, "checked": checked, "removed_formats": removed, "removed_books": books, "unreadable": unreadable, "error": message, "updated_at": updated}
 }
 func attachImportSizeAudit(parent context.Context, opts ServeOptions, books, users *sql.DB) (ServeOptions, func(), error) {
 	if e := library.EnsureImportSizeAudit(books); e != nil {
 		return opts, nil, e
 	}
+	var auditDB *sql.DB
+	if opts.DBPath != "" {
+		var e error
+		auditDB, e = openExistingDB(opts.DBPath, 100)
+		if e != nil {
+			return opts, nil, e
+		}
+		auditDB.SetMaxOpenConns(1)
+		auditDB.SetMaxIdleConns(1)
+		books = auditDB
+	}
+	ctx, cancel := context.WithCancel(parent)
+	done := make(chan struct{})
+	wake := make(chan struct{}, 1)
+	var stepMu, cacheMu sync.Mutex
+	var cached map[string]any
+	var expires time.Time
+	var revision uint64
+	readSettings := func() map[string]any {
+		cacheMu.Lock()
+		defer cacheMu.Unlock()
+		r := importSettingsRevision.Load()
+		if cached == nil || time.Now().After(expires) || revision != r {
+			cached = LoadSettings(opts.SettingsPath)
+			expires = time.Now().Add(time.Second)
+			revision = r
+		}
+		return cached
+	}
+	var waiting atomic.Value
+	waiting.Store("")
 	previous := opts.ImportWatchStatus
 	opts.ImportWatchStatus = func() map[string]any {
 		out := map[string]any{}
 		if previous != nil {
 			out = previous()
 		}
-		out["size_audit"] = importSizeAuditStatus(books)
+		status := importSizeAuditStatus(books)
+		if status["state"] == "running" {
+			status["waiting_reason"] = waiting.Load().(string)
+		}
+		out["size_audit"] = status
 		return out
 	}
-	ctx, cancel := context.WithCancel(parent)
-	done := make(chan struct{})
+	step := func(c context.Context, initialize bool) error {
+		settings := readSettings()
+		request := settingString(settings, "import_size_audit_requested")
+		if request == "" {
+			return nil
+		}
+		current := opts
+		current.ImportDir = importDirFromSettings(opts.ImportDir, settings)
+		current.SettingsPath = ""
+		return runImportSizeAuditStep(c, current, books, users, request, importMinSize(settings)*1024, initialize)
+	}
+	failure := func(e error) {
+		if e != nil {
+			waiting.Store("retry")
+			books.Exec(`UPDATE import_size_audit SET error=?,updated_at=? WHERE id=1`, e.Error(), time.Now().Unix())
+		}
+	}
+	// The importer already owns its write mutex here, with its current transaction closed.
+	if opts.ImportMaintenance != nil {
+		opts.ImportMaintenance.Set(func(c context.Context) {
+			if ctx.Err() != nil || c.Err() != nil || !stepMu.TryLock() {
+				return
+			}
+			defer stepMu.Unlock()
+			limit := 1
+			var state string
+			books.QueryRow(`SELECT state FROM import_size_audit WHERE id=1`).Scan(&state)
+			if state != "running" && state != "urgent" {
+				return
+			}
+			if state == "urgent" {
+				limit = 4
+			}
+			until := time.Now().Add(100 * time.Millisecond)
+			waiting.Store("")
+			for i := 0; i < limit && ctx.Err() == nil && c.Err() == nil; i++ {
+				if e := step(ctx, false); e != nil {
+					failure(e)
+					break
+				}
+				if time.Now().After(until) {
+					break
+				}
+			}
+		})
+	}
+	opts.RequestImportSizeAudit = func() error {
+		stepMu.Lock()
+		defer stepMu.Unlock()
+		settings := readSettings()
+		minimum := importMinSize(settings) * 1024
+		if minimum <= 0 {
+			return fmt.Errorf("请先在导入设置中将最小文件大小设为大于0")
+		}
+		if settingString(settings, "import_size_audit_requested") != "" {
+			if e := step(ctx, true); e != nil {
+				return e
+			}
+		}
+		var state string
+		var oldMinimum int64
+		e := books.QueryRow(`SELECT state,minimum FROM import_size_audit WHERE id=1`).Scan(&state, &oldMinimum)
+		if e != nil && e != sql.ErrNoRows {
+			return e
+		}
+		if (state != "running" && state != "urgent") || minimum != oldMinimum {
+			if e = SaveSettings(opts.SettingsPath, map[string]any{"import_size_audit_requested": fmt.Sprint(time.Now().UnixNano())}); e != nil {
+				return e
+			}
+			if e = step(ctx, true); e != nil {
+				return e
+			}
+		}
+		if _, e = books.Exec(`UPDATE import_size_audit SET state='urgent',error='' WHERE id=1`); e != nil {
+			return e
+		}
+		waiting.Store("import_batch")
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+		return nil
+	}
 	go func() {
 		defer close(done)
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
-		nextIdle := time.Time{}
-		var settings map[string]any
-		var settingsExpires time.Time
-		var revision uint64
-		var initializedGeneration string
-		var initializedMinimum int64
+		next := time.Time{}
+		initialized := ""
+		var lastMinimum int64
 		for {
 			select {
 			case <-ctx.Done():
 				return
+			case <-wake:
+				next = time.Time{}
 			case <-ticker.C:
 			}
-			if time.Now().Before(nextIdle) {
+			if time.Now().Before(next) {
 				continue
 			}
-			currentRevision := importSettingsRevision.Load()
-			if settings == nil || time.Now().After(settingsExpires) || currentRevision != revision {
-				settings = LoadSettings(opts.SettingsPath)
-				settingsExpires = time.Now().Add(time.Second)
-				revision = currentRevision
-			}
-			currentOptions := opts
-			currentOptions.ImportDir = importDirFromSettings(opts.ImportDir, settings)
-			currentOptions.SettingsPath = ""
-			requested := settingString(settings, "import_size_audit_requested")
-			if requested == "" {
-				nextIdle = time.Now().Add(time.Second)
-				continue
-			}
+			settings := readSettings()
+			request := settingString(settings, "import_size_audit_requested")
 			minimum := importMinSize(settings) * 1024
-			if initializedGeneration != requested || initializedMinimum != minimum {
-				if e := runImportSizeAuditStep(ctx, currentOptions, books, users, requested, minimum, true); e != nil {
-					books.Exec(`UPDATE import_size_audit SET error=? WHERE id=1`, e.Error())
-					nextIdle = time.Now().Add(time.Second)
+			if request == "" {
+				next = time.Now().Add(time.Second)
+				continue
+			}
+			if initialized != request || lastMinimum != minimum {
+				stepMu.Lock()
+				e := step(ctx, true)
+				stepMu.Unlock()
+				if e != nil {
+					failure(e)
+					next = time.Now().Add(time.Second)
 					continue
 				}
-				initializedGeneration = requested
-				initializedMinimum = minimum
+				initialized = request
+				lastMinimum = minimum
 			}
-			if previous != nil {
-				state := previous()
-				if source, ok := state["source_sync"].(map[string]any); ok && source["state"] == "scanning" {
-					nextIdle = time.Now().Add(time.Second)
-					continue
-				}
-			}
-			work := func() error {
-				return runImportSizeAuditStep(ctx, currentOptions, books, users, requested, importMinSize(settings)*1024)
-			}
+			work := func() error { stepMu.Lock(); defer stepMu.Unlock(); waiting.Store(""); return step(ctx, false) }
+			ran := true
 			var e error
 			if opts.TryImportMaintenance != nil {
-				_, e = opts.TryImportMaintenance(work)
+				ran, e = opts.TryImportMaintenance(work)
 			} else {
 				e = work()
 			}
-			if e != nil {
-				books.Exec(`UPDATE import_size_audit SET error=?,updated_at=? WHERE id=1`, e.Error(), time.Now().Unix())
-				nextIdle = time.Now().Add(time.Second)
+			if !ran {
+				waiting.Store("import_batch")
+				next = time.Now().Add(time.Second)
 			}
-			status := importSizeAuditStatus(books)
-			if status["state"] != "running" {
-				nextIdle = time.Now().Add(time.Second)
+			if e != nil {
+				failure(e)
+				next = time.Now().Add(time.Second)
+			}
+			if importSizeAuditStatus(books)["state"] != "running" {
+				next = time.Now().Add(time.Second)
 			}
 		}
 	}()
-	return opts, func() { cancel(); <-done }, nil
+	return opts, func() {
+		if opts.ImportMaintenance != nil {
+			opts.ImportMaintenance.Set(nil)
+		}
+		cancel()
+		<-done
+		if auditDB != nil {
+			auditDB.Close()
+		}
+	}, nil
 }
 func runImportSizeAuditStep(ctx context.Context, opts ServeOptions, db, users *sql.DB, requested string, minimum int64, initializeOnly ...bool) error {
 	if len(initializeOnly) == 0 || !initializeOnly[0] {
@@ -151,7 +271,7 @@ func runImportSizeAuditStep(ctx context.Context, opts ServeOptions, db, users *s
 	if len(initializeOnly) > 0 && initializeOnly[0] {
 		return nil
 	}
-	if state != "running" {
+	if state != "running" && state != "urgent" {
 		return nil
 	}
 	var id, bookID int64

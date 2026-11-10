@@ -240,6 +240,8 @@ type Result struct {
 
 // Service 复刻 ScanService 的扫描部分。
 type Service struct {
+	// MaintenanceCheckpoint runs only after the caller's database work is committed.
+	MaintenanceCheckpoint func(context.Context)
 	// MinFileSize returns the current minimum accepted book size in bytes.
 	MinFileSize        func() int64
 	directoryTask      atomic.Pointer[activeDirectoryTask]

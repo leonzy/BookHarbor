@@ -1,4 +1,4 @@
-// 本文件复刻 webserver/handlers/scan.py 中导入目录相关的 4 条路由。
+// 本文件复刻 webserver/handlers/scan.py 中导入目录相关的 5 条路由。
 //
 // 扫描/导入流水线（ScanList / ScanRun / ImportRun 等）依赖 ScanService，
 // 不在本文件范围内。
@@ -24,6 +24,7 @@ const (
 
 // ImportConfig 是导入目录路由的配置。
 type ImportConfig struct {
+	RunSizeAudit func() error
 	// Dir 是导入目录逻辑的配置。
 	Dir importdir.Config
 	// SettingsPath lets requests observe settings saved since startup.
@@ -300,9 +301,18 @@ func ImportWatchStatusHandler(cfg ImportConfig) HandlerFunc {
 	}
 }
 
-// ImportRouteSpecs 返回导入目录模块接管的 4 条路由。
+// ImportRouteSpecs 返回导入目录模块接管的 5 条路由。
 func ImportRouteSpecs(cfg ImportConfig) []RouteSpec {
 	return []RouteSpec{
+		{Pattern: "/api/admin/import/size-audit/run", Methods: []string{http.MethodPost}, Auth: true, Admin: true, Handler: func(ctx *Context) (map[string]any, error) {
+			if cfg.RunSizeAudit == nil {
+				return map[string]any{"err": "service.unavailable", "msg": "小文件核查暂不可用"}, nil
+			}
+			if e := cfg.RunSizeAudit(); e != nil {
+				return map[string]any{"err": "size_audit.request", "msg": e.Error()}, nil
+			}
+			return map[string]any{"err": "ok", "watch_status": cfg.watchStatus()}, nil
+		}},
 		{
 			Pattern: rImportSettings,
 			Methods: []string{http.MethodGet, http.MethodPost},

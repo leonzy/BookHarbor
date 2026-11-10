@@ -5,11 +5,13 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ImportSizeAuditProgress from '@/components/ImportSizeAuditProgress.vue';
 const messages = JSON.parse(readFileSync(resolve(process.cwd(), 'i18n/locales/zh-CN.json'), 'utf8'));
-const render = (progress?: object) => mount(ImportSizeAuditProgress, { props: { progress }, global: { plugins: [createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': messages } })] } });
+const render = (progress?: object, minimumKib = 10) => mount(ImportSizeAuditProgress, { props: { progress, minimumKib }, global: { stubs: { VBtn: { props: ['disabled', 'loading'], template: '<button :disabled="disabled"><slot /></button>' } }, plugins: [createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': messages } })] } });
 describe('Existing small file audit', () => {
-    it('hides absent jobs without inventing progress', () => {
-        expect(render().find('section').exists()).toBe(false);
-        expect(render({ state: 'idle' }).find('section').exists()).toBe(false);
+    it('offers run now before a job without inventing progress', () => {
+        const view = render();
+        expect(view.text()).toContain('按当前已保存的阈值开始核查');
+        expect(view.text()).not.toContain('已核查 0');
+        expect(render(undefined, 0).get('button').attributes('disabled')).toBeDefined();
     });
     it('shows removals, preserved originals and unreadable exceptions', () => {
         const view = render({ state: 'running', checked: 3, total: 7, removed_formats: 2, removed_books: 1, unreadable: 1, error: 'database busy' });
@@ -19,3 +21,5 @@ describe('Existing small file audit', () => {
         expect(view.get('[role="alert"]').text()).toBe('database busy');
     });
 });
+
+it('emits run and explains the next safe checkpoint', async () => { const view = render({state: 'running', waiting_reason: 'import_batch'}); await view.get('button').trigger('click'); expect(view.emitted('run')).toHaveLength(1); expect(view.text()).toContain('等待当前文件或导入批次完成'); });

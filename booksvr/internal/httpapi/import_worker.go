@@ -75,6 +75,10 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 		}
 	}
 	var workMu, statusMu sync.Mutex
+	if opts.ImportMaintenance == nil {
+		opts.ImportMaintenance = &importMaintenanceCheckpoint{}
+	}
+	opts.ScanService().MaintenanceCheckpoint = opts.ImportMaintenance.Run
 	opts.TryImportMaintenance = func(fn func() error) (bool, error) {
 		if !workMu.TryLock() {
 			return false, nil

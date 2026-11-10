@@ -79,9 +79,11 @@ type ServeOptions struct {
 	// ImportDir 是导入目录配置，对齐 CONF 的 scan_upload_path 等项。
 	ImportDir importdir.Config
 	// StartLibraryImport queues a complete scan-and-import task.
-	StartLibraryImport   func(int64, string) error
-	CancelImportTask     func() error
-	TryImportMaintenance func(func() error) (bool, error)
+	StartLibraryImport     func(int64, string) error
+	CancelImportTask       func() error
+	TryImportMaintenance   func(func() error) (bool, error)
+	ImportMaintenance      *importMaintenanceCheckpoint
+	RequestImportSizeAudit func() error
 	// QueueSourcePaths coalesces filesystem events for the serialized automatic importer.
 	QueueSourcePaths       func([]string, bool)
 	incrementalImportPaths []string
@@ -650,6 +652,7 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 		Settings:     opts.CaptchaSettings,
 	})...)
 	specs = append(specs, ImportRouteSpecs(ImportConfig{
+		RunSizeAudit: opts.RequestImportSizeAudit,
 		Dir:          opts.ImportDir,
 		SettingsPath: opts.SettingsPath,
 		SaveSettings: func(values map[string]any) error {

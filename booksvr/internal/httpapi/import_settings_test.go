@@ -333,14 +333,15 @@ func TestImportWatchStatusHandler(t *testing.T) {
 func TestImportRouteSpecs(t *testing.T) {
 	root := t.TempDir()
 	specs := ImportRouteSpecs(importTestConfig(t, root))
-	if len(specs) != 4 {
-		t.Fatalf("应有 4 条路由，得到 %d", len(specs))
+	if len(specs) != 5 {
+		t.Fatalf("应有 5 条路由，得到 %d", len(specs))
 	}
 	want := map[string][]string{
-		rImportSettings:       {http.MethodGet, http.MethodPost},
-		rImportDirectoryCheck: {http.MethodPost},
-		rImportDirectoryList:  {http.MethodGet},
-		rImportWatchStatus:    {http.MethodGet},
+		"/api/admin/import/size-audit/run": {http.MethodPost},
+		rImportSettings:                    {http.MethodGet, http.MethodPost},
+		rImportDirectoryCheck:              {http.MethodPost},
+		rImportDirectoryList:               {http.MethodGet},
+		rImportWatchStatus:                 {http.MethodGet},
 	}
 	for _, spec := range specs {
 		methods, ok := want[spec.Pattern]

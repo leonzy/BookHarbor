@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -219,4 +220,83 @@ func TestImportSizeAuditCandidateUsesPrimaryKeyCursor(t *testing.T) {
 	if !strings.Contains(details, "INTEGER PRIMARY KEY") || strings.Contains(details, "TEMP B-TREE") {
 		t.Fatal("candidate polling must not rescan and sort all small files", details)
 	}
+}
+
+func TestImportSizeAuditImmediateUsesCheckpointAndKeepsProgress(t *testing.T) {
+	_, db := newWriteFixture(t)
+	if e := library.Migrate(db); e != nil {
+		t.Fatal(e)
+	}
+	root := t.TempDir()
+	for i := 0; i < 6; i++ {
+		file := filepath.Join(root, fmt.Sprintf("readme-%d.txt", i))
+		os.WriteFile(file, []byte("small"), 0600)
+		id := 300 + i
+		db.Exec(`INSERT INTO books(id,title) VALUES(?,'readme')`, id)
+		db.Exec(`INSERT INTO book_formats(id,book_id,format,path,size,mtime) VALUES(?,?,'TXT',?,5,0)`, id, id, file)
+		db.Exec(`INSERT INTO data(book,format,name) VALUES(?,'TXT','readme')`, id)
+	}
+	if _, e := library.SyncSourceFiles(context.Background(), db, []string{root}, "", library.SourceSyncOptions{FullDiscovery: true}); e != nil {
+		t.Fatal(e)
+	}
+	path := filepath.Join(t.TempDir(), "auto.py")
+	SaveSettings(path, map[string]any{"import_allowed_roots": []string{root}, "import_min_file_size_kib": 10, "import_size_audit_requested": "keep-this-job"})
+	checkpoint := &importMaintenanceCheckpoint{}
+	opts := ServeOptions{SettingsPath: path, ImportMaintenance: checkpoint, TryImportMaintenance: func(func() error) (bool, error) { return false, nil }}
+	live, stop, e := attachImportSizeAudit(context.Background(), opts, db, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer stop()
+	if e = live.RequestImportSizeAudit(); e != nil {
+		t.Fatal(e)
+	}
+	var gen string
+	db.QueryRow(`SELECT generation FROM import_size_audit WHERE id=1`).Scan(&gen)
+	if gen != "keep-this-job" {
+		t.Fatal("active request restarted", gen)
+	}
+	until := time.Now().Add(3 * time.Second)
+	for importSizeAuditStatus(db)["checked"].(int64) == 0 {
+		checkpoint.Run(context.Background())
+		if time.Now().After(until) {
+			t.Fatal(importSizeAuditStatus(db))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	status := importSizeAuditStatus(db)
+	checked := status["checked"].(int64)
+	if checked <= 0 || checked > 4 || status["immediate_requested"] != true {
+		t.Fatal(status)
+	}
+	if e = live.RequestImportSizeAudit(); e != nil {
+		t.Fatal(e)
+	}
+	if importSizeAuditStatus(db)["checked"] != checked {
+		t.Fatal("repeated click reset progress")
+	}
+	until = time.Now().Add(3 * time.Second)
+	for importSizeAuditStatus(db)["state"] != "done" {
+		checkpoint.Run(context.Background())
+		if time.Now().After(until) {
+			t.Fatal(importSizeAuditStatus(db))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if importSizeAuditStatus(db)["state"] != "done" {
+		t.Fatal(importSizeAuditStatus(db))
+	}
+	SaveSettings(path, map[string]any{"import_min_file_size_kib": 0})
+	if e = live.RequestImportSizeAudit(); e == nil {
+		t.Fatal("zero threshold must not start")
+	}
+	for _, spec := range ImportRouteSpecs(ImportConfig{RunSizeAudit: live.RequestImportSizeAudit}) {
+		if spec.Pattern == "/api/admin/import/size-audit/run" {
+			if !spec.Auth || !spec.Admin {
+				t.Fatal("unsafe audit permissions")
+			}
+			return
+		}
+	}
+	t.Fatal("manual route missing")
 }
