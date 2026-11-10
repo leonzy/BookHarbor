@@ -38,7 +38,7 @@ func (s *Service) prepareBatch(rows []*userdb.ScanFile) []*preparedImport {
 			p := &preparedImport{}
 			out[i] = p
 			p.info, p.err = os.Stat(row.Path)
-			if p.err != nil {
+			if p.err != nil || s.belowMinimum(p.info.Size()) {
 				return
 			}
 			format := scanRowFormat(row, row.Path)

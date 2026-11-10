@@ -74,7 +74,11 @@ type Task struct {
 // 保证扫描窗口始终被真正需要处理的文件填满。
 //
 // 返回 (是否有书籍文件, 任务列表, 跳过数)。
-func CollectTasks(pathDir string, limit int, donePaths map[string]bool, supported map[string]bool) (bool, []Task, int, error) {
+func CollectTasks(pathDir string, limit int, donePaths map[string]bool, supported map[string]bool, minimum ...int64) (bool, []Task, int, error) {
+	min := int64(0)
+	if len(minimum) > 0 {
+		min = minimum[0]
+	}
 	// 普通 ZIP/RAR 可能是小说合集，不能让大量非漫画压缩包占满每个批次。
 	// 先收集明确的电子书/漫画格式，余下名额再校验通用压缩包。
 	books, archives := map[string]bool{}, map[string]bool{}
@@ -85,7 +89,7 @@ func CollectTasks(pathDir string, limit int, donePaths map[string]bool, supporte
 			books[format] = enabled
 		}
 	}
-	hasBooks, tasks, skipped, err := collectTasksByFormat(pathDir, limit, donePaths, books)
+	hasBooks, tasks, skipped, err := collectTasksByFormat(pathDir, limit, donePaths, books, min)
 	if err != nil || len(archives) == 0 || (limit > 0 && len(tasks) >= limit) {
 		return hasBooks, tasks, skipped, err
 	}
@@ -93,11 +97,11 @@ func CollectTasks(pathDir string, limit int, donePaths map[string]bool, supporte
 	if limit > 0 {
 		remaining -= len(tasks)
 	}
-	hasArchives, extra, skippedArchives, err := collectTasksByFormat(pathDir, remaining, donePaths, archives)
+	hasArchives, extra, skippedArchives, err := collectTasksByFormat(pathDir, remaining, donePaths, archives, min)
 	return hasBooks || hasArchives, append(tasks, extra...), skipped + skippedArchives, err
 }
 
-func collectTasksByFormat(pathDir string, limit int, donePaths map[string]bool, supported map[string]bool) (bool, []Task, int, error) {
+func collectTasksByFormat(pathDir string, limit int, donePaths map[string]bool, supported map[string]bool, minimum int64) (bool, []Task, int, error) {
 	hasBooks := false
 	tasks := []Task{}
 	skipped := 0
@@ -136,6 +140,10 @@ func collectTasksByFormat(pathDir string, limit int, donePaths map[string]bool, 
 		}
 		format := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
 		if !supported[format] {
+			return nil
+		}
+		if info.Size() < minimum && format != "zip" {
+			skipped++
 			return nil
 		}
 		hasBooks = true
@@ -184,7 +192,7 @@ func FileSHA256(path string) (string, error) {
 func DonePaths(db *sql.DB, pathDir string) (map[string]bool, error) {
 	prefix := strings.TrimRight(pathDir, string(filepath.Separator)) + string(filepath.Separator)
 	rows, err := db.Query(`SELECT path FROM scanfiles
-		WHERE (path = ? OR (path >= ? AND path < ?)) AND status != ? AND (hash NOT LIKE 'fstat:%' OR status='drop')`,
+		WHERE (path = ? OR (path >= ? AND path < ?)) AND status != ? AND COALESCE(json_extract(data,'$.skip_reason_code'),'') != 'file.too_small' AND (hash NOT LIKE 'fstat:%' OR status='drop')`,
 		pathDir, prefix, strings.TrimRight(pathDir, string(filepath.Separator))+string(filepath.Separator+1), userdb.ScanStatusNew)
 	if err != nil {
 		return nil, fmt.Errorf("scan: 查询已完成路径失败: %w", err)
@@ -232,6 +240,8 @@ type Result struct {
 
 // Service 复刻 ScanService 的扫描部分。
 type Service struct {
+	// MinFileSize returns the current minimum accepted book size in bytes.
+	MinFileSize        func() int64
 	directoryTask      atomic.Pointer[activeDirectoryTask]
 	CheckDirectoryRoot func(context.Context, string) error
 	// DB 是用户库句柄。
@@ -283,7 +293,7 @@ func (s *Service) Scan(pathDir string, limit int) (Result, error) {
 	}
 	res.Done = len(donePaths)
 
-	hasBooks, tasks, skipped, err := CollectTasks(pathDir, limit, donePaths, s.SupportedFormats)
+	hasBooks, tasks, skipped, err := CollectTasks(pathDir, limit, donePaths, s.SupportedFormats, s.minimumFileSize())
 	if err != nil {
 		return res, err
 	}
@@ -324,11 +334,17 @@ func (s *Service) Scan(pathDir string, limit int) (Result, error) {
 func (s *Service) registerTasks(tasks []Task, scanID int64) ([]*userdb.ScanFile, error) {
 	rows := make([]*userdb.ScanFile, 0, len(tasks))
 	for _, task := range tasks {
+		if info, e := os.Stat(task.Path); e == nil && s.belowMinimum(info.Size()) {
+			continue
+		}
 		existing, err := getScanFileByPath(s.DB, task.Path)
 		if err != nil {
 			return nil, err
 		}
 		if existing != nil {
+			if existing.BookID == 0 && existing.Data["skip_reason_code"] == "file.too_small" {
+				existing.Status = userdb.ScanStatusNew
+			}
 			existing.ScanID = scanID
 			existing.UpdateTime = s.now()
 			// 只处理 NEW 状态的记录；其余状态若哈希已是真实哈希则跳过。
@@ -376,6 +392,15 @@ func (s *Service) processRow(row *userdb.ScanFile) (string, error) {
 func (s *Service) processFileRow(row *userdb.ScanFile, filePath string) (string, error) {
 	info, _ := os.Stat(filePath)
 	stampSource(row, info)
+	if info != nil {
+		if dropped, e := s.dropSmallFile(row, info.Size()); dropped || e != nil {
+			return row.Status, e
+		}
+	}
+	if row.Data["skip_reason_code"] == "file.too_small" {
+		delete(row.Data, "skip_reason")
+		delete(row.Data, "skip_reason_code")
+	}
 	realHash, err := FileSHA256(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {

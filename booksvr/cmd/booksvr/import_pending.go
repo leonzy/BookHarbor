@@ -27,6 +27,7 @@ func runImportPending(args []string, out io.Writer) error {
 	limit := flags.Int("limit", 100, "单次至多 500 本")
 	workers := flags.Int("workers", 4, "预取并发 0-4")
 	deferCovers := flags.Bool("defer-covers", true, "后台提取封面")
+	settings := flags.String("settings-file", "/data/books/settings/auto.py", "站点配置")
 	owner := flags.Int64("user", 1, "管理员 ID")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -55,6 +56,7 @@ func runImportPending(args []string, out io.Writer) error {
 		*root = filepath.Dir(*books)
 	}
 	service := scan.NewService(db, nil)
+	service.MinFileSize = httpapi.NewImportMinimumSizeReader(*settings)
 	service.LibraryDB = lib
 	service.LibraryRoot = *root
 	service.DeferCovers = *deferCovers

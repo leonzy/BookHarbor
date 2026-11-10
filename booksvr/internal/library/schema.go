@@ -52,6 +52,7 @@ func Migrate(db *sql.DB) error {
 			UNIQUE(book_id, format)
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_book_formats_book_id ON book_formats(book_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_book_formats_size ON book_formats(size,id)`,
 	}
 
 	for _, stmt := range stmts {

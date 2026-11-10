@@ -154,6 +154,10 @@ func (s *Service) ScanAllWithCallback(ctx context.Context, root string, batchSiz
 				}
 				return checkpoint(true)
 			}
+			if s.belowMinimum(info.Size()) {
+				result.Skipped++
+				return nil
+			}
 			if ctx.Value(incrementalScanKey{}) == true {
 				changed, e := s.changedSource(path, info)
 				if e != nil {

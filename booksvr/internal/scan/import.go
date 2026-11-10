@@ -192,6 +192,9 @@ func (s *Service) importRowPrepared(row *userdb.ScanFile, userID int64, mode str
 		return row.Status, 0, saveScanFile(s.DB, row)
 	}
 	defer cleanup()
+	if dropped, e := s.filterImportSize(row, fpath); dropped || e != nil {
+		return row.Status, 0, e
+	}
 	format := scanRowFormat(row, fpath)
 
 	row.Status = userdb.ScanStatusImporting

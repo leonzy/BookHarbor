@@ -78,6 +78,7 @@ func newServiceWiring(userDB, libraryDB *sql.DB, opts *serveOptions) *serviceWir
 	w.scanService.LibraryRoot = opts.LibraryRoot
 	w.scanService.BookStorageRoot = opts.BookStorageRoot
 	w.scanService.SavedImportMode = opts.ImportMode
+	w.scanService.MinFileSize = httpapi.NewImportMinimumSizeReader(opts.SettingsFile)
 	return w
 }
 

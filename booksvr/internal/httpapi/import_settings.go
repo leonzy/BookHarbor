@@ -6,8 +6,10 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"talebook/booksvr/internal/importdir"
 )
@@ -37,11 +39,14 @@ func LiveImportDir(fallback importdir.Config, path string) importdir.Config {
 	if path == "" {
 		return fallback
 	}
-	settings := LoadSettings(path)
+	return importDirFromSettings(fallback, LoadSettings(path))
+}
+func importDirFromSettings(fallback importdir.Config, settings map[string]any) importdir.Config {
 	fallback.ScanUploadPath = settingString(settings, "scan_upload_path")
 	fallback.AllowedRoots = toStringSlice(settings["import_allowed_roots"])
 	fallback.SavedImportMode = settingString(settings, "import_mode")
 	fallback.AutoWatchEnabled = settingBool(settings, "import_auto_watch_enabled", false)
+	fallback.MinFileSizeKiB = importMinSize(settings)
 	fallback.ScanBatchSize = toIntSetting(settings, "import_scan_batch_size", 500)
 	return fallback
 }
@@ -77,6 +82,7 @@ func importSettingsPayload(cfg ImportConfig, check *importdir.DirectoryResult) m
 		"import_directories": directories,
 		"import_mode":        mode,
 		"auto_watch_enabled": cfg.Dir.AutoWatchEnabled,
+		"min_file_size_kib":  cfg.Dir.MinFileSizeKiB,
 		"allowed_roots":      directories, // 旧客户端兼容字段
 		"directory_check":    result,
 		"watch_status":       cfg.watchStatus(),
@@ -138,6 +144,14 @@ func ImportSettingsHandler(cfg ImportConfig) HandlerFunc {
 		}
 
 		req := jsonBody(ctx)
+		minimum := cfg.Dir.MinFileSizeKiB
+		if v, ok := req["min_file_size_kib"]; ok {
+			var e error
+			minimum, e = parseImportMinSize(v)
+			if e != nil {
+				return map[string]any{"err": "params.min_file_size", "msg": e.Error()}, nil
+			}
+		}
 		path := importdir.NormalizePath(firstNonEmpty(
 			toStr(req["scan_upload_path"]), toStr(req["path"]), cfg.Dir.ScanUploadPath))
 
@@ -199,8 +213,12 @@ func ImportSettingsHandler(cfg ImportConfig) HandlerFunc {
 		{
 			values := map[string]any{
 				"scan_upload_path":          path,
+				"import_min_file_size_kib":  minimum,
 				"import_mode":               mode,
 				"import_auto_watch_enabled": autoWatch,
+			}
+			if _, requested := req["min_file_size_kib"]; requested {
+				values["import_size_audit_requested"] = fmt.Sprint(time.Now().UnixNano())
 			}
 			if autoWatch {
 				values["import_watch_user_id"] = ctx.Identity.UserID
@@ -219,6 +237,7 @@ func ImportSettingsHandler(cfg ImportConfig) HandlerFunc {
 		}
 		// 保存后重新读取配置，让返回的 settings 反映新值。
 		updated := cfg
+		updated.Dir.MinFileSizeKiB = minimum
 		updated.Dir.ScanUploadPath = path
 		updated.Dir.SavedImportMode = mode
 		updated.Dir.AutoWatchEnabled = autoWatch

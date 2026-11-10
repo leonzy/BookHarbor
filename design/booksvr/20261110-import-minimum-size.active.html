@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="BookHarbor 导入最小文件大小设置与过滤。" />
+    <link rel="icon" href="data:," />
+    <title>导入文件最小大小过滤 · ACTIVE</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><h1>导入文件最小大小过滤</h1><p>创建：2026-11-10 · 模块：booksvr / app · 状态：ACTIVE · 需求来源：小于设置大小的文件不扫描、不入库，避免 README 被当作电子书。</p><h2>原始诉求和目标</h2><p>增加管理员可持久保存的最小导入文件大小，默认10 KiB，0为关闭；小于阈值跳过，恰好等于阈值可导入。用户追加要求：保存设置后核查既有书籍，自动移除小文件的书库登记，保留原文件。所有目录扫描、自动发现、ZIP内书籍和已待导入记录使用同一规则。</p><h2>决策核对与方案</h2><ul><li>单位明确为KiB（1024字节），前后端校验非负整数。</li><li>扫描在哈希和元数据分析前过滤；ZIP按成员解压后大小判断，外层ZIP不按压缩大小过滤。</li><li>生产扫描服务读取最新保存值，保存后下一文件生效；外部手工配置变更最多一秒内生效，单个ZIP展开保持开始时的筛选版本，不取消任务或清理队列。入库前再次校验实际文件大小，旧待处理记录归已跳过并给出原因。</li><li>仅修改导入设置界面和扫描/入库流程，不删除任何原文件，不修改来源同步的缺失判断。</li><li>放宽阈值后需允许未入库的小文件重新进入扫描；目录扫描缓存须包含筛选策略版本。</li></ul><h2>影响范围</h2><p>booksvr扫描与配置、app导入设置弹窗及翻译、spec/书库.md，必要时系统配置规格。保持原有工作区OPDS与部署脚本改动。</p><h2>实施前验证计划</h2><p>原定验证项：边界值、普通/增量/全量/ZIP、旧待入库阻断、设置校验与持久化、运行时热生效、阈值放宽重扫、组件及真实浏览器渲染。按项目要求应用interface-review full审查全部分支和工作区差异；纯代码差异不冒充视觉验收。</p><h2>追加需求：既有书库后台清理</h2><p>用户明确选择自动从书库移除、保留原文件。保存阈值创建持久核查代次；按记录大小索引筛出候选，分页游标与计数存入书库，重启继续。每个候选重新获取源文件并确认实际大小，缺失、不可读或挂载保护中的来源跳过。多格式书只删小格式登记，最后一个版本移除时删除书目数据库记录；绝不删除、移动、重命名源文件。扫描历史标记已跳过并保留原因，阈值放宽可重扫。</p><p>核查与导入共用后台工作互斥；繁忙时等待，处理每个文件后释放，最多每秒10个，完整来源核对运行时暂缓。单个格式变更与进度在书库同一事务提交，避免重启漏记或重删。进度直接接入现有导入状态轮询，显示候选、已检查、已移除版本/书目、不可读和错误。</p><h2>核查安全边界细化</h2><p>核查代次仅在导入设置明确提交大小字段时创建，避免其他管理页整表保存默认值意外触发全库移除。格式删除与核查计数同一书库事务提交，并记录持久跨库待办，重启可补写扫描记录的已跳过原因。手动变更配置使当前任务阈值不一致时停止旧任务，等待显式保存重新核查。来源不可读/挂载保护的文件仅计为保留，不按数据库中陈旧大小直接移除。</p><h2>界面审查迭代</h2><p>按 interface-review full 与 better-interface 六域规则自审，发现新增字段非法时禁用整个保存按钮，不利于键盘用户定位错误；改为提交时聚焦该字段并显示相邻错误，不发送请求。补全取消脏值比较中大小字段，避免误丢输入；保存按钮采用警告语义及“保存并核查书库”明确后果，旁边说明保留原文件。完成修正后重新审查与浏览器验证。</p><h2>渲染与颜色修正</h2><p>Chromium 隔离页面已验证保存、刷新、0禁用、非法输入和320px布局。视觉检查发现新增警告使用默认橙色文字与浅橙背景，对比不足，保存按钮白字橙底也不够清晰；修正为语义警告底色配高对比正文和深色按钮字，只作用于新增控件。截图等待过渡结束，避免窄屏重开弹窗时截到半透明中间态。增加独立核查进度轮询，避免在导入空闲时原轮询停止导致进度不更新。</p><h2>性能复核</h2><p>核查每秒最多10个文件，但不能因此每秒解析20次完整站点配置。复用一秒配置快照，并由保存版本号立即失效；单文件仍复查挂载与真实文件身份。候选计数使用大小索引，处理使用递增格式ID游标，不重复读取全库或保存全库对象。任务完成后只保留固定状态与移除待办，不持有文件字节。</p><h2>最终查询与排队复核</h2><p>候选总数走大小索引；下一条候选强制按格式主键范围递增，避免优化器每次筛选全部小文件后重排。跨库待办按 applied 索引查找，避免反复扫描已应用的审计记录。保存后先创建核查状态，再等待导入互斥/来源核对，繁忙时也能显示真实初始候选与进度。</p><h2>尺寸新鲜度复核</h2><p>既有格式记录的大小可能仍是入库时的值；候选同时纳入来源同步记录的当前尺寸。普通文件实际已缩小时不会因旧尺寸较大而漏查，ZIP 引用仍用成员尺寸，不能用整个压缩包尺寸替代。候选总数合并两个大小索引结果，单条处理仍按主键游标；物理核查后只凭实际尺寸和稳定身份决定是否移除。</p><h2>interface-review full · Scope and Coverage</h2><p>应用 .agents/skills/interface-review/SKILL.md 与 better-interface，已读取六个领域 skill。项目规范为 AGENTS.md、app/CLAUDE.md；Nuxt4、Vue3、Vuetify3、现有 light/dark 主题及三语目录保持不变。</p><table><tr><th>范围</th><th>结果</th></tr><tr><td>目标</td><td>branch + working；默认分支 origin/main</td></tr><tr><td>Base / Head</td><td>caf95218c13be9f9bbac40fc3306f21287047b57；已提交差异0个提交，工作区42个文件（含已有未提交改动）</td></tr><tr><td>排除</td><td>自动生成的 test-results 截图/运行状态、输出包及锁文件；没有排除本次源文件。Dockerfile仅状态标记、无文本差异。</td></tr><tr><td>消费者扩展</td><td>导入页及设置弹窗、ImportSizeAuditProgress、通用管理员设置保存、现有导入状态轮询、OPDS目录输出（已有未提交差异）；其余后端文件只确认消费者接口，不把业务正确性当作界面结论。</td></tr></table><table><tr><th>领域</th><th>证据与结果</th></tr><tr><td>Accessibility</td><td>可见字段标签、KiB后缀、非法输入提交后聚焦、原生按钮键盘路径、状态/错误语义；无遗留可操作问题。</td></tr><tr><td>Layout</td><td>桌面与320px设置弹窗，窄屏按钮可达、提示自然换行；不新增固定宽度或隐藏关键文字。</td></tr><tr><td>Writing</td><td>说明0关闭、1024字节、ZIP成员大小、自动清理登记且保留原文件；保存动作明确、初始候选与已核查区分；三语键齐全。</td></tr><tr><td>Typography</td><td>复用现有字号与层级；变化计数使用tabular-nums；长错误可换行，无新增字体。</td></tr><tr><td>Colors</td><td>新增警告和保存按钮修正后，Chromium对light/dark实际颜色计算的WCAG对比均至少4.5:1；错误提示保留文本，非仅颜色。</td></tr><tr><td>UI</td><td>复用Vuetify loading/disabled/focus状态与现有弹窗；无新增动效，保存后刷新与0关闭均实测。</td></tr></table><h3>Findings</h3><p>本次改动无待处理 Introduced / Regression 问题。非法输入禁用提交、取消遗漏大小字段、警告颜色对比与空闲时进度不刷新的问题均已修正后复审。</p><h3>Considered but Rejected</h3><table><tr><th>候选</th><th>不采纳原因</th></tr><tr><td>把KiB简写为KB</td><td>会混淆1024字节与十进制单位；现有提示已明确。</td></tr><tr><td>另加一层确认弹窗</td><td>本流程已以警告、明确动作及保留源文件说明区分后果；用户要求自动核查，避免重复确认。</td></tr><tr><td>用百分比代替计数</td><td>并发导入/合并可能改变候选，初始总数与实际核查计数更诚实；完成状态单独显示。</td></tr></table><h3>Pre-existing</h3><p>隔离mock页面的部分Vuetify分页文案仍显示翻译键，原分支同组件和语言配置已有，不在新增字段和文案内。保留的OPDS未提交改动没有在真实客户端做本次专项验收，不把协议客户端兼容性计为本次通过。</p><h3>Verification</h3><p>git symbolic-ref refs/remotes/origin/HEAD → origin/main；git fetch origin main --no-tags 更新了.git/FETCH_HEAD，remote/HEAD均为caf95218；git merge-base、git diff --name-status HEAD、git ls-files --others --exclude-standard用于完整工作区范围；检查了变更前后与直接消费者。未切换分支、未stash。渲染使用短生命周期Playwright Chromium自动化：Chrome DevTools MCP在本会话没有提供，故使用实际Chromium截图、DOM/颜色测量和键盘交互替代并明确记录。隔离mock只用于自动化界面验证，不作为真实数据验收。NVDA/VoiceOver未执行，不声称屏幕阅读器实机通过；生产页面实测待部署后补充。</p><h3>Verdict</h3><p>Approve（已声明界面范围与隔离渲染覆盖）；最终部署验收另行记录。</p><h2>测试结果</h2><p>Windows定向新增扫描/设置/核查测试通过；Linux非root、无生产挂载、网络关闭、单CPU768MiB隔离容器中library、scan、httpapi、sourcewatch、cmd/booksvr五包全量回归通过。最终候选SQL新增来源当前尺寸后，HTTPAPI和CLI消费者全量回归已重跑并PASS；对应新增尺寸过时和主键游标查询计划测试已通过。go vet相关四包通过。</p><p>前端eslint通过；Vitest三文件12个用例通过；Playwright Chromium保存/刷新/0/非法输入、导入空闲时核查进度、320px、light/dark对比度用例通过。初次完整后端回归检出通用设置保存重建核查代次，已移到明确的导入设置请求并添加防回归，TestAllSettingsRoundTrip再次通过。初次E2E的Vite首次依赖优化重载和瞬态成功提示已通过等待真实页面就绪与请求完成修正，最终无强行跳过断言。</p><p>Nuxt生产静态构建通过，_i18n产物包含新三语文案；25篇spec校验通过。最终消费者回归、主服务与前端部署、真实站点设置保存与后台核查状态、任务检查点与独立PID验证已完成；最后提交并推送本方案与实现。</p><h2>生产部署与真实数据验收</h2><p>2026-11-10 已在现有BookHarbor容器内热更新主服务可执行文件及前端静态资源，没有重启整容器或迁移挂载。运行版本 size-filter-0004438d1599/booksvr，SHA256 0004438d1599dae5311278b8c0a38b6e088a49154e3f9841153c935396ce5788；前端包SHA256 dc3ec6c1893af92b91bfdc96d46b812dab6818488e2629cda3cbd7eb8e6d176a。运行构建保留工作区原有OPDS代码，本次提交不带其未提交源文件。</p><p>原主服务PID3496经SIGTERM持久检查点退出，切换后主PID91876/starttick42119161；部署时活动目录任务359没有清空或重建，随后已完成（1402文件，668导入），任务360继续运行（采样时347文件、41导入）。控制行仍为import_control(1,0)、scan_directory_control(1,3)，历史ID全部保留。独立元数据PID20/starttick16797、原生阅读21/starttick16798、插件22/starttick16799、TXT阅读23/starttick16801均保持不变；归组队列采样为1，没有手工清空。文件补全游标439973与部署前相同，本次证明进程和状态保留，不虚称它已处理新书或完成联网补全。</p><p>使用真实站点、实际管理员登录在Playwright Chromium中验证导入页、设置保存与刷新，显式保存10 KiB，并检查桌面与320px弹窗、实际后台状态；浏览器pageerror为空。真实核查任务已持久排队：初始候选22435，已检查0、移除0、错误为空，来源完整核对与导入仍运行。核查按设计等待这些任务，未把候选总数写成已删除数或声称整库核查已完成。关闭阈值0在Go与隔离界面回归中通过，生产没有为测试暂时关闭运行中的过滤。</p><p>真实截图保存在私有本地运维文件 bookharbor-import-size-live-desktop.png、bookharbor-import-size-live-mobile.png、bookharbor-import-size-live-progress.png；未将真实书库列表或源路径截图上传公共仓库。生产UI审查复核通过，桌面与窄屏均可操作；dark主题另在隔离Chromium中验证对比度。专属无生产绑定的QA容器已核实空闲并删除，临时mock/Nuxt/Chromium进程均结束。领域校验25篇通过，最终提交索引设计门禁与差异检查见提交前记录。</p><h2>完成状态与后续自动行为</h2><p>设置、所有目录扫描与待入库防线、既有书库数据库清理、挂载保护、进度与断点恢复已实现并验证部署。既有核查继续在后台等待并处理，源文件不删除。用户后续改阈值并保存会创建新一轮核查；调低阈值后可重新扫描以导入之前过滤的文件。</p></main></body></html>

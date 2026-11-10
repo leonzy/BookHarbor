@@ -23,6 +23,11 @@ var settingsSaveMu sync.Mutex
 func SaveSettings(path string, values map[string]any) error {
 	settingsSaveMu.Lock()
 	defer settingsSaveMu.Unlock()
+	if v, ok := values["import_min_file_size_kib"]; ok {
+		if _, e := parseImportMinSize(v); e != nil {
+			return e
+		}
+	}
 	if path == "" {
 		return fmt.Errorf("httpapi: 保存配置需要配置文件路径")
 	}
@@ -83,6 +88,7 @@ func SaveSettings(path string, values map[string]any) error {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("httpapi: 替换配置失败: %w", err)
 	}
+	importSettingsRevision.Add(1)
 	return nil
 }
 

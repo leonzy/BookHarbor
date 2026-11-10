@@ -325,6 +325,13 @@ func DeleteBook(db *sql.DB, bookID int64) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := deleteBookTx(tx, bookID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func deleteBookTx(tx *sql.Tx, bookID int64) error {
 	// 先删关联，再删主行（Calibre 无外键级联，需显式清理）。
 	links := []string{
 		"books_authors_link", "books_tags_link", "books_publishers_link",
@@ -356,9 +363,6 @@ func DeleteBook(db *sql.DB, bookID int64) error {
 		return fmt.Errorf("library: 删除书籍失败: %w", err)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("library: 提交事务失败: %w", err)
-	}
 	return nil
 }
 

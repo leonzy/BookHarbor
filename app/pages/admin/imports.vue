@@ -62,6 +62,7 @@
             </div>
             <ImportStatistics :summary="statistics" />
             <ImportScanProgress :progress="watch_status.scan_queue" />
+            <ImportSizeAuditProgress :progress="sizeAudit || watch_status.size_audit" />
             <v-alert
                 v-if="directoryAlert"
                 class="mt-3"
@@ -445,6 +446,31 @@
                 </section>
 
                 <section class="settings-section">
+                    <v-text-field
+                        ref="minimumSizeInput"
+                        v-model="settingsDraft.min_file_size_kib"
+                        class="import-minimum-size"
+                        type="number"
+                        min="0"
+                        step="1"
+                        :label="t('admin.imports.settings.minimumSize')"
+                        suffix="KiB"
+                        :hint="t('admin.imports.settings.minimumSizeHint')"
+                        persistent-hint
+                        :error-messages="minimumSizeError"
+                        :disabled="settingsSaving"
+                        data-testid="import-minimum-size"
+                    />
+                    <v-alert
+                        v-if="Number(settingsDraft.min_file_size_kib) > 0"
+                        type="warning"
+                        variant="tonal"
+                        class="import-size-warning mt-3"
+                    >
+                        {{ t('admin.imports.settings.auditWarning') }}
+                    </v-alert>
+                </section>
+                <section class="settings-section">
                     <div class="settings-section-title">
                         {{ t('admin.imports.settings.mode') }}
                     </div>
@@ -517,13 +543,14 @@
                     {{ t('common.cancel') }}
                 </v-btn>
                 <v-btn
-                    color="primary"
+                    :class="{ 'import-size-save': Number(settingsDraft.min_file_size_kib) > 0 }"
+                    :color="Number(settingsDraft.min_file_size_kib) > 0 ? 'warning' : 'primary'"
                     variant="elevated"
                     :loading="settingsSaving"
                     :disabled="settingsSaveDisabled"
                     @click="saveImportSettings"
                 >
-                    {{ t('admin.imports.button.saveSettings') }}
+                    {{ Number(settingsDraft.min_file_size_kib) > 0 ? t('admin.imports.settings.saveAndAudit') : t('admin.imports.button.saveSettings') }}
                 </v-btn>
             </v-card-actions>
         </v-card>
@@ -668,6 +695,7 @@ const importRecordReason = (item) => item.status === 'exist'
         ? (item.data?.skip_reason || t('admin.imports.legacySkippedReason'))
         : (item.data?.import_error || item.data?.index_error || item.data?.analysis_error || item.data?.delete_error || t('admin.imports.legacyFailedReason'));
 const import_mode = ref(DEFAULT_IMPORT_MODE);
+const min_file_size_kib = ref(10);
 const auto_watch_enabled = ref(false);
 const directory_check = ref(null);
 const cancellingTask = ref(false);
@@ -690,6 +718,7 @@ const settingsDraft = ref({
     scan_upload_path: '/data/books/imports/',
     import_allowed_roots: ['/data/books/imports/'],
     import_mode: DEFAULT_IMPORT_MODE,
+    min_file_size_kib: 10,
     auto_watch_enabled: false,
     directory_check: null,
 });
@@ -780,6 +809,13 @@ const needsSettingsAttention = computed(() => {
 
 const importActionsDisabled = computed(() => Boolean(directory_check.value && directory_check.value.status === 'error'));
 
+const minimumSizeInput = ref(null);
+const minimumSizeError = computed(() => {
+    const value = settingsDraft.value.min_file_size_kib;
+    const size = Number(value);
+    return value === '' || value === null || !Number.isInteger(size) || size < 0 || size > 2147483647
+        ? t('admin.imports.settings.minimumSizeInvalid') : '';
+});
 const settingsSaveDisabled = computed(() => {
     const check = settingsDraft.value.directory_check;
     // 目录列表的合法性由 validateDraftAllowedRoots() 在保存时给出可读的错误提示，
@@ -853,12 +889,31 @@ const getDataFromApi = (resume = true) => {
         });
 };
 
+const sizeAudit = ref(null);
+let sizeAuditTimer = null;
+let sizeAuditSerial = 0;
+const refreshSizeAudit = async () => {
+    const serial = ++sizeAuditSerial;
+    if (sizeAuditTimer) clearTimeout(sizeAuditTimer);
+    try {
+        const rsp = await $backend('/admin/import/watch/status');
+        if (pageDisposed || serial !== sizeAuditSerial) return;
+        if (rsp.err !== 'ok') throw new Error(rsp.msg || t('admin.imports.settings.auditState.error'));
+        sizeAudit.value = rsp.watch_status?.size_audit || null;
+    } catch (error) {
+        if (pageDisposed) return;
+        sizeAudit.value = { state: 'error', error: error.message };
+    }
+    if (!pageDisposed) sizeAuditTimer = setTimeout(refreshSizeAudit, sizeAudit.value?.state === 'running' ? 2000 : 10000);
+};
+onMounted(refreshSizeAudit);
 let statusTimer = null;
 let observedTask = null;
 let pageDisposed = false;
 onBeforeUnmount(() => {
     pageDisposed = true;
     if (statusTimer) clearTimeout(statusTimer);
+    if (sizeAuditTimer) clearTimeout(sizeAuditTimer);
 });
 const loop_check_status = (url, callback) => {
     if (pageDisposed) return;
@@ -912,6 +967,7 @@ const applyImportSettings = (settings) => {
     allowed_roots.value = allowedRootsFromSettings(settings);
     scan_dir.value = allowed_roots.value[0] || settings.scan_upload_path || scan_dir.value;
     import_mode.value = settings.import_mode || DEFAULT_IMPORT_MODE;
+    min_file_size_kib.value = settings.min_file_size_kib ?? 10;
     auto_watch_enabled.value = Boolean(settings.auto_watch_enabled);
     directory_check.value = settings.directory_check || null;
     watch_status.value = settings.watch_status || watch_status.value;
@@ -922,6 +978,7 @@ const resetSettingsDraft = () => {
         scan_upload_path: allowed_roots.value[0] || scan_dir.value,
         import_allowed_roots: allowed_roots.value.length ? allowed_roots.value.slice() : [scan_dir.value],
         import_mode: import_mode.value,
+        min_file_size_kib: min_file_size_kib.value,
         auto_watch_enabled: auto_watch_enabled.value,
         directory_check: directory_check.value,
     };
@@ -984,10 +1041,12 @@ const closeSettingsDialog = () => {
         directories: settingsDraft.value.import_allowed_roots,
         mode: settingsDraft.value.import_mode,
         watch: settingsDraft.value.auto_watch_enabled,
+        minimum: Number(settingsDraft.value.min_file_size_kib),
     }) !== JSON.stringify({
         directories: allowed_roots.value,
         mode: import_mode.value,
         watch: auto_watch_enabled.value,
+        minimum: min_file_size_kib.value,
     });
     if (draftChanged && !window.confirm(t('admin.imports.settings.discardConfirm'))) {
         return;
@@ -1018,6 +1077,7 @@ const checkDraftDirectory = (path) => {
 };
 
 const saveImportSettings = async () => {
+    if (minimumSizeError.value) { minimumSizeInput.value?.focus(); return; }
     settingsError.value = '';
     // 先校验目录列表：它不依赖后端检测，能立即给出可读的错误。
     const roots = validateDraftAllowedRoots();
@@ -1054,6 +1114,7 @@ const saveImportSettings = async () => {
             import_directories: roots,
             import_allowed_roots: roots,
             import_mode: settingsDraft.value.import_mode,
+            min_file_size_kib: Number(settingsDraft.value.min_file_size_kib),
             auto_watch_enabled: settingsDraft.value.auto_watch_enabled,
         }),
     }).then((rsp) => {
@@ -1062,6 +1123,7 @@ const saveImportSettings = async () => {
             return;
         }
         applyImportSettings(rsp.settings);
+        refreshSizeAudit();
         settingsDialogVisible.value = false;
         if ($alert) $alert('success', rsp.msg || t('admin.imports.settings.saved'));
         getDataFromApi();
@@ -1354,4 +1416,15 @@ useHead(() => ({
         flex-direction: column;
     }
 }
+
+.import-size-warning,
+.import-minimum-size :deep(.v-messages) {
+    color: rgb(var(--v-theme-on-surface)) !important;
+    opacity: 1;
+}
+.import-size-warning :deep(.v-alert__underlay) {
+    background-color: rgb(var(--v-theme-warning));
+    opacity: 0.12;
+}
+.import-size-save { color: #171717 !important; }
 </style>

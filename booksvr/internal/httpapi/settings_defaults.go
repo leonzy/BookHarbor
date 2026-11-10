@@ -141,6 +141,7 @@ var builtinSettingsDefaults = map[string]any{
 	"import_auto_watch_enabled":                false,
 	"import_mode":                              "index",
 	"import_scan_batch_size":                   500,
+	"import_min_file_size_kib":                 10,
 	"import_watch_interval_seconds":            30,
 	"installed":                                false,
 	"login_url":                                "/login",

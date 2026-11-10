@@ -186,6 +186,7 @@ func (s *Service) walkZIP(ctx context.Context, file string, chain []string, budg
 }
 
 func (s *Service) scanZIP(ctx context.Context, archive string, result *Result, done map[string]bool, checkpoints ...func() error) error {
+	minimum := s.minimumFileSize()
 	fingerprint, err := archiveFingerprint(archive)
 	if err != nil {
 		return err
@@ -194,7 +195,7 @@ func (s *Service) scanZIP(ctx context.Context, archive string, result *Result, d
 	if err != nil {
 		return err
 	}
-	if parent != nil && parent.Status == statusExpanded && parent.Data["archive_fingerprint"] == fingerprint {
+	if parent != nil && parent.Status == statusExpanded && parent.Data["archive_fingerprint"] == fingerprint && parent.Data["minimum_size"] == fmt.Sprint(minimum) {
 		count, pending, err := s.archiveEntryCounts(archive, fingerprint)
 		if err != nil {
 			return err
@@ -213,6 +214,10 @@ func (s *Service) scanZIP(ctx context.Context, archive string, result *Result, d
 	s.setProgress(func(p *Progress) { p.Archives++; p.Current = archive })
 	var visitErr error
 	found, walkErr := s.walkZIP(ctx, archive, nil, &zipBudget{}, func(chain []string, entry *zip.File, problem error) error {
+		if strings.ToLower(path.Ext(entry.Name)) != ".zip" && entry.UncompressedSize64 < uint64(minimum) {
+			result.Skipped++
+			return nil
+		}
 		virtual := archive + "!/" + fingerprint[:16] + "/" + strings.Join(zipChainEncoded(chain), "/") + "/" + path.Base(zipDisplayName(entry.Name))
 		if done[virtual] {
 			result.Skipped++
@@ -310,7 +315,7 @@ func (s *Service) scanZIP(ctx context.Context, archive string, result *Result, d
 	parent.UpdateTime = s.now()
 	parent.Hash = "archive:" + fingerprint
 	parent.Status = statusExpanded
-	setRowData(parent, "archive_fingerprint", fingerprint)
+	setRowData(parent, "archive_fingerprint", fingerprint, "minimum_size", fmt.Sprint(minimum))
 	count, _, err := s.archiveEntryCounts(archive, fingerprint)
 	if err != nil {
 		return err

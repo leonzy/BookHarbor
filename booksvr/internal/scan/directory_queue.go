@@ -511,7 +511,7 @@ func (s *Service) ScanDirectoryQueue(ctx context.Context, root string, full bool
 			}
 			continue
 		}
-		currentStamp := directoryStamp(info)
+		currentStamp := fmt.Sprintf("%s:min=%d", directoryStamp(info), s.minimumFileSize())
 		var forced bool
 		if e = s.DB.QueryRow(`SELECT EXISTS(SELECT 1 FROM scan_directory_run_events WHERE job_id=? AND path=?)`, id, dir).Scan(&forced); e != nil {
 			return e
@@ -711,6 +711,10 @@ func (s *Service) scanQueuedFile(ctx context.Context, path string, p *DirectoryP
 			err = e
 		}
 		return err
+	}
+	if s.belowMinimum(info.Size()) {
+		p.Skipped++
+		return nil
 	}
 	changed, err := s.changedSource(path, info)
 	if err != nil {

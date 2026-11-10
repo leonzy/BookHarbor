@@ -22,6 +22,7 @@ const DefaultScanPath = "/data/books/imports/"
 
 // Config 是导入目录逻辑读取的配置项。
 type Config struct {
+	MinFileSizeKiB int64
 	// ScanUploadPath 对应 CONF 的 scan_upload_path。
 	ScanUploadPath string
 	// AllowedRoots 对应 CONF 的 import_allowed_roots。
@@ -293,11 +294,11 @@ func CheckImportDirectory(path string, cfg Config) DirectoryResult {
 	}
 
 	res := DirectoryResult{
-		Path:           normalized,
-		AllowedRoots:   roots,
-		Exists:         pathExists(normalized),
-		IsDir:          isDir(normalized),
-		IsSymlink:      isSymlink(normalized),
+		Path:         normalized,
+		AllowedRoots: roots,
+		Exists:       pathExists(normalized),
+		IsDir:        isDir(normalized),
+		IsSymlink:    isSymlink(normalized),
 		// This legacy response field is retained for older clients. Directories
 		// are scan targets, never an access whitelist.
 		InAllowedRoots: true,

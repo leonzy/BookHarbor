@@ -75,6 +75,13 @@ func attachImportWorker(ctx context.Context, opts ServeOptions, db *sql.DB) (Ser
 		}
 	}
 	var workMu, statusMu sync.Mutex
+	opts.TryImportMaintenance = func(fn func() error) (bool, error) {
+		if !workMu.TryLock() {
+			return false, nil
+		}
+		defer workMu.Unlock()
+		return true, fn()
+	}
 	var activeCancel context.CancelFunc
 	var generation uint64
 	var pendingPaths = map[string]bool{}
