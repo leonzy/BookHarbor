@@ -13,3 +13,9 @@ func runSourceSyncWorker() error {
 	defer cancel()
 	return httpapi.RunSourceSyncWorker(ctx, os.Stdin, os.Stdout)
 }
+
+func runSourcePruneWorker() error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	return httpapi.RunSourcePruneWorker(ctx, os.Stdin, os.Stdout)
+}

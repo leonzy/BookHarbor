@@ -970,7 +970,7 @@
         "auditTitle": "已入库小文件核查",
         "auditProgress": "已核查 {checked} 个文件，初始候选 {total} 个",
         "auditRemoved": "已移除 {formats} 个文件版本、{books} 本书目，原文件保留。",
-        "auditUnreadable": "{count} 个文件不可读或来源受保护，已保留登记。恢复后可重新保存设置再核查。",
+        "auditUnreadable": "本轮有 {count} 个候选因不可读或来源保护未按大小清理。已确认缺失的登记由来源同步另行清理；此处为本轮累计数。",
         "auditState": {"running": "后台核查中", "done": "核查完成", "disabled": "大小过滤已关闭", "error": "无法读取核查进度", "cancelled": "阈值已变更，请重新保存导入设置以核查"},
         "minimumSizeInvalid": "请输入 0 至 2147483647 的整数。",
         "autoWatchHint": "开启后，新加入目录的电子书会自动排队导入。",

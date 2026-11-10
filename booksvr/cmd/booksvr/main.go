@@ -84,6 +84,8 @@ func Run(args []string) error {
 		return runSyncSources(args[2:], os.Stdout)
 	case "source-sync-worker":
 		return runSourceSyncWorker()
+	case "source-prune-worker":
+		return runSourcePruneWorker()
 	case "import-pending":
 		return runImportPending(args[2:], os.Stdout)
 	case "repair-source-baseline":

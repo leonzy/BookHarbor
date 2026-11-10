@@ -9,6 +9,42 @@ import (
 	"talebook/booksvr/internal/sourcefile"
 )
 
+// DropMissingIndexedSource is replayable and never changes pending imports.
+func DropMissingIndexedSource(db *sql.DB, bookID int64, path string) error {
+	return DropMissingIndexedSources(db, []MissingIndexedSource{{BookID: bookID, Path: path}})
+}
+
+type MissingIndexedSource struct {
+	BookID      int64
+	Path        string
+	RemovedBook bool
+}
+
+func DropMissingIndexedSources(db *sql.DB, sources []MissingIndexedSource) error {
+	if len(sources) == 0 {
+		return nil
+	}
+	tx, e := db.Begin()
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	for _, s := range sources {
+		_, e = tx.Exec(`UPDATE scanfiles SET status='drop',book_id=0,data=json_set(CASE WHEN json_valid(data) THEN data ELSE '{}' END,'$.skip_reason','源路径已确认不存在，已移除书库登记','$.skip_reason_code','source.missing') WHERE book_id=? AND status='indexed' AND (? OR path=? OR json_extract(CASE WHEN json_valid(data) THEN data ELSE '{}' END,'$.source_path')=?)`, s.BookID, s.RemovedBook, s.Path, s.Path)
+		if e != nil {
+			return e
+		}
+		if s.RemovedBook {
+			for _, table := range []string{"items", "book_aliases"} {
+				if _, e = tx.Exec(`DELETE FROM `+table+` WHERE book_id=?`, s.BookID); e != nil {
+					return e
+				}
+			}
+		}
+	}
+	return tx.Commit()
+}
+
 func EnsureSourceSyncIndexes(db *sql.DB) error {
 	for _, q := range []string{`CREATE INDEX IF NOT EXISTS idx_source_scan_book ON scanfiles(book_id,status)`, `CREATE INDEX IF NOT EXISTS idx_source_scan_path ON scanfiles(path,status)`} {
 		if _, err := db.Exec(q); err != nil {

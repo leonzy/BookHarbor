@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Talebook 内部方案模板：用于记录原始诉求、目标边界、实现方案、风险与测试结果。" />
+    <link rel="icon" href="data:," />
+    <title>确认缺失来源清理</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><h1>确认缺失来源清理</h1><p>日期：2026-11-10 · 模块：booksvr · 状态：ACTIVE · 来源：用户要求源路径不存在的从数据库去掉。</p><h2>原始诉求与目标</h2><p>原来源同步只标缺失并隐藏可读列表，不删除书目登记。用户要求真正移除确认不存在的源文件登记，保留其他版本及原文件，不把挂载掉线或正在移动误判为删除。</p><h2>方案</h2><p>既有完整/增量来源核对先识别移动和改名，再将确认缺失的格式加入持久延迟清理队列。至少60秒观察期后，后台按索引小批处理；完整核对在运行或来源保护时等待。提交前后复核健康、物理源仍不存在和格式路径未被改写，任一检查失败保留登记。只移除对应格式，保留其他格式；最后版本删除书目。跨库导入记录通过持久outbox精确标记已跳过/来源已删除，不触碰活动任务。提供可重入私有维护入口处理历史确认缺失记录，限速与数据库忙重试。源文件不复制、不删除、不移动。</p><h2>影响范围与风险</h2><p>library来源队列和事务清理、httpapi调度与跨库登记、私有维护命令、spec/书库.md。保留原有OPDS未提交工作。删除记录不可自动以原书号恢复，源文件后来重新出现时按正常增量导入处理；人工修改只随真正没有任何版本的书目移除，其他版本的元数据不改。挂载身份/健康标记、symlink目标失联、权限错误、库内托管文件继续保护。清理队列按索引读取，不反复全库核对。</p><h2>测试计划</h2><p>已验证：移动/改名不清理、60秒观察期、缺失历史清理、重复执行、同书多格式/相同格式多路径、路径变化/文件恢复/挂载失联/权限错误/事务间掉线回滚、ZIP原包缺失、outbox幂等且只处理已完成导入行；Go回归及真实生产清理，保护独立任务、原文件和挂载。</p><h2>界面文案迭代</h2><p>小文件核查的不可读数量是本轮累计历史，不会随独立来源清理倒扣；原“已保留登记”会误导用户认为清理未发生。三语言改为明确本轮未按大小清理的累计候选，确认缺失由来源同步另行清理。补组件断言并执行生产渲染验证；因此按interface-review full审查全部本地改动，不豁免界面审查。</p><h2>历史清理开销迭代</h2><p>真实维护遇到数据库争用且每条投递原来分别提交用户库和确认库。将最多25条outbox作为一组用户事务，成功后一次确认库UPDATE，失败仍可重放，不改变导入活动行。减少事务提交数；不降低SQLite同步级别、不暂停元数据任务。维护CLI超时仍有界。补幂等及精确来源回归，重新验证受影响包。</p><h2>事务批次进一步优化</h2><p>维护清理的版本删除也按最多5条共享一个事务，保持SQLite原同步级别和独立有界连接。所有来源在整个批次末再次校验，最后一条处理后掉线也会回滚先前删除；主导入仍无取消/重置。单条接口保留，批量内部借用同一事务，所有根身份查询也使用该事务，避免单连接死锁。补全批次成功/提交末保护原子回滚测试。</p><h2>跨库目录登记完整性</h2><p>最后版本删除书目时，outbox同时清理业务库items及book_aliases，全部已完成索引记录标已跳过；活动导入行、账号、设置和阅读历史不动。只删某一格式时仍严格匹配其来源，不动其他版本。对早期维护已完成的ledger重新投递，仅补全此目录登记清理，先留存业务行快照；不重置扫描或导入。补跨库事务失败时所有行回滚的测试。</p><h2>测试与失败修正</h2><p>Windows定向：TestMissingSourcePruneVersionsAndGuards、TestMissingSourcePruneBatchRollsBackLateProtection、TestSourcePruneOutboxOnlyCompletedExactSources、TestSourcePruneOutboxBatchRollback、TestSourcePruneWorkerWaitsForReconciliation、TestSourcePrunePrivateProtocolRejectsInvalidRequests、TestScanRestoresPrunedSourceWithUnchangedSignature及TestScanRestoresPrunedZIPMember通过。go vet相关五包通过。Linux独立非root、GOMAXPROCS=1/CPU1/768MiB容器中library、scan、httpapi、sourcewatch、userdb和cmd/booksvr全部 -test.count=1 -test.timeout=600s通过（最新release-qa.log）；新增清理与跨库测试在Linux额外重复5次通过。</p><p>最初复用的轻量sourceFixture没有Calibre data表，改为完整newQueryDB；创建完全相同内容导致真实查重/移动匹配的歧义，改用独立哨兵内容，跨文件系统模拟移动补入库哈希，ZIP引用补齐合法字段。同格式槽位本来唯一，改为遗留大小写格式槽位验证防误删data。后台测试在Windows偶发pending=0/missing=0，确认是既有Windows文件身份用创建时间、同刻创建的两个夹具文件被当作同一身份，分隔夹具创建时间后重复20次通过；生产Linux使用inode，不改其身份算法。保留这些失败记录，不以某一次偶然通过替代定位。批次末保护、用户库第二行故障的原子回滚均通过。</p><p>前端Vitest ImportSizeAuditProgress.spec.ts三项通过，Nuxt静态生成通过。真实/admin/imports验证三语言中本轮累计文案、新旧进度、键盘焦点和320px换行；私有截图source-prune-live-focus.png与source-prune-live-mobile.png已查看。首次使用networkidle等待轮询页面超时，改为DOMContentLoaded后等真实累计文案出现，实际约3秒加载；不把测试等待条件失配当服务故障。Chrome DevTools MCP不可用，以真实Playwright Chromium替代。没有启动或遗留开发服务器。</p><h2>Scope and Coverage（interface-review full）</h2><table><tr><th>字段</th><th>范围</th></tr><tr><td>Target</td><td>当前分支相对默认分支的全部本地变更；0提交领先，30个未提交状态项。</td></tr><tr><td>Base / Head</td><td>origin/main / HEAD 均55188e393c60e6f8e47eee8bd20ea2e4fefe921e，merge-base一致。</td></tr><tr><td>Files / Exclusions</td><td>排除无文本差异的Dockerfile状态项后29项；生成bundle、截图及二进制不进源码审查。原有OPDS、部署脚本、外部访问规格及两份旧方案也读过两侧差异，保持未提交；不声称其WIP真机问题已通过。</td></tr><tr><td>Consumers</td><td>翻译key唯一直接组件ImportSizeAuditProgress，组件唯一页面admin/imports；已读对应统计组件、跳过原因字段消费及来源状态API。新增清理接口只有后台和维护入口两个直接调用者，均展开；额外直接消费者0。通用书籍页面复用既有缺失/删除数据协议，以Go回归覆盖，不声明逐页真机验收。</td></tr></table><p>栈为Nuxt/Vue/Vuetify，按AGENTS、app/AGENTS及CLAUDE约定。审查只读，执行git fetch origin（只写.git）、git symbolic-ref refs/remotes/origin/HEAD、git merge-base origin/main HEAD、git rev-parse origin/main、git status、git diff和git ls-files；未checkout、stash或切换工作树。六个better-*拥有领域均已应用，删除行已检查：原“保留登记”改为准确累计历史说明，保留源文件、错误和进度语义，原缺失隐藏改为有保护的延迟清理，未移除暂停/挂载检查。</p><table><tr><th>领域</th><th>证据与结论</th></tr><tr><td>Accessibility</td><td>组件原status/alert保持，真实键盘可达、focus-visible边框及320px按钮无遮挡；Clear。</td></tr><tr><td>Layout</td><td>新长段落在桌面/320px自然换行，卡片overflow-wrap与flex-wrap保持，无新增布局；Clear。</td></tr><tr><td>Writing</td><td>三语言明确本轮累计与来源另行清理，跳过原因解释路径不存在，观察期/其他版本/原文件保留在spec中一致；Clear。</td></tr><tr><td>Typography</td><td>使用既有正文字号、行高与tabular-nums；新中文段落实际截图可读；Clear。</td></tr><tr><td>Colors</td><td>无新颜色/主题；真实on-surface rgba(0,0,0,.87)对白底及既有焦点轮廓，不以颜色独传状态；Clear。</td></tr><tr><td>UI</td><td>没有新增控件或动画，保留加载/等待/错误/运行/空态；Clear。</td></tr></table><h2>Findings</h2><p>No actionable interface findings in this change。没有待处理Introduced/Regression HIGH、MEDIUM或LOW。原OPDS客户端真机分页仍为既有WIP未验证，不纳入本次完成声明。</p><h2>Considered but Rejected</h2><table><tr><th>候选</th><th>不采用原因</th></tr><tr><td>将1122显示成当前尚未清理数</td><td>原字段是本轮大小核查历史累计；倒扣会混淆两类任务，改清楚文案。</td></tr><tr><td>每次缺失立即删除或新增危险确认弹窗</td><td>前者可能误伤分批移动事件；后者违背已明确授权的自动同步。保留60秒观察和挂载保护。</td></tr><tr><td>大事务/关闭同步刷盘以提速</td><td>会扩大写锁或持久化风险；限制五版本和25条投递的小事务，不降低同步级别。</td></tr></table><h2>Verification / Verdict</h2><p>源码、完整Go回归、组件测试、真实累计文案/键盘/320px均通过。OPDS真机未复测、屏幕阅读器实机未测，未伪称全站全设备通过。界面Verdict：Approve。正式数据核对及最终服务版本详见完成记录。</p><h2>生产完成记录</h2><p>历史确认缺失29755个文件版本，全部从book_formats清理；其中29534本没有任何剩余格式的书目移除。原小文件核查保留的1122条逐ID核验剩余0；来源清理队列0，outbox待投递0。其余有效格式/书目保留。存活源文件抽查10条均可访问；操作只做源stat/身份检查与数据库写入，不删除、移动、复制正文或创建解压缓存。</p><p>先保存缺失书目及关联快照11677385字节、业务目录/别名快照5411171字节（29688条items、0条别名），存于NAS私有维护目录，不入Git。为保护现有任务，维护用单路GOMAXPROCS=1及nice19，SQL忙有界重试；历史维护只处理此前已经确认的缺失状态，root与物理路径在每次提交再次保护。自动清理在来源完整核对进行中等待，正常增量先识别移动/改名、至少60秒观察后再移除。</p><p>中途优化投递协议后，旧主进程与维护新版曾同时消费outbox；最后完整数据核验查到2455条items仍在，不能仅以applied=1当作目录清理完成。已把主服务切到最终版本，再针对真实残留关联幂等重放，复核items与book_aliases残留均为0，无需重建书库或重新扫描。源码最终消费者相同，无旧版清理消费者继续运行。保留失败与修正记录，未把第一次核验失败称为通过。</p><p>最终二进制SHA256 ea4094222a6b7703a6b4d50952aeaec4211d8ddf5cd4d8251368cf88e9cfa92e，主进程102209/starttick44143054；前端bundle SHA256 923332f04e7f04ff8ff96019bbb90b67f5a6f19ab88f89589624a76a0427c0bf。仅替换主服务，不重启容器；元数据20/16797、原生阅读21/16798、TXT23/16801及插件22/16799的PID/启动tick始终不变。导入控制、目录暂停代次和所有扫描历史保留，最近370仍done/21625文件；部署时无活动导入。最终start曾报告spawn error，随后自动重试成功，实际PID、TCP端口及RUNNING连续超过4分钟稳定确认，不隐去初次报错。</p><p>最终真实登录成功；存活书目API err=ok，已移除示例19263返回params.book.invalid；/admin/imports累计文案正常，1280与320像素私有截图已验证，浏览器运行时错误0。维护快照、cleanup.json、verification.json、两阶段deployment.json及前端receipt保存于/data/maintenance/20261110-source-missing-prune/。QA独立容器按本次标签、无生产bind及仅自有sleep进程校验后移除，未清理其他容器。</p><p>完成状态：逻辑、真实历史清理、回归、部署与核验通过。方案按验证结果转ACTIVE；本次仅提交自身20个文件，保留其他OPDS等未提交工作。</p></main></body></html>

@@ -76,3 +76,58 @@ func TestScanIncrementalDoesNotReimportIndexedRestore(t *testing.T) {
 		t.Fatal(row)
 	}
 }
+
+func TestScanRestoresPrunedSourceWithUnchangedSignature(t *testing.T) {
+	for _, incremental := range []bool{false, true} {
+		t.Run(map[bool]string{false: "full", true: "incremental"}[incremental], func(t *testing.T) {
+			db := testDB(t)
+			s := newTestService(db)
+			root := t.TempDir()
+			path := writeBook(t, root, "restore.txt", []byte("restored text"))
+			if _, e := s.ScanAll(context.Background(), root, 500); e != nil {
+				t.Fatal(e)
+			}
+			if _, e := db.Exec(`UPDATE scanfiles SET status='drop',book_id=0,data=json_set(data,'$.skip_reason_code','source.missing','$.skip_reason','gone') WHERE path=?`, path); e != nil {
+				t.Fatal(e)
+			}
+			ctx := context.Background()
+			if incremental {
+				ctx = WithSourceChanges(ctx)
+			}
+			r, e := s.ScanAll(ctx, path, 500)
+			if e != nil || r.Inserted != 1 {
+				t.Fatal(r, e)
+			}
+			row, e := getScanFileByPath(db, path)
+			if e != nil || row.Data["skip_reason_code"] == "source.missing" {
+				t.Fatal(row, e)
+			}
+			r, e = s.ScanAll(ctx, path, 500)
+			if e != nil || r.Inserted != 0 {
+				t.Fatal("repeated unchanged import", r, e)
+			}
+		})
+	}
+}
+
+func TestScanRestoresPrunedZIPMember(t *testing.T) {
+	root := t.TempDir()
+	s := newImportService(t, importTestDB(t), importLibraryDB(t))
+	s.SupportedFormats["zip"] = true
+	archive := writeZIPFixture(t, root, "restore.zip", zipTestBytes(t, zipTestEntry{name: "book.txt", body: []byte("第一章\n这是一段正文。\n")}))
+	r, e := s.ScanAll(context.Background(), root, 500)
+	if e != nil || r.Ready != 1 {
+		t.Fatal(r, e)
+	}
+	if _, e = s.DB.Exec(`UPDATE scanfiles SET status='drop',book_id=0,data=json_set(data,'$.skip_reason_code','source.missing') WHERE path LIKE ?`, archive+"!/%"); e != nil {
+		t.Fatal(e)
+	}
+	r, e = s.ScanAll(WithSourceChanges(context.Background()), archive, 500)
+	if e != nil || r.Ready != 1 {
+		t.Fatal(r, e)
+	}
+	r, e = s.ScanAll(context.Background(), root, 500)
+	if e != nil || r.Ready != 0 {
+		t.Fatal("repeated ZIP scan", r, e)
+	}
+}

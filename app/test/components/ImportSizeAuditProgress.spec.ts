@@ -17,7 +17,8 @@ describe('Existing small file audit', () => {
         const view = render({ state: 'running', checked: 3, total: 7, removed_formats: 2, removed_books: 1, unreadable: 1, error: 'database busy' });
         expect(view.text()).toContain('已核查 3 个文件，初始候选 7 个');
         expect(view.text()).toContain('已移除 2 个文件版本、1 本书目，原文件保留');
-        expect(view.text()).toContain('1 个文件不可读或来源受保护');
+        expect(view.text()).toContain('1 个候选因不可读或来源保护未按大小清理');
+        expect(view.text()).toContain('已确认缺失的登记由来源同步另行清理');
         expect(view.get('[role="alert"]').text()).toBe('database busy');
     });
 });

@@ -43,6 +43,16 @@ func migrateSourceSync(db *sql.DB) error {
 		`CREATE TRIGGER IF NOT EXISTS source_sync_path_update AFTER UPDATE OF path ON book_formats WHEN OLD.path<>NEW.path BEGIN INSERT OR IGNORE INTO source_sync_pending VALUES(NEW.id); END`,
 		`CREATE TRIGGER IF NOT EXISTS source_sync_delete AFTER DELETE ON book_formats BEGIN DELETE FROM source_sync_formats WHERE format_id=OLD.id; DELETE FROM source_sync_paths WHERE format_id=OLD.id; DELETE FROM source_sync_pending WHERE format_id=OLD.id; END`,
 		`CREATE TABLE IF NOT EXISTS source_sync_changes(id INTEGER PRIMARY KEY,book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,old_path TEXT NOT NULL,new_path TEXT NOT NULL)`,
+		`CREATE TABLE IF NOT EXISTS source_prune_pending(format_id INTEGER PRIMARY KEY,path TEXT NOT NULL,seen_at INTEGER NOT NULL)`,
+		`CREATE INDEX IF NOT EXISTS source_prune_age ON source_prune_pending(seen_at,format_id)`,
+		`CREATE TABLE IF NOT EXISTS source_prune_removed(id INTEGER PRIMARY KEY,format_id INTEGER NOT NULL,book_id INTEGER NOT NULL,path TEXT NOT NULL,format TEXT NOT NULL,removed_book INTEGER NOT NULL,applied INTEGER NOT NULL DEFAULT 0)`,
+		`CREATE INDEX IF NOT EXISTS source_prune_outbox ON source_prune_removed(applied,id)`,
+		`CREATE TRIGGER IF NOT EXISTS source_prune_missing_insert AFTER INSERT ON source_sync_formats WHEN NEW.missing=1 BEGIN INSERT OR IGNORE INTO source_prune_pending SELECT NEW.format_id,path,unixepoch() FROM book_formats WHERE id=NEW.format_id; END`,
+		`CREATE TRIGGER IF NOT EXISTS source_prune_missing_update AFTER UPDATE OF missing ON source_sync_formats WHEN NEW.missing=1 AND OLD.missing=0 BEGIN INSERT OR IGNORE INTO source_prune_pending SELECT NEW.format_id,path,unixepoch() FROM book_formats WHERE id=NEW.format_id; END`,
+		`CREATE TRIGGER IF NOT EXISTS source_prune_restored AFTER UPDATE OF missing ON source_sync_formats WHEN NEW.missing=0 BEGIN DELETE FROM source_prune_pending WHERE format_id=NEW.format_id; END`,
+		`CREATE TRIGGER IF NOT EXISTS source_prune_deleted AFTER DELETE ON book_formats BEGIN DELETE FROM source_prune_pending WHERE format_id=OLD.id; END`,
+		`CREATE TRIGGER IF NOT EXISTS source_prune_relocated AFTER UPDATE OF path ON book_formats WHEN OLD.path<>NEW.path BEGIN DELETE FROM source_prune_pending WHERE format_id=NEW.id; END`,
+		`INSERT OR IGNORE INTO source_prune_pending SELECT s.format_id,f.path,unixepoch() FROM source_sync_formats s JOIN book_formats f ON f.id=s.format_id WHERE s.missing=1`,
 	} {
 		if _, err := tx.Exec(q); err != nil {
 			return err

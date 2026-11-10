@@ -40,6 +40,11 @@ func attachSourceWorker(parent context.Context, opts ServeOptions, books, users 
 		return out
 	}
 	done := make(chan struct{})
+	stopPrunes := startSourcePruneWorker(ctx, opts, books, users, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return status["state"] == "watching"
+	})
 	go func() {
 		defer close(done)
 		watcher, watchErr := sourcewatch.New(ctx)
@@ -255,7 +260,7 @@ func attachSourceWorker(parent context.Context, opts ServeOptions, books, users 
 			}
 		}
 	}()
-	return opts, func() { cancel(); <-done }
+	return opts, func() { cancel(); <-done; stopPrunes() }
 }
 
 func sourceStatusResult(result library.SourceSyncResult) library.SourceSyncResult {

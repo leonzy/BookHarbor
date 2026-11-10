@@ -950,7 +950,7 @@
         "auditTitle": "Existing small-file check",
         "auditProgress": "Checked {checked} files; {total} initial candidates",
         "auditRemoved": "Removed {formats} file versions and {books} books. Source files are kept.",
-        "auditUnreadable": "Kept {count} unreadable or protected files. Save settings again after recovery to recheck.",
+        "auditUnreadable": "This check skipped size cleanup for {count} unreadable or protected candidates. Source synchronization separately removes confirmed missing registrations. This is a cumulative count for this check.",
         "auditState": {"running": "Checking in background", "done": "Check complete", "disabled": "Size filter disabled", "error": "Cannot load check progress", "cancelled": "Threshold changed; save import settings to recheck"},
         "minimumSizeInvalid": "Enter an integer from 0 to 2147483647.",
         "autoWatchHint": "When enabled, new ebooks added to the directory are queued for import automatically.",

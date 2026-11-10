@@ -192,7 +192,7 @@ func FileSHA256(path string) (string, error) {
 func DonePaths(db *sql.DB, pathDir string) (map[string]bool, error) {
 	prefix := strings.TrimRight(pathDir, string(filepath.Separator)) + string(filepath.Separator)
 	rows, err := db.Query(`SELECT path FROM scanfiles
-		WHERE (path = ? OR (path >= ? AND path < ?)) AND status != ? AND COALESCE(json_extract(data,'$.skip_reason_code'),'') != 'file.too_small' AND (hash NOT LIKE 'fstat:%' OR status='drop')`,
+		WHERE (path = ? OR (path >= ? AND path < ?)) AND status != ? AND COALESCE(json_extract(data,'$.skip_reason_code'),'') NOT IN ('file.too_small','source.missing') AND (hash NOT LIKE 'fstat:%' OR status='drop')`,
 		pathDir, prefix, strings.TrimRight(pathDir, string(filepath.Separator))+string(filepath.Separator+1), userdb.ScanStatusNew)
 	if err != nil {
 		return nil, fmt.Errorf("scan: 查询已完成路径失败: %w", err)
@@ -344,7 +344,7 @@ func (s *Service) registerTasks(tasks []Task, scanID int64) ([]*userdb.ScanFile,
 			return nil, err
 		}
 		if existing != nil {
-			if existing.BookID == 0 && existing.Data["skip_reason_code"] == "file.too_small" {
+			if existing.BookID == 0 && (existing.Data["skip_reason_code"] == "file.too_small" || existing.Data["skip_reason_code"] == "source.missing") {
 				existing.Status = userdb.ScanStatusNew
 			}
 			existing.ScanID = scanID
@@ -399,7 +399,7 @@ func (s *Service) processFileRow(row *userdb.ScanFile, filePath string) (string,
 			return row.Status, e
 		}
 	}
-	if row.Data["skip_reason_code"] == "file.too_small" {
+	if row.Data["skip_reason_code"] == "file.too_small" || row.Data["skip_reason_code"] == "source.missing" {
 		delete(row.Data, "skip_reason")
 		delete(row.Data, "skip_reason_code")
 	}

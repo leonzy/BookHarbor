@@ -30,7 +30,7 @@ func (s *Service) changedSource(path string, info os.FileInfo) (bool, error) {
 	if row.Status == userdb.ScanStatusIndexed || row.Status == userdb.ScanStatusImported || row.Status == userdb.ScanStatusDeleteFailed {
 		return false, nil
 	}
-	if row.Data["skip_reason_code"] != "file.too_small" && row.Data["source_size"] == strconv.FormatInt(info.Size(), 10) && row.Data["source_mtime"] == strconv.FormatInt(info.ModTime().UnixNano(), 10) {
+	if row.Data["skip_reason_code"] != "file.too_small" && row.Data["skip_reason_code"] != "source.missing" && row.Data["source_size"] == strconv.FormatInt(info.Size(), 10) && row.Data["source_mtime"] == strconv.FormatInt(info.ModTime().UnixNano(), 10) {
 		return false, nil
 	}
 	// Only explicitly changed paths are reset; unrelated pending/importing rows

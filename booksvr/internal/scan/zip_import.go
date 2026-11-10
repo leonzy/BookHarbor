@@ -335,7 +335,7 @@ func (s *Service) scanZIP(ctx context.Context, archive string, result *Result, d
 
 func (s *Service) archiveEntryCounts(archive, fingerprint string) (count, pending int64, err error) {
 	prefix := archive + "!/" + fingerprint[:16] + "/"
-	err = s.DB.QueryRow(`SELECT COUNT(*),COALESCE(SUM(CASE WHEN status='new' THEN 1 ELSE 0 END),0) FROM scanfiles WHERE path >= ? AND path < ?`, prefix, prefix+"\uffff").Scan(&count, &pending)
+	err = s.DB.QueryRow(`SELECT COUNT(*),COALESCE(SUM(CASE WHEN status='new' OR json_extract(data,'$.skip_reason_code')='source.missing' THEN 1 ELSE 0 END),0) FROM scanfiles WHERE path >= ? AND path < ?`, prefix, prefix+"\uffff").Scan(&count, &pending)
 	return
 }
 
