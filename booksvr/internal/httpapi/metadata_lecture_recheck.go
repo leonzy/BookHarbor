@@ -108,7 +108,7 @@ func (m *metadataWorker) discoverLectureRechecks() error {
 }
 
 func (m *metadataWorker) lectureResult(id int64, status, reason string, delay time.Duration) error {
-	_, err := m.w.libraryDB.Exec(`UPDATE metadata_lecture_rechecks SET status=?,reason=?,next_at=?,updated_at=? WHERE book_id=?`, status, reason, m.now().Add(delay).Unix(), m.now().Unix(), id)
+	_, err := m.w.libraryDB.Exec(`UPDATE metadata_lecture_rechecks SET status=?,reason=?,next_at=?,updated_at=? WHERE book_id=? AND (EXISTS(SELECT 1 FROM books WHERE id=?) OR ?='deleted')`, status, reason, m.now().Add(delay).Unix(), m.now().Unix(), id, id, status)
 	return err
 }
 

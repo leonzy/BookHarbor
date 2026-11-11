@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Talebook 内部方案模板：用于记录原始诉求、目标边界、实现方案、风险与测试结果。" />
+    <link rel="icon" href="data:," />
+    <title>后台空闲开销与失败重试治理</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><h1>后台空闲开销与失败重试治理</h1><p>日期：2026-11-11 · 模块：booksvr · 状态：ACTIVE · 来源：用户要求修复空闲CPU占用。</p><h2>原始诉求与证据</h2><p>四核NAS采样元数据进程83.2%单核、主服务2.4%。调度没有新入队记录时每源仍扫描约27万待联网状态索引并临时排序，空查询80ms；相同结果主键范围0.054ms。存在29533条已删除图书的file_retry孤儿；封面队列255条，其中252条超过100次重试、最多1091次。</p><h2>目标与边界</h2><p>消除无效扫描和空队列轮询，删除图书联动清理活动元数据任务，阻止迟到结果复活；永久封面错误停止，暂时不可访问的来源保留保护及低频恢复机会。保留有效补全任务、8源并发各一与各源限速、人工字段锁、审计及阅读历史，不暂停导入或改写源文件。</p><h2>方案</h2><ul><li>建立只含可入队状态的book_id游标索引并明确用于入队查询；每源空尾30秒退避，本地变更事件仍每秒处理，不漏新书、状态变化或新增来源。</li><li>book删除触发器移除活动补全主队列、来源队列与待入队事件；文件核查转为已删除并保留终态历史，不删除人工字段锁与写入审计；选择重试、派发、saveJob均校验书目存在。历史孤儿以有界维护批次清理。</li><li>封面队列增加可诊断状态和源指纹。确定损坏立即停止；普通提取失败指数退避且最多5次；源不可访问保持blocked，不据此判断删除；低频检查失败/受阻任务的源元信息变化再唤醒，显式重新排队可重试。同路径显式重排也递增版本，防止旧请求结果覆盖新请求；路径变化触发重新排队。已有封面优先保留。迁移仅分类已有失败任务，不重置有效任务。</li></ul><h2>影响范围与风险</h2><p>metadata调度/表结构、coverart持久队列与后台唤醒、spec/元数据.md和spec/书库.md；修正spec/书籍.md中与已上线删除政策不一致的引用。主服务和元数据服务需受控热更新；先让旧消费者退出再分类队列，不在版本混用时投递新状态。网络任务取消回写冷却，导入保存检查点，所有其他服务与容器保持运行。保留未提交OPDS工作。</p><h2>测试计划</h2><p>待验证：索引执行计划和空尾规模，退避不丢事件/新来源，删除事务及迟到结果、孤儿维护，损坏/暂不可读/源变化/重试上限/历史分类/取消与并发认领，Go完整回归与实际CPU前后多次采样。生产任务进度、租约、源限速及人工锁保持。后台状态对已有页面消费者的影响按interface-review full检查，验证后转ACTIVE。</p><h2>interface-review full：范围与覆盖</h2><p>按仓库要求继续应用 interface-review full 及 better-interface 六领域规则。Base/Head：origin/main 与 HEAD 均 a1508fa99dd0348277a2a335776789366f0b77f7；默认分支 main，领先提交0。范围为全部本地变更：16个有正文差异的已跟踪文件及7个未跟踪文件；Dockerfile 只有索引/工作树元信息差异、无正文差异，单列排除。包含既有OPDS、部署脚本、外部访问规格及其方案，不因非本任务而缩窄审查；提交仍只纳入自身改动。</p><p>栈为Go HTTP与Nuxt/Vuetify，沿用既有i18n及主题。已读取AGENTS.md、app/CLAUDE.md和相关领域规格；git symbolic-ref refs/remotes/origin/HEAD、git merge-base origin/main HEAD、git rev-list --count origin/main..HEAD、git diff --name-status HEAD、git ls-files --others --exclude-standard、git diff、git ls-remote origin refs/heads/main 均只读；审查未执行fetch/checkout/stash。已读增删两侧及直接消费者：MetadataProgress、MetadataLectureRecheck、MetadataSourceLimits、BookCover、OPDS协议入口，共5类，停止在一跳边界，未扩展其他书库卡片和详情页。</p><table><tr><th>领域</th><th>证据与结论</th></tr><tr><td>Accessibility</td><td>本次无控件/ARIA/焦点变更；现有进度、来源状态和核查列表的名称与原生交互保留。Not reviewed: no evidence in the change scope，未声称屏幕阅读器实机通过。</td></tr><tr><td>Layout</td><td>产品布局、断点未改。Not reviewed: no evidence in the change scope。</td></tr><tr><td>Writing</td><td>读删除、待处理、文件核查终态和来源错误消费者；保留核查历史并标已删除，避免总数突然归零。封面内部状态不冒充已成功，不加入用户无法理解的内部字段。OPDS既有中文页码入口和兼容说明未删。Clear，实际状态页待上线核验。</td></tr><tr><td>Typography</td><td>无产品字体、字号、换行或数字呈现改动。Not reviewed: no evidence in the change scope。</td></tr><tr><td>Colors</td><td>无产品颜色/主题变更。Not reviewed: no evidence in the change scope。</td></tr><tr><td>UI</td><td>进度API保留原有字段、8路上限和每源频率。无新增控件、视觉或动画；停止坏封面后仍走原有默认图和图片入口。Clear，未声称封面失败新增可视管理页。</td></tr></table><h2>Findings</h2><p>No actionable interface findings in this change。技术正确性及性能单列回归和生产验证，不混为界面严重性。</p><h2>Considered but Rejected</h2><ul><li>清空所有文件核查记录来消除无效任务：会重置用户可见核查进度；只将缺失书目的活动核查标为已删除，保留历史。</li><li>用暂停补全或降低8源并发消除CPU：会误导进度和改变既有行为；修查询与轮询，保留有效工作。</li><li>为坏封面自动重建或复制正文：超出已有只索引规则；保留失败原因，源变化或明确重排才重新提取。</li></ul><h2>验证进展</h2><p>首轮Linux完整相关包 library、scan、httpapi、sourcewatch、userdb、coverart、cmd/booksvr 均PASS；Go vet ./...通过；25篇spec校验通过。新增挂载恢复用例及入队并发删除保护后，已完成49个Go包的最终Linux完整回归，全部PASS。实际部署、租约与有效请求递增、CPU六次5秒采样及真实管理员页面均已验证，结果见完成记录。界面最终Verdict：Approve；OPDS客户端设备分页及其他设备未复测，不纳入本次完成声明。</p><h2>最终测试结果与生产完成记录</h2><p>回归命令：Linux/amd64、CGO_ENABLED=0 构建49个包的 go test -c 测试程序；隔离QA容器中以talebook用户、nice19、GOMAXPROCS=1执行每个包 -test.count=1 -test.timeout=600s，49/49通过。Go vet ./...通过。测试覆盖游标索引且无临时排序、空尾退避期间新事件/新增来源、书目删除和迟到结果不复活、保留人工保护/核查历史、损坏封面终止、五次通用失败预算、同路径重排版本保护、来源不可用不消耗预算且恢复唤醒、迁移历史1091次失败及取消重启。首次运行发现time.Duration与既有min函数类型冲突、旧测试仍断言缺失文件消耗次数；修正后通过，未隐去失败过程。</p><p>NAS正式部署二进制SHA256：900a54fd44d4b6d28750df1dba07b6e8d61b1a276a91d086157576cf8e09bb8b；主服务与元数据服务统一使用 /data/books/.bookharbor-runtime/idle-cpu-900a54fd44d4/booksvr 。旧进程均SIGTERM正常退出、exit0，检查点后对缺失书目的活动记录按主键范围小批维护。移除50647条补全主任务、14239条来源任务和4条封面任务；待入队孤儿0，活动核查无需再标记的孤儿0，终态核查历史保留。四类活动队列最终孤儿均为0。781条人工字段锁保持；调度游标、来源请求间隔和累计请求、导入控制、暂停代次、全部扫描历史保留。</p><p>元数据新进程107175/starttick50537727、主进程107208/starttick50538632；原生阅读21/16798、插件22/16799、TXT23/16801、Nginx24/16802均未重启。容器未重启，源文件和挂载未变。首次并行启动两服务时，主服务写库初始化与元数据服务启动并发，出现写锁竞争，主服务三次因SQLITE_BUSY退出，Supervisor随后重试成功；不能将spawn error隐去。已确认后续同PID稳定运行，部署操作稿改为等待元数据端口就绪再启动主服务，避免以后首次迁移的并行DDL冲突。既有OPDS工作树内容在运行包中保持，未将其加入本次提交。</p><p>真实管理员登录、/api/admin/metadata/enrichment、/admin/settings/plugins 均通过；全库408242本，已核查408242本；讲座TXT核查254/254历史保持。页面显示后台运行、8来源并发、各来源5秒限速，加载完成的统计区域截图已人工核看，运行时JS错误0；OPDS根目录HTTP200并返回feed。首次截图只有加载态，补充等待统计区域可见后重新截取，未以加载态证明状态正常。未改前端文件，未声称新增UI、全站或真机设备测试。</p><p>空尾查询生产执行计划改为metadata_enrollment_pending书号范围和books主键，不再临时排序。88.014ms → 0.035ms（100次均值、结果同为空）。初诊元数据83.2%单核；上线前3次5秒采样为51.0/64.18/58.4%（同期QA单核低优先级运行，非严格实验室基准）。上线后带页面访问的六次采样平均23.27%单核、峰值52.6%；不再额外访问页面的最终六次5秒采样为11.4/11.2/13.6/12.8/14.8/13.6%，均值12.9%。主服务同期均值4.37%单核。补全并未暂停：两轮30秒中各有34、33次有效来源请求增加；新租约持续刷新，真实任务继续推进。</p><p>剩余CPU采样是在有效联网任务运行期间，不把它宣称成真正无任务的0%占用；CPU百分比为单核口径，不混用四核NAS仪表盘口径。251条存活的历史封面失败已停止提取，最高历史计数1093保留，观察窗口内次数未增长；源恢复和显式重排的重新唤醒由回归验证。主服务新增索引是持久修复，并未新增CPU或内存上限来掩盖问题。</p><p>QA容器按本次独占标签、无生产bind挂载和仅剩自有sleep进程检查后移除。私有快照、旧入口/配置、quiescent-checkpoint.json、linux-tests.json、cleanup.json、deployment.json、verification-with-ui.json和verification.json保存于 /data/maintenance/20261111-background-idle-cpu/ ，不含入Git的用户数据。运营与UI验证脚本仅为外部运维工具，产品实现及回归为Go。完成后按本方案转ACTIVE，仅提交自身14个文件。</p></main></body></html>

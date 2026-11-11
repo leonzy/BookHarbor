@@ -20,6 +20,8 @@ import (
 
 const metadataSourceConcurrency = 8
 
+const metadataEnrollmentSQL = `SELECT book_id FROM metadata_enrichment_jobs INDEXED BY metadata_enrollment_pending WHERE book_id>? AND status IN ('network_pending','partial') AND EXISTS(SELECT 1 FROM books WHERE id=metadata_enrichment_jobs.book_id) ORDER BY book_id LIMIT 100`
+
 type sourceTask struct {
 	book, connection int64
 	phase, record    string
@@ -130,6 +132,9 @@ func (m *metadataWorker) enrollSources(conns []*userdb.PluginConnection) error {
 		return e
 	}
 	for _, c := range conns {
+		if m.enrollmentNext != nil && m.now().Before(m.enrollmentNext[c.ID]) {
+			continue
+		}
 		if _, e := db.Exec(`INSERT OR IGNORE INTO metadata_source_limits(connection_id) VALUES(?)`, c.ID); e != nil {
 			return e
 		}
@@ -137,7 +142,7 @@ func (m *metadataWorker) enrollSources(conns []*userdb.PluginConnection) error {
 		if e := db.QueryRow(`SELECT seed_cursor FROM metadata_source_limits WHERE connection_id=?`, c.ID).Scan(&cursor); e != nil {
 			return e
 		}
-		rows, e := db.Query(`SELECT book_id FROM metadata_enrichment_jobs WHERE book_id>? AND status IN ('network_pending','partial') ORDER BY book_id LIMIT 100`, cursor)
+		rows, e := db.Query(metadataEnrollmentSQL, cursor)
 		if e != nil {
 			return e
 		}
@@ -175,7 +180,7 @@ func (m *metadataWorker) enrollSources(conns []*userdb.PluginConnection) error {
 				if c.OwnerType == "user" && c.OwnerID != owners[id] {
 					continue
 				}
-				_, e = tx.Exec(`INSERT OR IGNORE INTO metadata_source_jobs(book_id,connection_id,priority) VALUES(?,?,?)`, id, c.ID, sourceBookPriority(id, high))
+				_, e = tx.Exec(`INSERT OR IGNORE INTO metadata_source_jobs(book_id,connection_id,priority) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM books WHERE id=?)`, id, c.ID, sourceBookPriority(id, high), id)
 				if e != nil {
 					break
 				}
@@ -190,6 +195,11 @@ func (m *metadataWorker) enrollSources(conns []*userdb.PluginConnection) error {
 			if e = tx.Commit(); e != nil {
 				return e
 			}
+		} else {
+			if m.enrollmentNext == nil {
+				m.enrollmentNext = map[int64]time.Time{}
+			}
+			m.enrollmentNext[c.ID] = m.now().Add(30 * time.Second)
 		}
 	}
 	if len(conns) == 0 {
@@ -312,7 +322,7 @@ func (m *metadataWorker) network(ctx context.Context) error {
 		var task sourceTask
 		task.connection = c.ID
 		for priority := 1; priority >= 0; priority-- {
-			e = m.w.libraryDB.QueryRow(`SELECT s.book_id,s.phase,s.record,s.attempts FROM metadata_source_jobs s JOIN metadata_enrichment_jobs j ON j.book_id=s.book_id WHERE s.connection_id=? AND s.priority=? AND s.phase<>'done' AND s.next_at<=? AND j.status IN ('network_pending','partial') ORDER BY s.next_at,s.book_id LIMIT 1`, c.ID, priority, now).Scan(&task.book, &task.phase, &task.record, &task.attempts)
+			e = m.w.libraryDB.QueryRow(`SELECT s.book_id,s.phase,s.record,s.attempts FROM metadata_source_jobs s JOIN metadata_enrichment_jobs j ON j.book_id=s.book_id JOIN books b ON b.id=s.book_id WHERE s.connection_id=? AND s.priority=? AND s.phase<>'done' AND s.next_at<=? AND j.status IN ('network_pending','partial') ORDER BY s.next_at,s.book_id LIMIT 1`, c.ID, priority, now).Scan(&task.book, &task.phase, &task.record, &task.attempts)
 			if e != sql.ErrNoRows {
 				break
 			}
@@ -447,6 +457,9 @@ func (m *metadataWorker) finishSource(r sourceResult, settings map[string]any) e
 	db := m.w.libraryDB
 	var phase string
 	if e := db.QueryRow(`SELECT phase FROM metadata_source_jobs WHERE book_id=? AND connection_id=?`, t.book, t.connection).Scan(&phase); e != nil {
+		if e == sql.ErrNoRows {
+			return nil
+		}
 		return e
 	}
 	if phase != t.phase {

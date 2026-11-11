@@ -76,6 +76,14 @@ func Ensure(ctx context.Context, db *sql.DB, root string, id int64, source, form
 	if !ok {
 		return nil
 	}
+	// A user may have supplied artwork while the source was being rendered.
+	existing, err = library.Cover(db, id, root)
+	if err != nil {
+		return err
+	}
+	if len(existing) > 0 {
+		return nil
+	}
 	_, err = library.StoreCover(db, root, id, data)
 	return err
 }

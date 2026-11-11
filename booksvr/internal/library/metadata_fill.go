@@ -23,10 +23,12 @@ func EnsureMetadataSchema(db *sql.DB) error {
 		`CREATE TABLE IF NOT EXISTS metadata_enrichment_state(key TEXT PRIMARY KEY,value INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS metadata_enrichment_jobs(book_id INTEGER PRIMARY KEY,status TEXT NOT NULL,next_at INTEGER NOT NULL DEFAULT 0,attempts INTEGER NOT NULL DEFAULT 0,last_error TEXT NOT NULL DEFAULT '',updated_at INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE INDEX IF NOT EXISTS metadata_enrichment_due ON metadata_enrichment_jobs(status,next_at,book_id)`,
+		`CREATE INDEX IF NOT EXISTS metadata_enrollment_pending ON metadata_enrichment_jobs(book_id) WHERE status IN ('network_pending','partial')`,
 		`CREATE INDEX IF NOT EXISTS metadata_review_cursor ON metadata_enrichment_jobs(book_id) WHERE status='needs_review'`,
 		`CREATE TABLE IF NOT EXISTS metadata_enrichment_lease(id INTEGER PRIMARY KEY,owner TEXT NOT NULL,expires INTEGER NOT NULL)`,
 		`CREATE TABLE IF NOT EXISTS metadata_lecture_rechecks(book_id INTEGER PRIMARY KEY,source_name TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',reason TEXT NOT NULL DEFAULT '',next_at INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL DEFAULT(unixepoch()))`,
 		`CREATE INDEX IF NOT EXISTS metadata_lecture_due ON metadata_lecture_rechecks(status,next_at,book_id)`,
+		`CREATE TRIGGER IF NOT EXISTS metadata_active_book_delete AFTER DELETE ON books BEGIN DELETE FROM metadata_source_jobs WHERE book_id=OLD.id; DELETE FROM metadata_source_pending WHERE book_id=OLD.id; DELETE FROM metadata_enrichment_jobs WHERE book_id=OLD.id; UPDATE metadata_lecture_rechecks SET status='deleted',reason='书籍已删除',next_at=0,updated_at=unixepoch() WHERE book_id=OLD.id AND status IN ('pending','unreadable'); END`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
 			return err

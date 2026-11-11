@@ -21,14 +21,15 @@ import (
 )
 
 type metadataWorker struct {
-	w            *bookWiring
-	owner        string
-	now          func() time.Time
-	logger       *log.Logger
-	active       map[int64]bool
-	results      chan sourceResult
-	providerTurn int
-	lastRetry    time.Time
+	w              *bookWiring
+	owner          string
+	now            func() time.Time
+	logger         *log.Logger
+	active         map[int64]bool
+	results        chan sourceResult
+	providerTurn   int
+	lastRetry      time.Time
+	enrollmentNext map[int64]time.Time
 }
 
 func startMetadataWorker(ctx context.Context, opts ServeOptions, db, userDB *sql.DB) (func(), error) {
@@ -182,14 +183,24 @@ func (m *metadataWorker) saveJob(id int64, status, reason string, delay time.Dur
 	if len(reason) > 240 {
 		reason = reason[:240]
 	}
-	_, err := m.w.libraryDB.Exec(`INSERT INTO metadata_enrichment_jobs(book_id,status,next_at,last_error,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(book_id) DO UPDATE SET status=excluded.status,next_at=excluded.next_at,last_error=excluded.last_error,updated_at=excluded.updated_at WHERE metadata_enrichment_jobs.status<>'protected' OR excluded.status='protected'`, id, status, m.now().Add(delay).Unix(), reason, m.now().Unix())
+	r, err := m.w.libraryDB.Exec(`INSERT INTO metadata_enrichment_jobs(book_id,status,next_at,last_error,updated_at) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM books WHERE id=?) ON CONFLICT(book_id) DO UPDATE SET status=excluded.status,next_at=excluded.next_at,last_error=excluded.last_error,updated_at=excluded.updated_at WHERE metadata_enrichment_jobs.status<>'protected' OR excluded.status='protected'`, id, status, m.now().Add(delay).Unix(), reason, m.now().Unix(), id)
 	if err == nil && (status == "network_pending" || status == "partial") {
-		_, err = m.w.libraryDB.Exec(`INSERT INTO metadata_source_pending(book_id) VALUES(?) ON CONFLICT(book_id) DO UPDATE SET version=version+1`, id)
+		if n, _ := r.RowsAffected(); n == 0 {
+			return nil
+		}
+		_, err = m.w.libraryDB.Exec(`INSERT INTO metadata_source_pending(book_id) SELECT ? WHERE EXISTS(SELECT 1 FROM books WHERE id=?) ON CONFLICT(book_id) DO UPDATE SET version=version+1`, id, id)
 	}
 	return err
 }
 
 func (m *metadataWorker) local(ctx context.Context, id int64, force ...bool) error {
+	var exists bool
+	if e := m.w.libraryDB.QueryRow(`SELECT EXISTS(SELECT 1 FROM books WHERE id=?)`, id).Scan(&exists); e != nil {
+		return e
+	}
+	if !exists {
+		return nil
+	}
 	// Skip already completed records when an interrupted checkpoint is replayed.
 	var existing string
 	err := m.w.libraryDB.QueryRow(`SELECT status FROM metadata_enrichment_jobs WHERE book_id=?`, id).Scan(&existing)
@@ -349,7 +360,7 @@ func (m *metadataWorker) step(ctx context.Context) error {
 	if now.Sub(m.lastRetry) >= time.Minute {
 		m.lastRetry = now
 		var retry int64
-		err = m.w.libraryDB.QueryRow(`SELECT book_id FROM metadata_enrichment_jobs WHERE status='file_retry' AND next_at<=? ORDER BY next_at,book_id LIMIT 1`, now.Unix()).Scan(&retry)
+		err = m.w.libraryDB.QueryRow(`SELECT j.book_id FROM metadata_enrichment_jobs j JOIN books b ON b.id=j.book_id WHERE j.status='file_retry' AND j.next_at<=? ORDER BY j.next_at,j.book_id LIMIT 1`, now.Unix()).Scan(&retry)
 		if err == nil {
 			if err = m.local(ctx, retry); err != nil {
 				return err

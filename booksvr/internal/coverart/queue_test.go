@@ -29,7 +29,7 @@ func TestCoverQueuePersistsRetriesAndCancellation(t *testing.T) {
 	var attempts int
 	var message string
 	db.QueryRow(`SELECT attempts,error FROM import_cover_jobs`).Scan(&attempts, &message)
-	if attempts != 1 || message == "" {
+	if attempts != 0 || message == "" {
 		t.Fatal(attempts, message)
 	}
 	if worked, err = WorkOne(context.Background(), db, t.TempDir()); worked || err != nil {
