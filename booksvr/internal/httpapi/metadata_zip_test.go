@@ -72,7 +72,7 @@ func TestMetadataZIPReadOnlySources(t *testing.T) {
 				t.Fatal(err)
 			}
 			status := jobStatus(t, worker, 1)
-			b, err := bookGetOne(w.Config(""), 1)
+			b, err := bookGetOne(w.Config(""), nil, 1)
 			if err != nil || b == nil {
 				t.Fatal(err)
 			}

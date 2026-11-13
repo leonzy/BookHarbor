@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="BookHarbor 书库访问控制设计：权限规则、查询性能、管理界面及待验证项。" />
+    <link rel="icon" href="data:," />
+    <title>大书库目录与分类访问控制设计 — BookHarbor</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><h1>大书库目录与分类访问控制设计</h1><p>创建日期：2026-11-13 · 模块：booksvr（跨 library、httpapi、userdb 与 app） · 状态：ACTIVE（已部署并验收）</p><h2>原始诉求与目标</h2><p>用户希望按目录、分类控制用户可见书籍，先设计，不拖慢检索和浏览。当前库约 40.8 万条版本记录，全部 public；现有能力是单书公开/私藏，目录与分类尚无 ACL。保留现有导入、元数据补全、归组、目录索引和挂载保护。用户已授权完整实现、测试、部署与提交；正式规则默认保持未启用，管理员准备并预览后才应用。</p><h2>现有实现与约束</h2><ul><li>认证/收藏者及私藏信息在用户库，书籍/格式/标签/目录索引在 metadata.db。现有 PrivateBookIDsFor 从用户库取私藏 ID，部分列表转为 JSON 排除集合；不能把新的大规模目录权限也扩成每请求几十万 ID。</li><li>BrowseQuery.where 已把目录、格式、分类、来源可用性放进 SQL，BrowseBooks 在同一读快照计数和分页。identityHiddenSQL 在权限与筛选之后折叠作品。新权限必须进入这些步骤之前，不能在当前页过滤或先按全库作品选代表。</li><li>book_directory_locations 按 book_id/format_key 登记路径，book_directory_members 按 node_id/book_id 支持子树。现有目录节点 rowid 是查询定位，不能作为永久权限身份。</li><li>book_browse_counts 是全局统计；book_browse_formats、文件大小、目录计数和作品格式汇总当前也不认识新 ACL。只改书籍列表会泄露受限分类、文件格式、大小及版本。</li><li>SearchPage 的部分文本条件不是全文索引，包含检索可能扫描候选。权限设计不冒称现有搜索已经全部索引化，也不将其改写成全库 Go 过滤。</li><li>线上有主服务、元数据、原生阅读、TXT、插件等多个 Go 进程；权限版本、缓存失效不能只用一个进程内变量。</li></ul><h2>Grill：产品决策</h2><div class="table-wrap"><table><tr><th>问题</th><th>建议决策</th></tr><tr><td>默认可见性</td><td>沿用现有公开；只配置需要限制的目录/分类。管理员可见全部；游客是否进站仍受站点设置控制。</td></tr><tr><td>授权对象</td><td>优先用户组（家人、少儿、工作等），支持指定用户。一个规则允许名单内任一身份满足即可；规则只限制阅读可见性，不额外授予编辑/删除能力。</td></tr><tr><td>目录继承</td><td>默认包含子目录。首版所有命中的祖先目录限制叠加，子目录可以收紧，不能悄悄放宽；要放宽需调整祖先规则及预览影响，不引入复杂拒绝/允许覆盖顺序。</td></tr><tr><td>多分类命中</td><td>多个命中限制取交集。例如既有少儿组限制、又有内部组限制，须同时满足，不能因另一个公开标签绕过。规则绑定独立权限分类 UUID，不绑定普通标签；改名保留规则，规则删除要明确预览放权影响。</td></tr><tr><td>私藏</td><td>保留“本人和管理员”并叠加目录/分类限制；设公开不会绕过目录限制，书主也不能凭所有权越过组限制。管理员是可见性例外，账号能力和文件存在性仍照常检查。</td></tr><tr><td>多目录/多格式</td><td>目录规则限制实际来源文件；分类/私藏限制整条书目。一本书有公开 EPUB、受限 MOBI 时，普通用户只能看到/读取 EPUB。作品可由可见版本展示，受限版本的名字、存在性、格式、大小、路径不能被汇总出来。</td></tr><tr><td>移动与派生物</td><td>确认是同一已索引文件的移动不自动放宽限制；保留来源限制并叠加目标目录。转换、阅读缓存和缩略图继承来源权限，不能因生成在 /data 公共目录而变公开。管理员显式解除继承需预览。无法关联的全新外部文件按目标目录处理，不承诺追踪任意复制改写。</td></tr></table></div><h2>人员上限与资源限制：两层规则</h2><p>只有“某目录允许哪些组”还不够：少儿账号往往要求只看少儿区，今后新增公共目录也不能自动开放。因此增加账号/用户组的可见范围上限。默认不设置上限，沿用共享公开书库；设置后，组内目标范围取并集，各个命中的组上限、账号上限及资源限制取交集。没有上限的普通组表示不额外限制，不会扩大少儿组的上限。</p><div class="table-wrap"><table><tr><th>示例</th><th>效果</th></tr><tr><td>少儿组上限：/books1/少儿（含子目录）</td><td>少儿账号只看这个范围；其他公共目录和未来新目录不自动可见。</td></tr><tr><td>某组上限：目录 A 或权限分类“科普”</td><td>本上限内满足任一目标可入选；还要通过所有其他上限和资源限制。</td></tr><tr><td>资源目录“内部资料”：仅工作组</td><td>非工作组看不到。即使属于工作组，若账号还受少儿上限限制，也不能越过上限。</td></tr><tr><td>某书私藏</td><td>再限制为收藏者本人；普通书主仍须满足上述范围，管理员例外。</td></tr></table></div><p>最终条件为：现有账号/操作能力 ∩ 各人员范围上限 ∩ 资源限制 ∩ 私藏/来源可用性。先按实际文件计算，再形成可见版本及作品卡片。默认快路还要求没有人员上限。权限组合的键必须包含有效范围选择器，不能只比较资源允许组。</p><h2>目录和分类的身份边界</h2><p>目录规则绑定 ACL 自有稳定目录 UUID、逻辑来源根 UUID 和规范路径，不绑定可复用的目录索引 rowid，不用设备号/inode 作为唯一身份。确认改名时保留限制并更新定位，不确定变动先拒绝未就绪来源。挂载掉线不删除规则、不退回公开。路径判断使用目录边界而非字符串前缀，符号链接按受控解析的实际来源检查；无法确认目标的链接不放行，目录查询本身不访问文件系统。</p><p>“分类导航”只是查询入口，不能靠隐藏菜单实现授权。分类授权使用自有稳定 UUID 的“权限分类”，可由管理员从现有标签/丛书批量选取并预览确认，后续按需要扩展来源；不执行任意用户 SQL 作为权限规则。普通检索标签与权限分类分开，权限分类赋值由管理员控制。因为分类既可能用于限制，也可能用于白名单放行，普通元数据编辑、标签合并/移除、联网补全既不能解除限制，也不能擅自扩大准入范围。新书应先继承目录限制；以权限分类作白名单时，未获确认的分类不放行，可进入受限待分类区；不能宣称系统会自动识别尚未被标记的秘密资料。</p><h2>架构候选与选型方向</h2><p>不采用每个请求逐书判断、全库 ID 数组、路径 LIKE、逐层爬目录规则；也不为每用户复制整库对象。拟采用两层：先将目录/权限分类/私藏语义编译为小型权限策略集合，再按实际共享的有效权限组合建立持久化查询投影。没有规则与管理员沿用原查询快路；受限用户使用索引化投影。相同访问范围共享投影，人数本身不决定索引数量。</p><p>已用 50 万条模拟数据比较“请求时关联策略”与“预先生成查询投影”，支持预建索引并按搜索选择性分路的方向。选择性低、精确计数、文件大小排序尤其需要测量；有索引的 EXISTS 也可能在 COUNT 时逐条探测，不能靠口头承诺没有性能损失。</p><h2>数据与查询草案</h2><p>权限规则、活动版本和查询投影放在同一 library 数据库，避免热查询跨用户库 JOIN。用户库继续负责认证；ACL 身份以稳定 principal UUID 绑定，防止用户 ID 复用继承旧授权。用户组关系在权限库原子修改。私藏可见性需迁为库内稀疏权威表（只存私藏），用户库 items.scope 仅保留兼容镜像，所有鉴权和返回值使用同一权威版本；不能把跨库异步镜像当安全边界。</p><div class="table-wrap"><table><tr><th>表/对象（拟）</th><th>作用与主要索引</th></tr><tr><td>acl_rule / acl_revision / acl_state</td><td>草稿、活动规则与代次；活动指针原子发布。</td></tr><tr><td>acl_principal / acl_group_member</td><td>稳定身份、组成员；principal/group 双向索引。认证失效不由 ACL 缓存覆盖。</td></tr><tr><td>acl_policy_bundle / acl_profile_policy</td><td>去重的资源限制及人员范围选择器匹配事实，经编译形成访问类别；主键 profile/policy。人员上限必须参与编译，不可将所有公开目录都视为同一允许类别。</td></tr><tr><td>acl_security_class / acl_book_class</td><td>管理员维护的权限分类与书目稳定身份关联，区别于联网元数据标签。</td></tr><tr><td>acl_file_binding / acl_origin</td><td>实际文件键、当前目录策略及来源继承；native/legacy/ZIP 成员身份明确，不能拿整包路径当所有成员。</td></tr><tr><td>acl_profile_file</td><td>可访问的实际文件槽；profile/file 主键，profile/format/book、profile/directory/book 索引。下载解析与索引使用同一个实际文件选择器。</td></tr><tr><td>acl_profile_book</td><td>共享公开部分的可见书号及可见格式摘要、最大可见文件大小和必要排序键；profile/book 主键，profile/timestamp/id、profile/title_key/id、profile/visible_size/id 排序索引。</td></tr><tr><td>acl_profile_counts / facet_counts / directory_counts</td><td>按权限组合统计；目录/作者/标签等沿用现有“实际书目记录”口径，不混成作品数。首页作品数独立维护。</td></tr><tr><td>private_owner_delta</td><td>个人私藏仅维护本人增量，不把同组所有人扩成整库副本。公开与私藏同作品时增量覆盖受影响作品，不能相加产生重复卡片。</td></tr><tr><td>acl_dirty / projection_generation</td><td>书/文件版本化增量队列与已就绪代次；冷建或未就绪绝不退回全公开。</td></tr></table></div><p>受限列表从 profile 查询索引获得可见候选，先叠加目录/分类/搜索、私藏及来源可用性，再在相同范围内折叠作品、计数、排序和分页。格式筛选、大小排序、目录归属必须依据“已获准文件”，不能拿可见 book_id 去查询全局格式/大小索引。分类名称、目录名称、facet 数字也使用同一可见范围，零可见项不展示。</p><p>默认无约束不新增 ACL JOIN；受限组合预计算精确全局统计。任意搜索/复合筛选不可能穷举物化所有组合：保留现有 SQL 查询，按选择性选择索引，精确计数可作带版本键的有界缓存，首查必须压测。不得先取 50 条再过滤、不得使用全库总数伪装权限内总数。</p><h2>查询落点与计数口径</h2><p>增加强类型 AccessScope，由认证中间件从当前身份、活动版本和共享组合解析；客户端不能指定 profile_id 冒充其他组合。缺失/未就绪的 Scope 必须拒绝，不能默认不限制。默认快路要求无生效规则且无人员上限，或身份确实能满足所有生效规则与全部范围上限；不能仅因当前恰好能看全部现有书就跳过未来新书限制。</p><p>全局无筛选作品列表可维护 profile/work_card 与 work_member 窄索引；搜索、当前目录和格式筛选仍须先得到该范围内的授权成员，再选代表，不能拿全局代表漏掉合法版本。个人私藏只保存该用户涉及作品的覆盖增量，避免每个用户复制全部公开作品；与公开版本重合时先覆盖再合并，不能简单相加计数。默认全集 fast count 只能用于已证明完全无约束的 Scope，不能误用于受限读者。</p><p>含条件检索保留原表达式语义，统一为 WHERE (用户条件) AND 权限条件，再排序、计数、LIMIT；OR 条件不能绕过权限。可见范围较宽且文本匹配较少时，沿用搜索候选路径后点查已经编译的可见索引；可见范围窄时由 profile 索引驱动。不能统一强制某个索引，也不能全量拿回 Go 再过滤。按格式或目录选择时从获准文件确定候选、格式和相应大小口径；不使用受限文件的全局最大值排序。</p><p>全局数、分类数与目录数在投影变化的同一事务更新，并按版本查询；作品卡片数和版本记录数明确分开。目录仅可见文件所在节点及合法祖先可返回，分类项无可见书目时不返回其名称或数量。主页/sidebar 的 sys 统计也按 Scope，不能继续使用全站缓存。缓存命中不能绕过可见性。</p><h2>原子生效与增量维护</h2><ol><li>管理员编辑草稿，后台低优先级生成受影响投影，显示进度、预计变化书目/文件数和代表样本；期间旧规则仍有效，界面明确“未生效”。</li><li>投影追平持久化变更日志，应用时以短事务检查水位并切换活动代次；有新变更则继续追平，不在请求中全库重算。管理员看到“已生效”才表示后续请求已使用新规则。</li><li>急需撤权提供独立即时封锁：先禁止受影响身份或范围，未准备好时拒绝访问，不能返回旧允许结果；恢复需发布完整投影。组成员撤销同样不能继续使用旧 profile。</li><li>导入、路径、权限分类、私藏变化只更新受影响书/文件；普通标签只更新相关展示与分类计数。权限相关变更提交前撤下旧允许投影并同步调整其统计，增量重建后原子挂回；未就绪内容对普通用户隐藏，管理员可见准备状态。导入与补全不暂停，但需实测新增写放大。</li><li>索引维护事务按耗时预算拆批并退避，不在业务写事务内全量重建，也不因服务重启重跑基线；并发修改用事件代次防旧任务误确认新变更。</li></ol><h2>构建、写入和容量预算</h2><p>索引准备采用短读快照按主键分段扫描，并追平持久化变更日志，不持有一个长时间读事务导致 WAL 无法回收。切换前短事务检查水位；尾部变更过多时退出追平，不在锁内扫全库。新导入或权限相关变动未就绪时保持不可见，状态与已完成入库区别展示；原来不涉及限制的快路保持原行为。删除用墓碑事件，旧任务不能确认新代次。</p><p>区分策略代次、身份/组关系代次、可见投影数据代次和普通元数据内容代次；八源补全改简介、作者不应引发全站权限重建或取消所有阅读流。只有目录/人员上限/安全分类/私藏等真正影响权限的字段改变才做安全重分类，必要排序或 facet 更新触达该书和受影响作品。</p><p>不同组名称但实际许可策略相同的用户复用同一 profile；管理员及真正无约束读者不复制索引。个人私藏用稀疏增量。新组合在请求到来前准备，不能让首次浏览承担构建。容量预算包括活动、准备两代以及日志/WAL，发布成功后按水位回收过期数据；预算不足就停止新准备，不移除现有保护。</p><h2>缓存与所有出口</h2><p>缓存键包含活动 ACL 代次、权限组合、身份认证代次、个人私藏代次及查询条件；多个进程从共享权威版本校验，不能依赖单进程 LRU 及时失效。请求在开始和返回前确认版本，版本变化则重试或拒绝旧响应。策略切换后新请求采用新权限；正在传输的文件流需建立可验证的撤权取消机制，建议最多一秒检查/通知，已发出数据无法追回。不能把策略缓存和客户端缓存 TTL 当撤权保证。文件流、Range、304、封面、阅读资源、OPDS、WebDAV、推荐、搜索建议、统计、其他版本、设备推送与转换结果均走同一边界；已下载内容无法追回，不承诺撤回客户端已收到的数据。</p><p>阅读器与插件侧车旧进程不能成为旁路：启用 ACL 前逐一完成能力检查及路由验收。受限生成物记录来源；旧封面无来源且涉及混合权限时使用占位图或管理员确认共享，不公开不明来源图片。任务执行前按发起人重新鉴权，后台任务不把任意用户升级为管理员。</p><h2>恢复、文件身份与资源边界</h2><p>书目/文件身份不能只用可能复用的整数主键；使用稳定对象 UUID 和版本，删除、重建或恢复后旧授权及旧资源缓存不能落到另一对象上。权限启用后备份恢复必须校验用户身份映射、库身份与权限代次；权限数据缺失或不匹配时仅允许管理员修复，不把“无表/未初始化”视为全公开。应用升级器/回滚器须检查权限读取能力，旧版不能被支持的回滚流程直接启用。</p><p>ZIP 成员继承外层来源目录限制并按成员分别鉴权；能读取一个成员不代表能下载整个源压缩包。整包下载需独立明确授权其全部内容，打包下载只加入获准的具体文件。转换文件和阅读/图片缓存沿稳定来源身份继承限制，旧缓存不因路径在公共目录就自动公开。源规则改变时派生物未追平不得放行。</p><p>公开元数据、路径管理权限及外部网络授权不是同一能力；新增读权限不自动公开主机路径，不授予编辑/删除，也不自动代表许可将文件发送到外部。预览用户视角只预览目录与书籍授权，不读取该用户笔记、邮箱或插件凭据。</p><h2>二次设计审查：结论与修订</h2>
+<p>2026-11-13 再审查范围：本草案、现有用户管理、文件目录页面、前端开发约定及查询约束。结论：预建共享权限索引的方向保留，但原稿前端仅有入口描述，尚不足以直接实现。本轮补齐规则编辑、发布状态、预览与读者侧行为；修正普通标签与权限分类的混用。以下为设计修订，不是已经完成的界面、接口或性能验收。</p>
+<div class="table-wrap"><table><tr><th>发现的问题</th><th>修订后的约束</th></tr>
+<tr><td>“设置可见范围”同时代表限制某个人与保护某目录，容易配反</td><td>分为“用户与用户组 → 可浏览范围”和“目录规则 → 允许阅读的用户”，始终显示一句自然语言结果。</td></tr>
+<tr><td>空名单、取消勾选、删除组的语义未明确</td><td>不限制、仅选定范围、禁止浏览三种显式状态；空白不等于全公开。删除有引用组须先处理引用，禁止自动删除限制。</td></tr>
+<tr><td>原稿提到普通标签 ID，与独立权限分类冲突</td><td>统一为权限分类 UUID；普通标签只作为管理员批量选取候选，后续元数据更新不改变授权。</td></tr>
+<tr><td>保存即提示成功会让管理员误以为已经保护了书籍</td><td>保存草稿、后台准备、检查影响、应用生效为独立步骤；明确当前规则仍生效。</td></tr>
+<tr><td>每次请求校验与写入所有 profile 可能抵消查询收益</td><td>版本检查使用单行主键点查；不按每张卡片请求权限。写放大、发布追平及私藏覆盖单独列为上线门禁。</td></tr>
+<tr><td>预览可能复用管理员权限、旧缓存或真实用户的私人数据</td><td>独立只读预览端点，目标身份参与服务端 scope；不切登录、不返回笔记与凭据，前端缓存隔离。</td></tr></table></div>
+<h2>前端入口与页面结构</h2>
+<p>管理菜单新增“访问控制”，拟路由 <code>/admin/access</code>。只对管理员展示，后端同样校验。采用三项页签：“用户与用户组”“目录规则”“权限预览”；后台准备任务放在页面顶部状态区，不再单设一个索引术语页面。权限分类第二阶段完成后才出现页签，不提前放不可用入口。</p>
+<ul><li>现有“用户管理”继续负责账号、登录与操作权限；每个用户增加“可浏览范围”摘要与进入访问控制的链接，避免两个独立编辑器保存相互覆盖。</li><li>“文件目录”选中目录后，管理员可点“阅读权限”进入同一规则编辑器，返回后保留目录、包含子目录、排序、页码和滚动位置。不在目录树每行堆积按钮。</li><li>书籍详情管理区增加“查看访问规则”，按实际格式/来源解释继承规则；普通读者只收到可见格式，不展示“另有隐藏版本”等信息。现有路径展示权限保持独立。</li><li>普通书架、书库、分类、搜索页不增加权限控件；服务端直接返回正确范围、计数和可用格式，继续保留新标签页详情与页码跳转。</li></ul>
+<h3>用户与用户组：主要配置流程</h3>
+<ol><li>选用户组或用户，列表服务端分页及检索，不一次加载全部成员。游客作为单独对象；新账号默认组单独配置，已有账号不被悄悄重分组。</li><li>选择“可浏览范围”：不额外限制 / 仅以下范围 / 禁止浏览。选择“仅以下范围”必须至少有一个有效目标；不允许保存空集合后意外成为不限制。</li><li>目录选择器支持多个目标、搜索路径、逐层加载；每个目录独立勾选“包含子目录”，默认开启。提示“此处控制权限，文件目录页仍默认只展示当前目录”。</li><li>展示组内任一目标可选、多个组限制须同时满足的文字结果。例如“本组允许少儿或科普；小明还受家庭组限制，最终只可看两组共同允许的书”。成员表提供“查看最终范围”，不简单相加各组数量。</li><li>个人范围只能进一步收紧。页面明确“个人设置不能扩大用户组限制”；管理员账号显示“管理员可查看全部，限制不适用”，不提供误导性的正常限制开关。</li></ol>
+<h3>目录规则：主要配置流程</h3>
+<p>左侧懒加载目录选择，右侧显示规范容器路径、来源根名称、来源状态、继承规则与本目录规则。规则操作为“不新增限制”“仅指定用户或组”“仅管理员”。第一项不解除父目录或来源继承限制，按钮不得称为“公开”。允许名单中的用户/组任一匹配即可，但还须满足祖先与个人范围；空名单不能当作公开，也不允许无提示地保存。</p>
+<p>目录继承规则只读展示来源及“去修改来源规则”链接；当前目录可收紧，不能覆盖放宽。选择逻辑来源根与规范路径，不要求输入宿主机路径；管理员可辅助查看挂载映射，普通读者不获得该映射。来源离线时显示“来源不可用，规则保留”，禁止把重建树节点或空目录误当删除规则；离线无法核验的放宽变更阻止应用并说明原因。</p>
+<p>目录本身与子目录范围必须分别解释：即使不包含子目录，也仍可能影响实际存于本目录的 ZIP 成员。修改父规则、删除限制、移除成员或停用组均进入同一影响检查。存在引用的用户组不直接删除；被引用权限分类也不能自动清空授权。</p>
+<h3>发布流程与失败状态</h3>
+<div class="table-wrap"><table><tr><th>状态</th><th>页面文案与操作</th><th>必须保证</th></tr>
+<tr><td>编辑中</td><td>“保存草稿”；离开时提示未保存变更</td><td>输入校验定位字段，保留输入；不改变活动权限</td></tr>
+<tr><td>草稿已保存</td><td>“准备变更”；展示当前规则与草稿差异</td><td>保存响应返回草稿版本；重复提交幂等</td></tr>
+<tr><td>后台准备中</td><td>“尚未生效，当前规则继续使用”；已处理/待处理与最近更新时间</td><td>离开页面后继续；可取消准备，不撤销当前有效规则；总量未知用不定进度，不能假报百分比</td></tr>
+<tr><td>准备完成</td><td>“检查影响”：将失去/获得权限的用户、书目、文件，样本分页；“应用变更”</td><td>先显示放宽风险、零可见用户及继承冲突；计数口径清晰，未就绪不显示 0</td></tr>
+<tr><td>正在应用</td><td>按钮忙碌且防重复；允许重新查询任务状态</td><td>断网不自动重发另一份变更；服务器幂等操作 ID 查询结果</td></tr>
+<tr><td>已生效</td><td>生效时间、操作者与版本；可查看变更记录</td><td>仅在服务端活动版本切换成功后显示；不能以任务到达 100% 代替</td></tr>
+<tr><td>失败/冲突</td><td>具体失败原因、“重试准备”或“重新检查变更”；保留草稿</td><td>旧权限继续有效；其他管理员修改后禁止覆盖，需重新对比</td></tr></table></div>
+<p>影响预览绑定草稿、活动策略与数据水位。新内容持续导入时不要求全库完全静止：显示预览时刻，应用前检查新增授权或撤权影响；产生预览之外的实质变化则重新准备并要求检查。不得为了维持“精确预览”锁库等待全量重算。立即封锁是独立管理动作，明确针对哪些账号及何时生效，误操作可在完整规则准备后恢复；不与“取消草稿”混用。</p>
+<h3>只读权限预览</h3>
+<p>管理员选择用户（含游客）与“当前规则/草稿规则”。顶部固定显示“只读预览：小明 · 当前规则”，提供退出按钮。展示同一查询范围内的作品卡片数、书目记录数、文件数，不把它们叫作同一个“本数”。无权限样本及拒绝原因只在管理诊断区分页查询，正常书库视角不夹带被隐藏项目。</p>
+<p>诊断单本时按文件显示检查链：“来源可用 → 用户范围 → 目录继承 → 权限分类 → 私藏 → 操作能力”；展示多个未通过项而不是仅一个含糊锁图标。预览无编辑/下载/推送按钮，不模拟读取私人笔记。管理身份始终保留，目标身份仅由独立管理预览请求指定，普通查询 API 不接受用户传入的 profile。</p>
+<h3>界面结构示意（静态草案，不是已实现页面）</h3>
+<pre>管理 / 访问控制
+[用户与用户组]  [目录规则]  [权限预览]
+当前规则：已生效          草稿：准备完成，尚未生效
+
+用户组：少儿    成员：小明、小红     [编辑成员]
+可浏览范围：仅以下范围
+  /books1/少儿     包含子目录：是
+  /books1/科普     包含子目录：是
+  [添加目录]
+本组允许以上任一目录；其他组及目录限制仍然有效。
+
+[保存草稿]  [检查影响并应用]
+</pre>
+<p>操作按钮随任务状态变化，不同时出现互相冲突的“准备/应用/重试”。宽屏采用列表与详情两栏；窄屏先选对象再进入详情并保留返回位置，不强塞两栏。长路径换行并允许复制，不能只依赖 hover；页码输入与跳转按钮保持同一操作组，窄屏整体换行，避免按钮单独掉一行。</p>
+<h3>读者侧、缓存与可访问性</h3>
+<ul><li>无结果显示“当前可访问范围内没有符合条件的书籍”；直接访问不可见/不存在对象统一“书籍不存在或暂不可访问”，不泄露标题路径。权限准备失败与普通空结果分开，显示可重试状态而不是 0 本。</li><li>账号切换或权限版本变化时清除书目、目录、推荐及统计缓存；正在返回的旧响应不能写回 store。后端权限版本随正常响应携带，不给每张卡片额外发权限请求。客户端缓存清理不替代服务端鉴权。</li><li>保留查询条件；权限变更导致当前页越界时重新定位到合法页并提示，不显示假空白。OPDS/WebDAV 使用后端同一范围，网页配置不要求客户端自行理解规则。</li><li>准备任务仅在可见页面以低频轮询（初定 3–5 秒，失败退避）或现有推送更新；离页停止轮询，后台任务继续。普通书库页不轮询权限准备状态。</li><li>目录选择与表单支持键盘；错误关联字段；状态用文字与图标共同表达，不能只靠红绿。弹窗打开/关闭恢复焦点，进度摘要使用温和播报，避免每项更新打断读屏；明暗主题、320px/1280px 与 200% 缩放列入验收。</li></ul>
+<h2>补充后端边界与查询预算</h2>
+<p>禁用模式与空集合严格区分：未配置上限为 unrestricted；显式禁止为 deny_all；仅选范围为 selected 且非空。删除被引用对象必须拒绝或先形成可预览的替代变更；不得将对象不存在解释成允许全部。规则、成员变更采用预期版本校验；用户禁用/注销仍立即由认证层拒绝，不等待索引准备。新增默认组规则必须在新账号获得浏览能力之前就绪。</p>
+<p>目录根改变或挂载内容身份不明时，仅对该来源隔离并沿用原有挂载保护；不是对全站恢复公开，也不是清空书库。目录可见祖先可能泄露名称：若只允许深层目录却不能公开父节点名称，返回授权入口的逻辑根和显示名，不发送隐藏父路径；路径管理权仍独立。该模式须与用户可见的目录 URL、面包屑一致，不靠前端擦除已经返回的路径。</p>
+<p>查询性能审查补充：权限校验与返回前版本检查均为固定小行点查；卡片权限批量通过同一 SQL 范围解决，禁止 N+1。禁止把所有筛选组合、所有个人私藏或所有作品全量预建到每个用户。范围数量及 profile 总预算由实测决定，界面在准备前展示预算不足原因。对写入扇出较大的组变更走后台双代；不能让每本新书在单个写锁内遍历全部组合和全目录祖先。安全撤下、统计调整的原子性与写锁预算若无法同时达到，须收紧支持容量并阻止发布，不能以过时计数或延迟撤权兜底。</p>
+<p>查询与页面数使用同一授权快照；下次翻页可能看到新增内容，排序以稳定 ID 作最终键，所有 next 链接保留过滤与排序条件。不承诺跨多个请求冻结持续变化的书库。任意组合检索的精确计数、深分页与个人作品覆盖仍需真实 SQL 计划验证，不能从单一大小排序实验推断全站通过。</p>
+<h2>原前端实施与验收清单（最终实现差异见后文）</h2>
+<p>拟复用现有 Vuetify、backend()、主题和国际化；拟新增 AccessRuleEditor、AccessImpactPreview、AccessPreparationStatus，用户管理和目录页共用同一编辑器。新 API 按项目单数资源规范设计，以规则草稿/准备任务/发布为资源，不在本设计阶段宣称路由已注册。列表返回权限内总数及当前策略版本，错误返回稳定错误码、可读信息与任务标识；前端不解析英文错误字符串决定授权。</p>
+<div class="table-wrap"><table><tr><th>场景</th><th>验收重点</th></tr>
+<tr><td>少儿范围 + 家庭组 + 目录限制</td><td>前端结果说明与后端取交集一致；不会以新加入组扩大范围</td></tr>
+<tr><td>空名单、删除组、父规则修改、来源离线</td><td>不产生隐式公开；继承来源可解释，草稿保留</td></tr>
+<tr><td>刷新、离页、重启、超时与两个管理员同时编辑</td><td>后台进度可恢复；保存不冒充生效；冲突不覆盖</td></tr>
+<tr><td>同书公开 EPUB + 受限 MOBI</td><td>卡片/大小排序/详情/下载/目录计数与可见文件一致</td></tr>
+<tr><td>权限撤销、账号切换、旧分页和返回键</td><td>旧响应不闪现内容，计数与页码正确；过滤条件保留</td></tr>
+<tr><td>窄屏、暗色、键盘和长目录</td><td>无横向主页面溢出，操作组合理换行、焦点可见、错误可定位</td></tr></table></div>
+<p>以上为设计阶段审查记录；后续实现、实际回归和生产验收已记录在本文末尾，未执行的扩展容量矩阵仍明确列作限制。</p>
+<h2>性能门禁与待验证</h2><p>隔离算法实验已完成，结果见下文；不能把本地暖缓存 SQL 原型当作线上 P95。后续实现必须在 50 万/100 万书、少量与多数受限、混合格式、深目录、分类多命中、作品多版本、个人私藏、冷/热缓存下压测；并发持续导入与八源元数据补全。覆盖首页/末页/跳页、按时间/书名/大小、宽窄搜索、所有计数和 OPDS。</p><p>建议门槛（实施前确认）：不受限与管理员路径保持原 SQL；受限热点浏览/检索 P95 相对对应基线增加不超过 10% 或 20ms（取较宽者），不能出现秒级回退；同时检查绝对延迟与 P99。首次构建在后台、无请求全库物化；导入/补全吞吐下降超过 5% 或写锁等待显著增加则不启用，调整批量和索引策略。测试硬件、冷/热、样本数必须一起记录。</p><p>共享 profile 不是无限资源：先测 1/4/8/16 个不同组合，测实际行数、磁盘字节与写入量。上限按容量测算设置；达到预算只停止新组合准备，现有已发布权限继续正确工作，不以放开权限降级。内存只存小策略/有界页缓存，不常驻几十万 BookData。</p><h2>实施顺序与回滚</h2><p>一：稳定文件身份、权威私藏迁移及统一鉴权接口；二：首版完成目录规则与组、投影和计数、默认快路、来源继承及所有资源出口，压力与泄漏验证通过后才启用目录权限；三：在同一底座增加管理员维护的权限分类规则。不能先启用目录权限、再补阅读器或派生物拦截。功能开关只决定是否允许创建规则；已有生效限制时不能用关闭开关绕过。回滚也必须保留有效权限和兼容读取，不能回到忽略 ACL 的旧二进制。</p><h2>隔离原型的实际结果</h2><p>2026-11-13 本机 Windows/amd64、Go modernc SQLite 3.46.0、GOMAXPROCS=1、64MiB SQLite 缓存；50 万书目、62.5 万格式文件，三种权限组合实际可见 461000、60500、6000 条。每条查询先暖缓存，再取三次样本中位数；不报告为 P95。两种查询路径的计数与有序结果全部相等；用混合目录/不同文件大小验证不能拿受限大文件参与排序。</p><div class="table-wrap"><table><tr><th>操作</th><th>每请求解释规则</th><th>预建索引/所述变体</th></tr><tr><td>宽可见：计数</td><td>684.46 ms</td><td>17.56 ms</td></tr><tr><td>宽可见：读取维护好的计数</td><td>674.71 ms</td><td>&lt;1 ms</td></tr><tr><td>宽可见：按授权格式最大文件大小排序</td><td>933.99 ms</td><td>&lt;1 ms</td></tr><tr><td>宽可见：包含检索，投影优先</td><td>32.31 ms</td><td>43.73 ms</td></tr><tr><td>宽可见：包含检索，原候选＋投影点查</td><td>32.31 ms</td><td>37.30 ms</td></tr><tr><td>窄可见：包含检索</td><td>33.17 ms</td><td>&lt;1 ms</td></tr></table></div><p>对照无权限过滤的包含检索中位数为 33.15 ms。宽可见时直接扫描投影仍会更慢，候选优先点查也有额外开销；因此这是选型证据而非“权限零开销”的保证。原型中记录为 0 的样本统一按低于 1ms 表达，不当作零成本。</p><p>宽可见组合准备耗时约 7.13 秒，其余约 0.91 / 0.19 秒。三个组合的 file/book 投影与排序索引额外约 85.21 MiB；这不含作品、facet/目录祖先统计、私藏增量、日志和双代，也不是实际长书名下的生产容量承诺。Go HeapAlloc 不是进程 RSS，原型未测服务峰值内存。</p><p>EXPLAIN 显示逐书规则计数含全库候选扫描和相关子查询；大小投影查询直接 SEARCH visible_book USING COVERING INDEX visible_size。包含检索候选路径仍有 SCAN，不称为索引全文搜索。实验只证明该原型的静态查询等价；未证明完整权限实现、并发发布正确性、生产 API 延迟或后台写入开销。</p><p>复现命令：<code>go -C booksvr run ../scripts/bench_acl_design.go -n 500000 -rounds 3</code>。脚本只能创建模拟临时库，不接受数据库路径；结束删除其精确临时文件，不连接 leonFN。脚本 SHA-256：<code>9e8b140b52ba93a688806d7b216bb59abb37da043541b526bce41945e14e65a3</code>。</p><details><summary>原型结果 JSON（模拟数据）</summary><pre>{
+  &quot;base_bytes&quot;: 98459648,
+  &quot;books&quot;: 500000,
+  &quot;cache&quot;: &quot;warm local synthetic DB, 64MiB SQLite page cache; not HTTP or NAS cold P95&quot;,
+  &quot;equal_results&quot;: true,
+  &quot;go_heap_alloc_bytes&quot;: 1969440,
+  &quot;goarch&quot;: &quot;amd64&quot;,
+  &quot;gomaxprocs&quot;: 1,
+  &quot;goos&quot;: &quot;windows&quot;,
+  &quot;measurements&quot;: [
+    {
+      &quot;profile&quot;: 0,
+      &quot;case&quot;: &quot;newest&quot;,
+      &quot;mode&quot;: &quot;unrestricted&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0
+    },
+    {
+      &quot;profile&quot;: 0,
+      &quot;case&quot;: &quot;contains&quot;,
+      &quot;mode&quot;: &quot;unrestricted&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 33.153,
+      &quot;max_ms&quot;: 34.245
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;count&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 684.464,
+      &quot;max_ms&quot;: 702.79
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;count&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 17.556,
+      &quot;max_ms&quot;: 20.286
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;count_cached&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 674.709,
+      &quot;max_ms&quot;: 688.77
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;count_cached&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;newest&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 1.026
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;newest&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;title&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0.999
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;title&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;size&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 933.987,
+      &quot;max_ms&quot;: 941.41
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;size&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;contains&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 32.314,
+      &quot;max_ms&quot;: 36.713
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;contains&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 43.728,
+      &quot;max_ms&quot;: 44.227
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;contains&quot;,
+      &quot;mode&quot;: &quot;candidate_index&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 37.304,
+      &quot;max_ms&quot;: 40.739
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;directory&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0
+    },
+    {
+      &quot;profile&quot;: 1,
+      &quot;case&quot;: &quot;directory&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;count&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 658.454,
+      &quot;max_ms&quot;: 659.801
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;count&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 2.01,
+      &quot;max_ms&quot;: 2.504
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;count_cached&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 683.931,
+      &quot;max_ms&quot;: 717.357
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;count_cached&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;newest&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 1.54
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;newest&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;title&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 1.001,
+      &quot;max_ms&quot;: 2.01
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;title&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0.998
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;size&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 103.591,
+      &quot;max_ms&quot;: 103.966
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;size&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0.504
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;contains&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 34.171,
+      &quot;max_ms&quot;: 34.185
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;contains&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 5.569,
+      &quot;max_ms&quot;: 6.297
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;contains&quot;,
+      &quot;mode&quot;: &quot;candidate_index&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 33.207,
+      &quot;max_ms&quot;: 34.118
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;directory&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 1.006
+    },
+    {
+      &quot;profile&quot;: 2,
+      &quot;case&quot;: &quot;directory&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;count&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 634.282,
+      &quot;max_ms&quot;: 635.916
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;count&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0.989
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;count_cached&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 636.028,
+      &quot;max_ms&quot;: 638.834
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;count_cached&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;newest&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 6.541,
+      &quot;max_ms&quot;: 7.529
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;newest&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;title&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 6.512,
+      &quot;max_ms&quot;: 7.532
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;title&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0.989
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;size&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 10.593,
+      &quot;max_ms&quot;: 11.588
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;size&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;contains&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 33.169,
+      &quot;max_ms&quot;: 33.541
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;contains&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0.996,
+      &quot;max_ms&quot;: 0.999
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;contains&quot;,
+      &quot;mode&quot;: &quot;candidate_index&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 32.192,
+      &quot;max_ms&quot;: 32.22
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;directory&quot;,
+      &quot;mode&quot;: &quot;runtime_rules&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 1.011
+    },
+    {
+      &quot;profile&quot;: 3,
+      &quot;case&quot;: &quot;directory&quot;,
+      &quot;mode&quot;: &quot;projection&quot;,
+      &quot;samples&quot;: 3,
+      &quot;median_ms&quot;: 0,
+      &quot;max_ms&quot;: 0
+    }
+  ],
+  &quot;profile_build&quot;: {
+    &quot;1&quot;: {
+      &quot;seconds&quot;: 7.1279336,
+      &quot;visible_books&quot;: 461000
+    },
+    &quot;2&quot;: {
+      &quot;seconds&quot;: 0.913718,
+      &quot;visible_books&quot;: 60500
+    },
+    &quot;3&quot;: {
+      &quot;seconds&quot;: 0.1862634,
+      &quot;visible_books&quot;: 6000
+    }
+  },
+  &quot;projection_extra_bytes_three_profiles&quot;: 89346048,
+  &quot;query_plans&quot;: {
+    &quot;candidate_contains&quot;: [
+      &quot;SCAN b&quot;,
+      &quot;CORRELATED SCALAR SUBQUERY 1&quot;,
+      &quot;SEARCH v USING PRIMARY KEY (profile=? AND book=?)&quot;
+    ],
+    &quot;projected_size&quot;: [
+      &quot;SEARCH visible_book USING COVERING INDEX visible_size (profile=?)&quot;
+    ],
+    &quot;runtime_count&quot;: [
+      &quot;SCAN b USING COVERING INDEX books_size&quot;,
+      &quot;CORRELATED SCALAR SUBQUERY 1&quot;,
+      &quot;SEARCH f USING COVERING INDEX files_book (book=?)&quot;,
+      &quot;SEARCH a USING PRIMARY KEY (profile=? AND policy=?)&quot;
+    ]
+  },
+  &quot;seed_seconds&quot;: 17.6141071,
+  &quot;sqlite&quot;: &quot;3.46.0&quot;
+}</pre></details><h2>原设计验证矩阵（实际覆盖及限制见后文）</h2><ol><li>真实库结构上的作品折叠、个人私藏覆盖、facet/目录统计与多格式权限，验证全站所有入口的一致性，而非只测当前原型的三个索引。</li><li>leonFN 的冷/热缓存、后台导入/八源补全并发、50 万/100 万数据与 1/4/8/16 组合，记录 API P50/P95/P99、磁盘/RSS、WAL、写锁、原任务吞吐及权限索引延迟。</li><li>每个旧快路、缓存、推荐、搜索建议、OPDS/WebDAV、阅读侧车、Range/304、导出与任务发起人均有可见性负例；公开 EPUB＋受限 MOBI、隐藏同作品版本、规则撤回和资料移动必须有集成用例。</li><li>全部身份认证/Scope 构造和私藏权威迁移、目录稳定身份、受保护分类、派生资源来源、符号链接、发布水位、重启续跑与紧急封锁的故障注入。</li><li>尚未达到性能门禁时先调优并报告，不通过暂停原任务、减少安全检查、使用错误总数或偷偷放开权限来“优化”。</li></ol><h2>实现结果与设计调整（2026-11-14）</h2>
+<p>目录和独立权限分类、用户与组范围、资源限制、管理员草稿管理、分类选书、后台准备/取消/续跑、只读预览及原子应用均接入。主服务及四个侧车统一动态解析授权；BOOKSVR_ACCESS_PEERS 逐一检查本机进程的随机挑战响应，分派器不转发内部探针。未配置权限保留旧查询路径；已有规则时不允许切回忽略权限的旧进程。</p>
+<p>用户库仍是私藏及账号身份的权威；库内镜像有持久化代际与水位栅栏，在跨库同步空隙先拒绝响应，替代原草案的搬迁私藏权威表。共享查询投影分别存文件与书目，个人私藏只用稀疏 owner 覆盖，不按用户复制全库。来源根节点健康变化触发有界增量队列，不扫描全文件系统。</p>
+<p>来源移动保留历史限制，转换/分离在格式登记事务内保留祖先；混合私藏祖先按整条书目收紧，冲突拒绝。管理员在资源限制中显式解除历史来源规则，仍要准备、预览和确认，不能解除私藏、人员范围或当前目录约束。普通元数据编辑不能修改来源继承。历史封面与音频无可靠格式出处时，要求全部来源均有权限。符号链接越界拒绝；已经传出的字节无法收回。</p>
+<p>浏览/搜索/目录/分类/统计/推荐/详情/版本/路径、阅读资源/TXT/EPUB/漫画、OPDS 与 WebDAV、设备推送、音频/播客均接入。默认作品分组列表改为增量成员和计数，取消/失败/过期投影每批 32 条回收，保留历史策略与来源证据。复杂组合筛选仍执行精确 SQL，不宣称全部查询为常数耗时。原有 OPDS 分页兼容改动随授权入口保留并回归；不删除工作区其他部署脚本和方案。</p>
+<h2>实际测试结果</h2>
+<ul><li>隔离 Linux 容器（无宿主书库挂载、无网络、低优先级、CPU 0.5）：50 个 Go 包完整测试全部通过。历史来源解除、分派器探针及应用响应代际修复的最终六包专项回归也全部通过。</li>
+<li>go vet ./...、git diff --check、前端完整 ESLint 通过。Nuxt 生产静态生成通过。权限页/范围/准备组件 15 个测试通过，覆盖非法空范围、版本冲突保留编辑和历史来源解除字段。</li>
+<li>Chrome 隔离自动验证：1440/390/320px 保存草稿、管理分类、键盘关闭、准备、只读预览、确认后应用；3 项 E2E 通过。390px 同时检查暗色，320px 无横向溢出。新增按钮与暗色提示采用可读文字色，主要按钮白色文字配 #1565c0；长字段标签改为短标签与常驻帮助，传送弹窗长路径换行，显式焦点轮廓及减少动态效果。</li>
+<li>50 万条模拟书目、1 个共享权限组合：准备 8 分 13 秒；25 次默认作品分组分页，P50 3.514ms、P95 6.0013ms、最大 6.0294ms。5 万条对照准备 46.68 秒、P95 5.0047ms。均为本机临时 SQLite，不是 NAS API 延迟或 16 组合性能承诺；组合上限和共享/私藏差分另由单元测试约束。</li>
+<li>最终镜像隔离 HTTP 验收通过：安装、五进程能力探针、草稿准备/预览/应用、书库/搜索/OPDS 过滤、主服务和阅读侧车拒绝隐藏资源。正式数据库两个一致性快照各约 1.98GB，使用低优先级限速备份。</li></ul>
+<h2>interface-review full 复审</h2>
+<p>范围：当前 main 相对 origin/main 的 merge-base 6c06ff4939ef08fb0160c0b513e783a449d7f7c4；提交差异 0，加全部 tracked/untracked 工作区变更。执行 git symbolic-ref --short refs/remotes/origin/HEAD、git merge-base origin/main HEAD、git rev-list --count origin/main..HEAD、git diff --name-only HEAD、git ls-files --others --exclude-standard、git diff -U0 -- app；审查不 checkout、不 stash、不写 .git。原始范围包含 OPDS 和部署脚本已有改动，不用单页代替整分支。构建产物、node_modules、外部截图均被既有 ignore 排除，不作为源码变更。</p>
+<p>直接界面：访问范围页、两个管理子组件、主导航及两套头部、三语言。全部本地变更 127 个路径（包含一个无内容差异的 Dockerfile）；直接头部消费者为 brass、graphite、light-gray、minimal、warm-red 五个主题包装，共 5 个，均只委托 BuiltinThemeHeader，无未展开的直接主题消费者。另按后端响应检查分类/检索列表、目录、书籍详情及默认布局；源码对比原前端只增加入口，locale 删除行是等价格式展开，没有删除焦点、ARIA、提示或翻页。搜索匹配排序、私藏统计和 OPDS 分页由后端回归确认。动态主题仅跟踪共用头部，不声称逐个外部主题实际渲染。</p>
+<div class="table-wrap"><table><tr><th>域</th><th>检查范围与结论</th></tr>
+<tr><td>Accessibility</td><td>Clear：控件标签、弹窗名称、原生按钮/单选/复选、键盘关闭、错误提示、应用确认、焦点与减少动画。未进行真实屏幕阅读器测试。</td></tr>
+<tr><td>Layout</td><td>Clear：320/390/1440px，动作换行，传送弹窗、长路径、常驻帮助不截断。</td></tr>
+<tr><td>Writing</td><td>Clear：草稿不等于生效、取消与失败可恢复、私藏边界、历史解除风险、空状态和字段错误有下一步。</td></tr>
+<tr><td>Typography</td><td>Clear：沿用字号层级、动态进度等宽数字、名称与路径换行。</td></tr>
+<tr><td>Colors</td><td>Clear：亮/暗提示正文使用 on-surface，主按钮明确对比色；状态同时有文字，不单靠颜色。</td></tr>
+<tr><td>UI</td><td>Clear：复用 Vuetify 和既有导航，不引入新组件体系；请求中禁用重复提交、未保存离开有提示。</td></tr></table></div>
+<p>已处理的 Introduced 问题：未保存离开丢失编辑（HIGH）、禁用保存导致字段无反馈（MEDIUM）、侧栏缺入口（MEDIUM）、仅编号选书效率低（MEDIUM）、未配置显示版本 0（MEDIUM）、失联根目录无标识（MEDIUM）、未保存草稿准备按钮无响应（MEDIUM）、窄屏字段长标签被截断（HIGH）、暗色提示与主按钮对比、减少动态效果（HIGH）。修复后重跑组件、构建和 Chrome 自动流程。</p>
+<p>考虑但拒绝：不为草稿删除增加重复确认，因为不直接影响活动规则，删除按钮已有区别且最终应用须确认；不为普通标签增加授权开关，因为管理员专用分类才是可信边界；不在空预览虚构样例书目；不把标准 Vuetify 表单替换为定制控件。Pre-existing：共用旧头部部分图标缺少独立 accessible name，不由本次新增有名称的入口引入。</p>
+<p>验证限制：本会话无 Chrome DevTools MCP，使用 Playwright 驱动真实 Chrome 的短生命周期 mock 自动渲染替代；它不是线上数据验收。界面源码及已执行状态结论 Approve，无遗留的本次 HIGH/MEDIUM；最终生产界面与真实 HTTP 验收结果需在发布后追加，不把未验证项记为通过。</p>
+<p>最终复审：排除管理员的普通用户范围和预览选项，明确管理员始终可见全部；避免预览结果误导。最终 15 项组件、三宽度 Chrome 自动流程与生产静态构建通过。No actionable interface findings in this change. Verdict: Approve。未做 100 万/16 组合 NAS 压测、屏幕阅读器和所有外部主题设备实测，不将其计为通过。</p><h2>影响范围与发布状态</h2><p>领域规则集中在 spec/书库访问范围.md，用户、书籍、书库及索引互链；实现包括 Go access/library/httpapi/userdb/booktools/convert、Nuxt 管理页与导航。本方案已完成实现和验收并转为 ACTIVE；代码与方案一并提交。</p><h2>生产发布验收</h2><p>镜像 bookharbor:acl-705b131cfe92，镜像 ID sha256:2b2f0fd948104254982afa083c72d4fb0efeed72e5d6dbb2e6f49d98a05c697c；Go 二进制 SHA-256 705b131cfe92d097c2dfc368af4c8174f7c2bfa3b016cbd5c6f69ed9ce8de2da。容器名 bookharbor，原 /data、/books、/books1 挂载与 8850/9443 端口保持不变。五个进程的随机挑战能力验证全部通过；生产 active_revision=0，未代用户创建或启用访问限制。</p><p>隔离镜像验收发现并修复分派器内部探针转发、应用成功响应仍绑定旧代际两个问题；发布检查脚本修正 welcome 的 free 成功状态，静态覆盖包将 Nuxt 200.html 同步为 index.html，避免旧首页引用旧资源。最终容器已使用修正后的镜像。生产 Chrome 登录后实测 /admin/access 的用户范围、权限分类，1440/390px 均可用，无 JS 错误或横向溢出；实测只读，不改生产策略。</p><p>切换前后历史游标 439973、新书游标 458914、初始边界 439973 一致。原扫描队列 370 保持 done，导入 4650、发现 21625，不重新扫描；目录监听根 /books 与 /books1 正常。元数据来源 matched 从 58198 增至 58203，补全租约重新获得，证明任务继续。抽样 API 在启动期书库约 5 秒（切换前约 4.1 秒）、权限概览 16 毫秒；元数据状态约 41.7 秒（切换前约 18.7 秒），属于原全库统计和启动并发下的实际观测，不写成所有 API 均加速。启动时主要额外内存为既有 source-sync-worker，主 HTTP 进程约 54MiB；持续监测启动收敛。</p><p>性能限制：50 万单组合 SQL 基准通过，尚未执行生产 16 组合容量/冷缓存 P99 矩阵；不声称任意复杂筛选无开销。管理员可先保存并准备草稿、检查可见书目后应用。原有公开/私藏和任务设置保持不变。</p></main></body></html>

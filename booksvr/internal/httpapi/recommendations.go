@@ -22,7 +22,11 @@ func recommendationTerm(s string) string {
 }
 
 func personalizedIndex(cfg BookConfig, ctx *Context) (map[string]any, error) {
-	private, err := bookPrivateIDs(cfg, ctx)
+	private := map[int64]bool{}
+	var err error
+	if ctx.Access == nil || ctx.Access.Unrestricted() {
+		private, err = bookPrivateIDs(cfg, ctx)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +78,12 @@ func personalizedIndex(cfg BookConfig, ctx *Context) (map[string]any, error) {
 		}
 	}
 	selected := []int64{}
+	if ctx.Access != nil && !ctx.Access.Unrestricted() {
+		seeds, err = library.AccessFilterIDs(ctx.Request.Context(), cfg.LibraryDB, *ctx.Access, seeds)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if nRec > 0 {
 		candidates, e := library.RecommendationIDs(ctx.Request.Context(), cfg.LibraryDB, seeds)
 		if e != nil {
@@ -90,6 +100,12 @@ func personalizedIndex(cfg BookConfig, ctx *Context) (map[string]any, error) {
 			if !seen[id] && !private[id] {
 				seen[id] = true
 				filtered = append(filtered, id)
+			}
+		}
+		if ctx.Access != nil && !ctx.Access.Unrestricted() {
+			filtered, e = library.AccessFilterIDs(ctx.Request.Context(), cfg.LibraryDB, *ctx.Access, filtered)
+			if e != nil {
+				return nil, e
 			}
 		}
 		books, e := library.RecommendationMetadata(ctx.Request.Context(), cfg.LibraryDB, filtered)

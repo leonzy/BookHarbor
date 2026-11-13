@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"talebook/booksvr/internal/library"
 	"time"
 
 	"talebook/booksvr/internal/userdb"
@@ -26,7 +27,7 @@ func (w *audioWiring) audioCreateJob(ctx *Context, bookID int64, args map[string
 	if !w.audiobookEnabled() {
 		return map[string]any{"err": "audiobook.disabled", "msg": "有声书功能未启用"}, nil
 	}
-	book, err := bookGetOne(w.bookConfig(), bookID)
+	book, err := bookGetOne(w.bookConfig(), ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +414,7 @@ func (w *audioWiring) audioSubscription(ctx *Context, method string, args map[st
 
 // bookConfig 返回一个只读的 BookConfig，用于复用 bookGetOne。
 func (w *audioWiring) bookConfig() BookConfig {
-	return BookConfig{DB: w.db, LibraryDB: w.db, Settings: w.settings}
+	return BookConfig{DB: w.db, LibraryDB: w.libraryDB, Settings: w.settings}
 }
 
 // isOwner 判定当前请求方是否为书籍所有者。
@@ -425,6 +426,14 @@ func (w *audioWiring) isOwner(ctx *Context, bookID int64) bool {
 // canView 判定当前请求方能否查看该书。
 func (w *audioWiring) canView(ctx *Context, bookID int64) bool {
 	ok, err := userdb.CanViewBook(w.db, bookID, ctx.Identity.UserID, ctx.Identity.IsAdmin)
+	if err == nil && ok && ctx.Access != nil && !ctx.Access.Unrestricted() {
+		ok, err = (library.AccessStore{DB: w.libraryDB}).AccessCanViewBook(ctx.Request.Context(), *ctx.Access, bookID)
+		if err == nil && ok {
+			// Existing audio editions do not record an immutable source-file ID.
+			// Sharing one requires all source formats, just like legacy artwork.
+			ok, err = (library.AccessStore{DB: w.libraryDB}).AccessCanShareCover(ctx.Request.Context(), *ctx.Access, bookID)
+		}
+	}
 	return err == nil && ok
 }
 

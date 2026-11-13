@@ -19,7 +19,7 @@ const pushCapability = "integrations.push"
 //  2. device_type 必填，且必须有对应 push provider；
 //  3. kindle 用 mailbox，其余用 device_url。
 func (w *bookWiring) bookSendToDevice(ctx *Context, bookID int64, args map[string]any) (map[string]any, error) {
-	book, err := bookGetOne(w.Config(""), bookID)
+	book, err := bookGetOne(w.Config(""), ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func (w *bookWiring) bookSendToDevice(ctx *Context, bookID int64, args map[strin
 	if format == "" {
 		return map[string]any{"err": "format.not_found", "msg": "书籍没有可推送的格式"}, nil
 	}
-	path, release, err := booktools.AcquireFormatPath(sourceContext(ctx), w.libraryDB, bookID, format)
+	path, release, err := requestAcquireFormat(ctx, w.libraryDB, bookID, format, w.libraryRoot)
 	if err != nil {
 		return map[string]any{"err": "file.missing", "msg": "格式文件不存在"}, nil
 	}
@@ -90,7 +90,7 @@ func (w *bookWiring) bookSendToDevice(ctx *Context, bookID int64, args map[strin
 
 // bookSendToMail 复刻 Python BookSendToMail.post。
 func (w *bookWiring) bookSendToMail(ctx *Context, bookID int64, args map[string]any) (map[string]any, error) {
-	book, err := bookGetOne(w.Config(""), bookID)
+	book, err := bookGetOne(w.Config(""), ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func (w *bookWiring) bookSendToMail(ctx *Context, bookID int64, args map[string]
 	if format == "" {
 		return map[string]any{"err": "format.not_found", "msg": "书籍没有可推送的格式"}, nil
 	}
-	path, release, err := booktools.AcquireFormatPath(sourceContext(ctx), w.libraryDB, bookID, format)
+	path, release, err := requestAcquireFormat(ctx, w.libraryDB, bookID, format, w.libraryRoot)
 	if err != nil {
 		return map[string]any{"err": "file.missing", "msg": "格式文件不存在"}, nil
 	}

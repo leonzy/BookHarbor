@@ -48,6 +48,12 @@ func NewDispatcher(server *Server, tornadoURL string, serveRoutes []string, serv
 // ServeHTTP 实现 http.Handler。
 func (d *Dispatcher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if d.server != nil {
+		// Internal capability probes must never fall through to another process.
+		// The server enforces loopback, challenge and forwarded-request checks.
+		if r.URL.Path == accessCapabilityPath {
+			d.server.ServeHTTP(w, r)
+			return
+		}
 		for _, rt := range d.server.routes {
 			if rt.re.FindStringSubmatch(r.URL.Path) == nil {
 				continue

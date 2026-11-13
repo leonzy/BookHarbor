@@ -174,8 +174,8 @@ func (s *webdavService) resolveBookFile(ctx *Context, section, category, filenam
 	if !s.canView(ctx, bookID) {
 		return nil
 	}
-	path, missing, err := library.ResolvePath(s.libraryDB, bookID, format)
-	if err != nil || missing {
+	path, err := requestFormatPath(ctx, s.libraryDB, bookID, format, s.root)
+	if err != nil || path == "" {
 		return nil
 	}
 	info, err := sourcefile.Stat(path)
@@ -241,7 +241,18 @@ func (s *webdavService) categoryMembers(ctx *Context, section string) []*davReso
 
 // namedMembers 返回标签 / 作者等命名分类。
 func (s *webdavService) namedMembers(ctx *Context, table, section string) []*davResource {
-	rows, err := s.db.Query(fmt.Sprintf(`SELECT name FROM %s ORDER BY name LIMIT 500`, table))
+	if ctx.Access != nil && !ctx.Access.Unrestricted() {
+		cats, _, err := library.AccessCategoryPage(ctx.Request.Context(), s.libraryDB, *ctx.Access, table, "", 1, 500)
+		if err != nil {
+			return nil
+		}
+		out := []*davResource{}
+		for _, c := range cats {
+			out = append(out, &davResource{Path: "/" + section + "/" + c.Name, Name: c.Name, IsDir: true, Modified: time.Now()})
+		}
+		return out
+	}
+	rows, err := s.libraryDB.Query(fmt.Sprintf(`SELECT name FROM %s ORDER BY name LIMIT 500`, table))
 	if err != nil {
 		return nil
 	}
@@ -265,7 +276,23 @@ func (s *webdavService) bookMembers(ctx *Context, section, category string) []*d
 	ids := s.bookIDsFor(ctx, section, category)
 	out := []*davResource{}
 	for _, id := range ids {
-		formats, err := library.ListFormats(s.db, id)
+		if !s.canView(ctx, id) {
+			continue
+		}
+		if ctx.Access != nil && !ctx.Access.Unrestricted() {
+			books, err := requestBooksData(ctx, s.libraryDB, []int64{id})
+			if err != nil {
+				continue
+			}
+			for _, b := range books {
+				for _, f := range b.Formats {
+					name := fmt.Sprintf("%d-%s.%s", id, sanitizeDAVName(b.Title), strings.ToLower(f))
+					out = append(out, &davResource{Path: "/" + section + "/" + category + "/" + name, Name: name, Size: b.FormatSizes[f], Modified: time.Now()})
+				}
+			}
+			continue
+		}
+		formats, err := library.ListFormats(s.libraryDB, id)
 		if err != nil {
 			continue
 		}
@@ -283,9 +310,26 @@ func (s *webdavService) bookMembers(ctx *Context, section, category string) []*d
 
 // bookIDsFor 返回某分类下的书籍 id。
 func (s *webdavService) bookIDsFor(ctx *Context, section, category string) []int64 {
+	if ctx.Access != nil && !ctx.Access.Unrestricted() && (section == "最新" || section == "分类" || section == "标签" || section == "作者") {
+		q := library.AccessBrowseQuery{BrowseQuery: library.BrowseQuery{TimestampSort: true, Size: 200}}
+		if section == "最新" {
+			q.Size = 100
+		} else {
+			field := "tag"
+			if section == "作者" {
+				field = "author"
+			}
+			q.Filters = map[string]string{field: category}
+		}
+		ids, _, err := library.AccessBrowseBooks(ctx.Request.Context(), s.libraryDB, *ctx.Access, q)
+		if err != nil {
+			return nil
+		}
+		return ids
+	}
 	switch section {
 	case "最新":
-		ids, err := library.Sort(s.db, "timestamp", false)
+		ids, err := library.Sort(s.libraryDB, "timestamp", false)
 		if err != nil {
 			return nil
 		}
@@ -299,13 +343,13 @@ func (s *webdavService) bookIDsFor(ctx *Context, section, category string) []int
 	case "我的已读":
 		return s.readingStateIDs(ctx, "read_done")
 	case "分类", "标签":
-		ids, err := library.Search(s.db, fmt.Sprintf("tags:'%s'", category))
+		ids, err := library.Search(s.libraryDB, fmt.Sprintf("tags:'%s'", category))
 		if err != nil {
 			return nil
 		}
 		return limitIDs(ids, 200)
 	case "作者":
-		ids, err := library.Search(s.db, fmt.Sprintf("authors:'%s'", category))
+		ids, err := library.Search(s.libraryDB, fmt.Sprintf("authors:'%s'", category))
 		if err != nil {
 			return nil
 		}
@@ -390,6 +434,9 @@ func (s *webdavService) userSyncRoot(userID int64) string {
 // canView 判定当前请求方能否查看该书。
 func (s *webdavService) canView(ctx *Context, bookID int64) bool {
 	ok, err := userdb.CanViewBook(s.db, bookID, ctx.Identity.UserID, ctx.Identity.IsAdmin)
+	if err == nil && ok && ctx.Access != nil && !ctx.Access.Unrestricted() {
+		ok, err = (library.AccessStore{DB: s.libraryDB}).AccessCanViewBook(ctx.Request.Context(), *ctx.Access, bookID)
+	}
 	return err == nil && ok
 }
 

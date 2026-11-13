@@ -20,7 +20,7 @@ import (
 // 无外部转换器时，对同族格式（如 azw3→mobi）做文件级复制登记；
 // 跨族转换（如 epub→pdf）返回明确的不支持错误，而不是静默失败。
 func (w *bookWiring) bookConvert(ctx *Context, bookID int64, args map[string]any) (map[string]any, error) {
-	book, err := bookGetOne(w.Config(""), bookID)
+	book, err := bookGetOne(w.Config(""), ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (w *bookWiring) bookConvert(ctx *Context, bookID int64, args map[string]any
 	if src == "" {
 		return map[string]any{"err": "format.not_found", "msg": "书籍没有可转换的格式"}, nil
 	}
-	srcPath, err := booktools.GetFormatPath(w.libraryDB, bookID, src)
+	srcPath, err := requestToolFormatPath(ctx, w.libraryDB, bookID, src, w.libraryRoot)
 	if err != nil {
 		return map[string]any{"err": "file.missing", "msg": "源格式文件不存在"}, nil
 	}
@@ -63,7 +63,7 @@ func (w *bookWiring) bookConvert(ctx *Context, bookID int64, args map[string]any
 	if err := copyFileBytes(srcPath, outPath); err != nil {
 		return nil, fmt.Errorf("httpapi: 复制格式文件失败: %w", err)
 	}
-	if err := library.RegisterFormat(w.libraryDB, bookID, target, outPath, 0, 0); err != nil {
+	if err := library.RegisterFormat(w.libraryDB, bookID, target, outPath, 0, 0, library.InheritAccessSource(bookID, src, bookID, target, w.libraryRoot)); err != nil {
 		return nil, fmt.Errorf("httpapi: 登记新格式失败: %w", err)
 	}
 
@@ -79,7 +79,7 @@ func (w *bookWiring) bookConvert(ctx *Context, bookID int64, args map[string]any
 //
 // PDF 生成依赖外部渲染器；无渲染器时返回明确错误。
 func (w *bookWiring) bookToPDF(ctx *Context, bookID int64, args map[string]any) (map[string]any, error) {
-	book, err := bookGetOne(w.Config(""), bookID)
+	book, err := bookGetOne(w.Config(""), ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func (w *bookWiring) bookToPDF(ctx *Context, bookID int64, args map[string]any) 
 
 // bookSeparate 复刻 Python BookSeparate.post：把某格式分离为独立书籍。
 func (w *bookWiring) bookSeparate(ctx *Context, bookID int64, args map[string]any) (map[string]any, error) {
-	book, err := bookGetOne(w.Config(""), bookID)
+	book, err := bookGetOne(w.Config(""), ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,7 @@ func (w *bookWiring) bookSeparate(ctx *Context, bookID int64, args map[string]an
 		return map[string]any{"err": "last.format", "msg": "书籍只有一个格式，无法分离"}, nil
 	}
 
-	srcPath, err := booktools.GetFormatPath(w.libraryDB, bookID, format)
+	srcPath, err := requestToolFormatPath(ctx, w.libraryDB, bookID, format, w.libraryRoot)
 	if err != nil {
 		return map[string]any{"err": "file.missing", "msg": "格式文件不存在"}, nil
 	}
@@ -143,8 +143,10 @@ func (w *bookWiring) bookSeparate(ctx *Context, bookID int64, args map[string]an
 	}
 
 	newID, err := booktools.ImportAsNewBook(w.libraryDB, bookID, dst, booktools.ImportOptions{
-		TitleSuffix: "（分离）",
-		CollectorID: ctx.Identity.UserID,
+		TitleSuffix:  "（分离）",
+		CollectorID:  ctx.Identity.UserID,
+		SourceFormat: format,
+		LibraryRoot:  w.libraryRoot,
 	})
 	if err != nil {
 		return map[string]any{"err": "fail", "msg": "分离失败，请查看日志"}, nil
@@ -161,7 +163,7 @@ func (w *bookWiring) bookSeparate(ctx *Context, bookID int64, args map[string]an
 //
 // 无 Calibre 时退化为把数据库元数据同步到 OPF 旁文件。
 func (w *bookWiring) bookSaveMeta(ctx *Context, bookID int64, args map[string]any) (map[string]any, error) {
-	book, err := bookGetOne(w.Config(""), bookID)
+	book, err := bookGetOne(w.Config(""), ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +183,7 @@ func (w *bookWiring) bookSaveMeta(ctx *Context, bookID int64, args map[string]an
 		return map[string]any{"err": "format.not_found", "msg": "书籍没有可保存的格式"}, nil
 	}
 
-	path, err := booktools.GetFormatPath(w.libraryDB, bookID, format)
+	path, err := requestToolFormatPath(ctx, w.libraryDB, bookID, format, w.libraryRoot)
 	if err != nil {
 		return map[string]any{"err": "file.missing", "msg": "格式文件不存在"}, nil
 	}
@@ -201,7 +203,7 @@ func (w *bookWiring) bookSaveMeta(ctx *Context, bookID int64, args map[string]an
 
 // bookRefer 通过插件运行时检索候选，并按用户选择套用元数据或封面。
 func (w *bookWiring) bookRefer(ctx *Context, bookID int64, args map[string]any) (map[string]any, error) {
-	book, err := bookGetOne(w.Config(""), bookID)
+	book, err := bookGetOne(w.Config(""), ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +223,7 @@ func (w *bookWiring) bookRefer(ctx *Context, bookID int64, args map[string]any) 
 	}
 	worker := &metadataWorker{w: w, now: time.Now, logger: log.New(io.Discard, "", 0)}
 	if err := worker.local(sourceContext(ctx), bookID, true); err == nil {
-		if refreshed, e := bookGetOne(w.Config(""), bookID); e == nil && refreshed != nil {
+		if refreshed, e := bookGetOne(w.Config(""), ctx, bookID); e == nil && refreshed != nil {
 			book = refreshed
 		}
 	}

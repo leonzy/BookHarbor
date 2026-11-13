@@ -32,7 +32,7 @@ func TestTitleOnlySearchRunsButCannotAssignNamesake(t *testing.T) {
 	if err := w.libraryDB.QueryRow(`SELECT count(*) FROM metadata_source_jobs WHERE book_id=1`).Scan(&n); err != nil || n == 0 {
 		t.Fatal(n, err)
 	}
-	b, err := bookGetOne(w.Config(""), 1)
+	b, err := bookGetOne(w.Config(""), nil, 1)
 	if err != nil || b.Publisher != "" || b.ISBN != "" {
 		t.Fatal(b, err)
 	}
@@ -87,7 +87,7 @@ func TestSearchGateRepairKeepsActiveJobsAndManualLocks(t *testing.T) {
 	if err := RefreshFileMetadata(context.Background(), w.libraryDB, "", 1); err != nil {
 		t.Fatal(err)
 	}
-	b, err := bookGetOne(w.Config(""), 1)
+	b, err := bookGetOne(w.Config(""), nil, 1)
 	if err != nil || b.Title != "人工标题" || len(b.Authors) != 0 {
 		t.Fatal(b, err)
 	}

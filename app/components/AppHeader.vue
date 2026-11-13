@@ -240,6 +240,7 @@
                             />
                             <v-divider />
                             <template v-if="store.user.is_admin">
+                                <v-list-item to="/admin/access" :title="t('accessControl.page.title')" prepend-icon="mdi-shield-account-outline" />
                                 <v-list-item
                                     to="/admin/settings"
                                     :title="t('messages.adminEntry')"

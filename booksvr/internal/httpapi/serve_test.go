@@ -35,6 +35,12 @@ func startServe(t *testing.T, opts ServeOptions) (string, context.CancelFunc) {
 	// 等待端口就绪。
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
+		select {
+		case err := <-done:
+			cancel()
+			t.Fatalf("Serve exited before listening: %v", err)
+		default:
+		}
 		conn, err := net.DialTimeout("tcp", opts.Addr, 200*time.Millisecond)
 		if err == nil {
 			_ = conn.Close()

@@ -32,6 +32,7 @@ type WorkService struct {
 	// 为 nil 时视为「全部可见」（管理员/已认证场景）。游客场景由调用方注入
 	// 真实实现，从而保证私有书不被泄露。
 	IsPublic func(bookID int64) (bool, error)
+	Formats  func(bookID int64) ([]File, error)
 }
 
 // WorkSummary 是作品层的响应结构。
@@ -122,6 +123,12 @@ func (s *WorkService) versionSummary(bookID int64) (VersionSummary, error) {
 			Href:           fmt.Sprintf("%s/api/book/%d.%s", s.CDNURL, bookID, f.Format),
 			OnlineReadable: OnlineReadable([]string{f.Format}),
 		})
+	}
+	if s.Formats != nil {
+		files, err = s.Formats(bookID)
+		if err != nil {
+			return VersionSummary{}, err
+		}
 	}
 
 	// suffixes 从 edition_key 的末段还原；无后缀时返回空数组而非 nil，

@@ -42,14 +42,14 @@ func TestMetadataWorkerFileThenNetworkAndUserLocks(t *testing.T) {
 	if err := worker.local(context.Background(), 1); err != nil {
 		t.Fatal(err)
 	}
-	b, err := bookGetOne(w.Config(""), 1)
+	b, err := bookGetOne(w.Config(""), nil, 1)
 	if err != nil || b.ISBN != "9780141439518" || b.Authors[0] != "Selected author" {
 		t.Fatal(b, err)
 	}
 	if err := runMetadataNetwork(t, worker); err != nil {
 		t.Fatal(err)
 	}
-	b, err = bookGetOne(w.Config(""), 1)
+	b, err = bookGetOne(w.Config(""), nil, 1)
 	if err != nil || b.Publisher != "Selected press" {
 		t.Fatal(b, err)
 	}
@@ -60,7 +60,7 @@ func TestMetadataWorkerFileThenNetworkAndUserLocks(t *testing.T) {
 	if _, err = library.FillMissingMetadata(w.libraryDB, 1, importmeta.Metadata{ISBN: "9780141439518", Publisher: "replacement", Authors: []string{"replacement"}}); err != nil {
 		t.Fatal(err)
 	}
-	b, err = bookGetOne(w.Config(""), 1)
+	b, err = bookGetOne(w.Config(""), nil, 1)
 	if err != nil || b.ISBN != "" || b.Publisher != "" || len(b.Authors) != 0 {
 		t.Fatal(b, err)
 	}
@@ -143,7 +143,7 @@ func TestMetadataMissingSourceDoesNotChangeImportOrSourceState(t *testing.T) {
 	if err := w.libraryDB.QueryRow(`SELECT status,last_error FROM metadata_enrichment_jobs WHERE book_id=1`).Scan(&status, &reason); err != nil || status != "file_retry" || reason == "" {
 		t.Fatal(status, reason, err)
 	}
-	b, err := bookGetOne(w.Config(""), 1)
+	b, err := bookGetOne(w.Config(""), nil, 1)
 	if err != nil || b == nil || b.Title != "Selected title (original edition)" {
 		t.Fatal(b, err)
 	}

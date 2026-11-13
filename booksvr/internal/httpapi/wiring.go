@@ -76,6 +76,17 @@ func (w *bookWiring) Config(cdnURL string) BookConfig {
 		DB:        w.db,
 		LibraryDB: w.libraryDB,
 		BrowsePage: func(ctx *Context, q library.BrowseQuery) ([]int64, int, error) {
+			if ctx.Access != nil && !ctx.Access.Unrestricted() {
+				query := library.AccessBrowseQuery{BrowseQuery: q}
+				if q.DirectoryNode != 0 {
+					var err error
+					query.Directory, err = (library.AccessStore{DB: w.libraryDB}).AccessDirectoryTarget(ctx.Request.Context(), q.DirectoryNode, q.DirectoryRecursive)
+					if err != nil {
+						return nil, 0, err
+					}
+				}
+				return library.AccessBrowseBooks(ctx.Request.Context(), w.libraryDB, *ctx.Access, query)
+			}
 			return library.BrowseBooks(ctx.Request.Context(), w.libraryDB, q)
 		},
 		LibraryRoot: w.libraryRoot,
@@ -85,6 +96,12 @@ func (w *bookWiring) Config(cdnURL string) BookConfig {
 
 		CanViewBook: func(ctx *Context, bookID int64) bool {
 			ok, err := userdb.CanViewBook(w.db, bookID, ctx.Identity.UserID, ctx.Identity.IsAdmin)
+			if err != nil || !ok {
+				return false
+			}
+			if ctx.Access != nil && !ctx.Access.Unrestricted() {
+				ok, err = (library.AccessStore{DB: w.libraryDB}).AccessCanViewBook(ctx.Request.Context(), *ctx.Access, bookID)
+			}
 			return err == nil && ok
 		},
 		IsBookOwner: func(ctx *Context, bookID int64) bool {
@@ -131,6 +148,20 @@ func (w *bookWiring) Config(cdnURL string) BookConfig {
 			return title
 		},
 		HotBooks: func(ctx *Context, start, delta int) ([]int64, int, error) {
+			if ctx.Access != nil && !ctx.Access.Unrestricted() {
+				ids, _, err := userdb.HotBookIDs(w.db, ctx.Identity.UserID, false, 0, -1)
+				if err != nil {
+					return nil, 0, err
+				}
+				ids, err = library.AccessFilterIDs(ctx.Request.Context(), w.libraryDB, *ctx.Access, ids)
+				if err != nil {
+					return nil, 0, err
+				}
+				if delta < 0 {
+					return ids, len(ids), nil
+				}
+				return bookSlice(ids, start, start+delta), len(ids), nil
+			}
 			missing, err := library.UnavailableSourceBooks(w.libraryDB)
 			if err != nil {
 				return nil, 0, err
@@ -154,6 +185,9 @@ func (w *bookWiring) Config(cdnURL string) BookConfig {
 			return bookSlice(visible, start, start+delta), len(visible), nil
 		},
 		NavTags: func(ctx *Context) (map[string]int, error) {
+			if ctx.Access != nil && !ctx.Access.Unrestricted() {
+				return library.AccessTagCounts(ctx.Request.Context(), w.libraryDB, *ctx.Access)
+			}
 			return userdb.TagCounts(w.libraryDB)
 		},
 
@@ -261,8 +295,7 @@ func (w *audioWiring) Config(cdnURL string, publicURL func(string) string) Audio
 		PublicURL:   publicURL,
 
 		CanViewBook: func(ctx *Context, bookID int64) bool {
-			ok, err := userdb.CanViewBook(w.db, bookID, ctx.Identity.UserID, ctx.Identity.IsAdmin)
-			return err == nil && ok
+			return w.canView(ctx, bookID)
 		},
 		IsBookOwner: func(ctx *Context, bookID int64) bool {
 			ok, err := userdb.IsBookOwner(w.db, bookID, ctx.Identity.UserID,

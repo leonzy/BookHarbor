@@ -43,7 +43,7 @@ func TestBookReferenceAppliesXinhuaProductWithoutISBN(t *testing.T) {
 	if err != nil || out["err"] != "ok" {
 		t.Fatal("selectable Xinhua candidate could not be applied", out, err)
 	}
-	b, err := bookGetOne(w.Config(""), 1)
+	b, err := bookGetOne(w.Config(""), nil, 1)
 	if err != nil || b.ISBN != "" || b.Publisher != "中信出版社" || b.Authors[0] != "彼得·麦克菲" {
 		t.Fatal("metadata missing or ISBN invented", b, err)
 	}

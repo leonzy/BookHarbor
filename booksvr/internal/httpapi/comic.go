@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"talebook/booksvr/internal/comic"
-	"talebook/booksvr/internal/library"
 	"talebook/booksvr/internal/userdb"
 )
 
@@ -71,16 +70,21 @@ func (c ComicConfig) captchaOn(scene string) bool {
 
 // comicPageTokenPayload 是页级令牌的载荷，对齐 Python 的 payload 结构。
 type comicPageTokenPayload struct {
-	BookID    int64  `json:"book_id"`
-	PageIndex int64  `json:"page_index"`
-	Revision  string `json:"revision"`
-	UserID    int64  `json:"user_id"`
+	BookID       int64  `json:"book_id"`
+	PageIndex    int64  `json:"page_index"`
+	Revision     string `json:"revision"`
+	UserID       int64  `json:"user_id"`
+	AccountToken string `json:"account_token,omitempty"`
 }
 
 // createPageToken 复刻 ComicHandlerMixin.create_page_token。
-func createPageToken(cfg ComicConfig, bookID int64, pageIndex int, revision string, userID int64) (string, error) {
+func createPageToken(cfg ComicConfig, bookID int64, pageIndex int, revision string, userID int64, accountTokens ...string) (string, error) {
+	accountToken := ""
+	if len(accountTokens) > 0 {
+		accountToken = accountTokens[0]
+	}
 	payload, err := json.Marshal(comicPageTokenPayload{
-		BookID: bookID, PageIndex: int64(pageIndex), Revision: revision, UserID: userID,
+		BookID: bookID, PageIndex: int64(pageIndex), Revision: revision, UserID: userID, AccountToken: accountToken,
 	})
 	if err != nil {
 		return "", fmt.Errorf("httpapi: 序列化页令牌失败: %w", err)
@@ -116,6 +120,15 @@ func pageTokenUser(ctx *Context, cfg ComicConfig, bookID int64, pageIndex int, r
 	}
 	if user == nil {
 		return nil, comic.NewError("comic.page_token", "漫画页面访问凭证无效或已过期", 401)
+	}
+	if ctx.Access != nil {
+		current, e := userdb.AccessAccountToken(ctx.Request.Context(), ctx.DB, user.ID)
+		if e != nil {
+			return nil, e
+		}
+		if p.AccountToken == "" || current != p.AccountToken {
+			return nil, comic.NewError("comic.page_token", "漫画页面访问凭证无效或已过期", 401)
+		}
 	}
 	return user, nil
 }
@@ -158,6 +171,11 @@ func authorizedComic(ctx *Context, cfg ComicConfig, bookID int64, authenticated 
 		}
 	} else {
 		user = authenticated
+		if ctx.reauthorize != nil {
+			if err := ctx.reauthorize(Identity{UserID: user.ID, Username: user.Username, IsAdmin: user.Admin}); err != nil {
+				return nil, "", "", err
+			}
+		}
 		ok, err := canUserViewBook(ctx, bookID, user)
 		if err != nil {
 			return nil, "", "", err
@@ -209,7 +227,7 @@ func authorizedComic(ctx *Context, cfg ComicConfig, bookID int64, authenticated 
 //
 // 返回的 map 含 media_type 与 fmt_<format> 键，供 comic.SelectContainer 使用。
 func comicBookData(ctx *Context, cfg ComicConfig, bookID int64) (map[string]any, error) {
-	books, err := library.GetBooksData(ctx.DB, []int64{bookID})
+	books, err := requestBooksData(ctx, toolLibraryDB(ctx), []int64{bookID})
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +245,7 @@ func comicBookData(ctx *Context, cfg ComicConfig, bookID int64) (map[string]any,
 	// 路径优先取 book_formats（booksvr 存储层），回退 Calibre 的 books.path + data.name。
 	for _, format := range b.Formats {
 		lower := strings.ToLower(format)
-		abs, err := library.FormatAbsPath(ctx.DB, bookID, lower, cfg.LibraryRoot)
+		abs, err := requestFormatPath(ctx, toolLibraryDB(ctx), bookID, lower, cfg.LibraryRoot)
 		if err != nil || abs == "" {
 			continue
 		}
@@ -307,7 +325,14 @@ func ComicManifestHandler(cfg ComicConfig, svc *comic.Service) HandlerFunc {
 		pages := make([]map[string]any, 0, len(manifest.Pages))
 		for _, p := range manifest.Pages {
 			data := p.ToPublicDict(bookID, manifest.Revision)
-			token, err := createPageToken(cfg, bookID, p.Index, manifest.Revision, ctx.Identity.UserID)
+			accountToken := ""
+			if ctx.Access != nil {
+				accountToken, err = userdb.AccessAccountToken(ctx.Request.Context(), ctx.DB, ctx.Identity.UserID)
+				if err != nil {
+					return nil, err
+				}
+			}
+			token, err := createPageToken(cfg, bookID, p.Index, manifest.Revision, ctx.Identity.UserID, accountToken)
 			if err != nil {
 				return nil, err
 			}

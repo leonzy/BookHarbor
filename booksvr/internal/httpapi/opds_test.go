@@ -30,7 +30,7 @@ func TestOpdsReaderCompatibility(t *testing.T) {
 	}
 	for _, link := range feed.Links {
 		if link.Rel == "self" || link.Rel == "start" {
-			if !strings.Contains(link.Type, "type=feed") || !strings.Contains(link.Type, "kind=navigation") || strings.Contains(link.Type, "charset") {
+			if link.Type != "application/atom+xml;profile=opds-catalog;kind=navigation" || strings.Contains(link.Type, "charset") {
 				t.Fatalf("link=%+v", link)
 			}
 		}

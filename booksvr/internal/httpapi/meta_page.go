@@ -23,11 +23,18 @@ func metaRenderQuery(ctx *Context, cfg MetaConfig, q library.BrowseQuery, title 
 	q.SizeSort = bookSizeSort(ctx)
 	q.Start = bookArgumentStart(ctx)
 	q.Size = bookPageDelta(ctx, bookMaxPageSize(bc))
-	ids, total, err := library.BrowseBooks(ctx.Request.Context(), cfg.DB, q)
+	var ids []int64
+	var total int
+	if ctx.Access != nil && !ctx.Access.Unrestricted() {
+		q.Excluded = nil
+		ids, total, err = library.AccessBrowseBooks(ctx.Request.Context(), cfg.DB, *ctx.Access, library.AccessBrowseQuery{BrowseQuery: q})
+	} else {
+		ids, total, err = library.BrowseBooks(ctx.Request.Context(), cfg.DB, q)
+	}
 	if err != nil {
 		return nil, err
 	}
-	books, err := metaLoadBooks(cfg, ids)
+	books, err := metaLoadBooks(ctx, cfg, ids)
 	if err != nil {
 		return nil, err
 	}

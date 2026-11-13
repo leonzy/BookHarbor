@@ -91,6 +91,7 @@ var (
 // UserInfoHandler 实现 /api/user/info。
 func UserInfoHandler(cfg UserConfig) HandlerFunc {
 	return func(ctx *Context) (map[string]any, error) {
+		cfg := cfg // Request closures must never be retained by another user.
 		settings := liveSettings(cfg.Settings, cfg.SettingsPath)
 		if installed, ok := settings["installed"].(bool); ok && !installed {
 			return map[string]any{"err": "not_installed"}, nil
@@ -108,8 +109,14 @@ func UserInfoHandler(cfg UserConfig) HandlerFunc {
 				return nil, err
 			}
 			cfg.BookExists = func(id int64) bool { return !private[id] && !missing[id] }
+			if ctx.Access != nil && !ctx.Access.Unrestricted() {
+				cfg.BookExists = func(id int64) bool {
+					ok, e := (library.AccessStore{DB: cfg.LibraryDB}).AccessCanViewBook(ctx.Request.Context(), *ctx.Access, id)
+					return e == nil && ok
+				}
+			}
 			cfg.HistoryMetadata = func(ids []int64) (map[int64]library.BookData, error) {
-				books, err := library.GetBooksData(cfg.LibraryDB, ids)
+				books, err := requestBooksData(ctx, cfg.LibraryDB, ids)
 				out := map[int64]library.BookData{}
 				for _, book := range books {
 					out[book.ID] = book
@@ -119,7 +126,7 @@ func UserInfoHandler(cfg UserConfig) HandlerFunc {
 		}
 		sys := map[string]any{}
 		if !detail {
-			info, err := userSysInfo(cfg)
+			info, err := userSysInfo(cfg, ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -139,7 +146,21 @@ func UserInfoHandler(cfg UserConfig) HandlerFunc {
 }
 
 // userSysInfo 汇总站点统计信息。
-func userSysInfo(cfg UserConfig) (map[string]any, error) {
+func userSysInfo(cfg UserConfig, contexts ...*Context) (map[string]any, error) {
+	if len(contexts) > 0 && contexts[0].Access != nil && !contexts[0].Access.Unrestricted() {
+		ctx := contexts[0]
+		counts, err := library.AccessSummary(ctx.Request.Context(), ctx.LibraryDB, *ctx.Access)
+		if err != nil {
+			return nil, err
+		}
+		counter := func(key string) func() (int64, error) { return func() (int64, error) { return counts[key], nil } }
+		cfg.CountBooks = counter("books")
+		cfg.CountTags = counter("tags")
+		cfg.CountAuthors = counter("authors")
+		cfg.CountPublishers = counter("publishers")
+		cfg.CountSeries = counter("series")
+		cfg.CountFormats = counter("formats")
+	}
 	// 从磁盘重新读取配置，而不是用启动快照：
 	// 管理员在系统设置页改完站点标题后，这里必须立即反映新值。
 	cfg.Settings = liveSettings(cfg.Settings, cfg.SettingsPath)

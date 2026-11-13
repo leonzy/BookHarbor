@@ -114,6 +114,12 @@ func filesGetData(cfg FilesConfig, ctx *Context, fmtName, rawID string) ([]byte,
 	if cfg.CanViewBook != nil && !cfg.CanViewBook(ctx, id) {
 		return nil, notFound(ctx, fmt.Sprintf("id:%d does not exist in database", id))
 	}
+	if ctx.Access != nil && !ctx.Access.Unrestricted() {
+		ok, e := (library.AccessStore{DB: cfg.DB}).AccessCanViewBook(ctx.Request.Context(), *ctx.Access, id)
+		if e != nil || !ok {
+			return nil, notFound(ctx, "book not found")
+		}
+	}
 
 	if fmtName == "thumb" || strings.HasPrefix(fmtName, "thumb_") {
 		width, height := 60, 80
@@ -174,6 +180,15 @@ func filesHasID(db *sql.DB, id int64) bool {
 func filesGetCover(cfg FilesConfig, ctx *Context, id int64, thumbnail bool, width, height int) ([]byte, error) {
 	ctx.Writer.Header().Set("Cache-Control", "private, no-cache")
 	ctx.Writer.Header().Set("Content-Type", "image/jpeg")
+	if ctx.Access != nil && !ctx.Access.Unrestricted() {
+		allowed, e := (library.AccessStore{DB: cfg.DB}).AccessCanShareCover(ctx.Request.Context(), *ctx.Access, id)
+		if e != nil {
+			return nil, e
+		}
+		if !allowed {
+			return cfg.DefaultCover, nil
+		}
+	}
 
 	cover, err := library.Cover(cfg.DB, id, cfg.LibraryRoot)
 	if err != nil {
@@ -427,7 +442,7 @@ func EpubReader(cfg FilesConfig) HandlerFunc {
 
 		// Legacy Calibre imports store formats in data.name + books.path;
 		// newer imports register absolute paths in book_formats.
-		fpath, err := library.FormatAbsPath(cfg.DB, bookID, "EPUB", cfg.LibraryRoot)
+		fpath, err := requestFormatPath(ctx, cfg.DB, bookID, "EPUB", cfg.LibraryRoot)
 		if err != nil || fpath == "" {
 			http.Error(ctx.Writer, "not found", http.StatusNotFound)
 			return nil, nil

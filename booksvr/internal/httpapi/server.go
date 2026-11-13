@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+
+	"talebook/booksvr/internal/library"
 )
 
 // 与 Python 版 webserver/handlers/base.py 一致的错误码。
@@ -56,6 +58,11 @@ type Context struct {
 	// LibraryDB 是 Calibre 元数据库（books / authors / data 等表）。
 	// 与 DB 分属两个文件，混用会报 "no such table: books"。
 	LibraryDB *sql.DB
+	// Access is set only by the authenticated server access resolver. A client
+	// cannot choose its profile; nil is reserved for the legacy inactive path.
+	Access *library.AccessScope
+	// reauthorize is used only after a handler validates its signed resource token.
+	reauthorize func(Identity) error
 	// CDNURL / APIURL 用于拼接资源地址。
 	CDNURL string
 	APIURL string
@@ -225,6 +232,11 @@ type Server struct {
 	// IsPublic 对应 can_view_book()；为 nil 时视为全部可见。
 	// 第二个参数是当前请求者身份，因为可见性取决于私藏书归属。
 	IsPublic func(identity Identity, bookID int64) (bool, error)
+	// PrepareAccess resolves the authenticated scope and returns a cheap
+	// version check for JSON, 304 and streamed resource responses. It is wired
+	// only once every route/sidecar has an ACL-capable resource selector.
+	PrepareAccess    func(*Context) (func() error, error)
+	AccessCapability http.HandlerFunc
 
 	routes []compiledRoute
 }
@@ -265,6 +277,14 @@ func NewServer(specs []RouteSpec) (*Server, error) {
 
 // ServeHTTP 实现 http.Handler。
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == accessCapabilityPath {
+		if s.AccessCapability == nil {
+			http.NotFound(w, r)
+		} else {
+			s.AccessCapability(w, r)
+		}
+		return
+	}
 	path := r.URL.Path
 
 	for _, rt := range s.routes {
@@ -322,6 +342,52 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 				return s.IsPublic(identity, bookID)
 			},
+		}
+		if s.PrepareAccess != nil {
+			check, accessErr := s.PrepareAccess(ctx)
+			if accessErr != nil || check == nil {
+				writeAccessUnavailable(w)
+				return
+			}
+			if accessErr = check(); accessErr != nil {
+				writeAccessUnavailable(w)
+				return
+			}
+			guard := &accessResponseWriter{ResponseWriter: w, check: check}
+			ctx.isPublic = func(bookID int64) (bool, error) {
+				if s.IsPublic != nil {
+					ok, err := s.IsPublic(ctx.Identity, bookID)
+					if err != nil || !ok {
+						return ok, err
+					}
+				}
+				if ctx.Access != nil && !ctx.Access.Unrestricted() {
+					return (library.AccessStore{DB: ctx.LibraryDB}).AccessCanViewBook(r.Context(), *ctx.Access, bookID)
+				}
+				return true, nil
+			}
+			ctx.reauthorize = func(next Identity) error {
+				if guard.headerWritten {
+					return errAccessResponseRevoked
+				}
+				ctx.Identity = next
+				nextCheck, err := s.PrepareAccess(ctx)
+				if err != nil {
+					guard.revoked = true
+					return err
+				}
+				if nextCheck == nil {
+					guard.revoked = true
+					return errAccessResponseRevoked
+				}
+				guard.check = nextCheck
+				if !guard.valid(true) {
+					return errAccessResponseRevoked
+				}
+				return nil
+			}
+			ctx.Writer = guard
+			w = guard
 		}
 
 		resp, err := rt.spec.Handler(ctx)

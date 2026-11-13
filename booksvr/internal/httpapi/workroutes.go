@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"talebook/booksvr/internal/library"
 )
 
 // WorkRouteSpecs 返回 5.5 节新增 3 条路由的 RouteSpec。
@@ -43,12 +44,37 @@ func workService(ctx *Context) *WorkService {
 	if db == nil {
 		db = ctx.DB
 	}
-	return &WorkService{
+	s := &WorkService{
 		DB:       db,
 		CDNURL:   ctx.CDNURL,
 		APIURL:   ctx.APIURL,
 		IsPublic: ctx.IsPublicFunc(),
 	}
+	if ctx.Access != nil && !ctx.Access.Unrestricted() {
+		s.IsPublic = func(id int64) (bool, error) {
+			if ctx.isPublic != nil {
+				ok, e := ctx.isPublic(id)
+				if e != nil || !ok {
+					return ok, e
+				}
+			}
+			return (library.AccessStore{DB: db}).AccessCanViewBook(ctx.Request.Context(), *ctx.Access, id)
+		}
+		s.Formats = func(id int64) ([]File, error) {
+			books, err := requestBooksData(ctx, db, []int64{id})
+			if err != nil {
+				return nil, err
+			}
+			files := []File{}
+			for _, b := range books {
+				for _, f := range b.Formats {
+					files = append(files, File{Format: f, Size: b.FormatSizes[f], Href: fmt.Sprintf("%s/api/book/%d.%s", ctx.CDNURL, id, f), OnlineReadable: OnlineReadable([]string{f})})
+				}
+			}
+			return files, nil
+		}
+	}
+	return s
 }
 
 // IsPublicFunc 返回注入的可见性判定函数。

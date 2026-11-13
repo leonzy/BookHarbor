@@ -248,7 +248,7 @@ func (s *Service) convertOne(bookID int64, kindleFormat, kindlePath string) erro
 		return fmt.Errorf("convert: 转换产物为空")
 	}
 
-	if err := library.RegisterFormat(s.db, bookID, "EPUB", outPath, size, info.ModTime().Unix()); err != nil {
+	if err := library.RegisterFormat(s.db, bookID, "EPUB", outPath, size, info.ModTime().Unix(), library.InheritAccessSource(bookID, kindleFormat, bookID, "EPUB", "")); err != nil {
 		return fmt.Errorf("convert: 登记 EPUB 失败: %w", err)
 	}
 	if _, err := s.db.Exec(`INSERT INTO data (book, format, uncompressed_size, name)

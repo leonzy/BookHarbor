@@ -61,7 +61,7 @@ func bookToggleHandler(cfg BookConfig, field string,
 		if ctx.Identity.UserID == 0 {
 			return map[string]any{"err": "user.need_login", "msg": "请先登录"}, nil
 		}
-		book, err := bookGetOne(cfg, bookID)
+		book, err := bookGetOne(cfg, ctx, bookID)
 		if err != nil {
 			return nil, err
 		}
@@ -122,7 +122,7 @@ func BookShelfListHandler(cfg BookConfig) HandlerFunc {
 				return nil, err
 			}
 		}
-		booksMap, err := bookLoadBooks(cfg, ids)
+		booksMap, err := bookLoadBooks(cfg, ctx, ids)
 		if err != nil {
 			return nil, err
 		}
@@ -597,7 +597,7 @@ func BookDetailHandler(cfg BookConfig) HandlerFunc {
 		if err != nil {
 			return map[string]any{"err": "params.book.invalid", "msg": "书籍已不存在"}, nil
 		}
-		book, err := bookGetOne(cfg, bookID)
+		book, err := bookGetOne(cfg, ctx, bookID)
 		if err != nil {
 			return nil, err
 		}
@@ -668,7 +668,13 @@ func BookDetailHandler(cfg BookConfig) HandlerFunc {
 func bookFileEntries(cfg BookConfig, ctx *Context, book library.BookData) []map[string]any {
 	out := make([]map[string]any, 0, len(book.Formats))
 	for _, format := range book.Formats {
-		size, ok := bookFormatSize(cfg.LibraryDB, book.ID, format)
+		var size int64
+		var ok bool
+		if ctx.Access != nil && !ctx.Access.Unrestricted() {
+			size, ok = book.FormatSizes[format]
+		} else {
+			size, ok = bookFormatSize(cfg.LibraryDB, book.ID, format)
+		}
 		if !ok {
 			// Python 版在 sizeof_format 抛异常时 continue，跳过该格式。
 			continue
@@ -680,7 +686,7 @@ func bookFileEntries(cfg BookConfig, ctx *Context, book library.BookData) []map[
 			"online_readable": OnlineReadable([]string{format}),
 		}
 		if !ctx.Identity.IsGuest() && (ctx.Identity.IsAdmin || (cfg.IsBookOwner != nil && cfg.IsBookOwner(ctx, book.ID))) {
-			if location := bookStorageLocation(cfg, book, format); location != nil {
+			if location := bookStorageLocation(cfg, book, format, ctx); location != nil {
 				entry["storage"] = location
 			}
 		}

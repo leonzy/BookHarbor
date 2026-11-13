@@ -181,6 +181,7 @@ func (cfg BookToolsConfig) toolImportNew(ctx *Context, srcID int64, output strin
 	}
 	collector := opts.CollectorID
 	opts.CollectorID = 0
+	opts.LibraryRoot = root
 	db := toolLibraryDB(ctx)
 	id, err := booktools.ImportAsNewBook(db, srcID, dst, opts)
 	if err != nil {
@@ -195,7 +196,8 @@ func (cfg BookToolsConfig) toolImportNew(ctx *Context, srcID int64, output strin
 		err = statErr
 	}
 	if err == nil {
-		err = library.RegisterFormat(db, id, strings.TrimPrefix(filepath.Ext(dst), "."), dst, info.Size(), info.ModTime().Unix())
+		format := strings.TrimPrefix(filepath.Ext(dst), ".")
+		err = library.RegisterFormat(db, id, format, dst, info.Size(), info.ModTime().Unix(), library.InheritAccessSource(srcID, "", id, format, root))
 	}
 	if err == nil {
 		_, err = ctx.DB.Exec(`INSERT INTO items (book_id, count_guest, count_visit, count_download, website, collector_id, scope, book_type, media_type, media_type_locked, src_path) VALUES (?, 0, 0, 0, '', ?, 'private', '', '', 0, '')`, id, collector)
@@ -385,7 +387,7 @@ func UserBookToolsBooksHandler(cfg BookToolsConfig) HandlerFunc {
 		if len(ids) > 100 {
 			ids = ids[:100]
 		}
-		books, err := library.GetBooksData(toolLibraryDB(ctx), ids)
+		books, err := requestBooksData(ctx, toolLibraryDB(ctx), ids)
 		if err != nil {
 			return nil, err
 		}
@@ -484,7 +486,7 @@ func UserTextReplacePreviewHandler(cfg BookToolsConfig) HandlerFunc {
 		if format == "" {
 			return toolError(booktools.NewError("该书籍没有 TXT 或 EPUB 格式，无法执行替换")), nil
 		}
-		src, err := booktools.GetFormatPath(toolLibraryDB(ctx), bookID, format)
+		src, err := requestToolFormatPath(ctx, toolLibraryDB(ctx), bookID, format, cfg.LibraryRoot)
 		if err != nil {
 			return toolError(err), nil
 		}
@@ -531,7 +533,7 @@ func UserTxtFixerAnalyzeHandler(cfg BookToolsConfig) HandlerFunc {
 		if !pluginContains(booktools.AvailableFormats(book), "TXT") {
 			return toolError(booktools.NewError("该书籍没有 TXT 格式，无法执行检测")), nil
 		}
-		src, err := booktools.GetFormatPath(toolLibraryDB(ctx), bookID, "TXT")
+		src, err := requestToolFormatPath(ctx, toolLibraryDB(ctx), bookID, "TXT", cfg.LibraryRoot)
 		if err != nil {
 			return toolError(err), nil
 		}
@@ -631,7 +633,7 @@ func (cfg BookToolsConfig) epubBeautifySource(ctx *Context, bookID int64) (
 	if !pluginContains(booktools.AvailableFormats(book), "EPUB") {
 		return nil, "", booktools.NewError("该书籍没有 EPUB 格式，无法美化")
 	}
-	src, err := booktools.GetFormatPath(toolLibraryDB(ctx), bookID, "EPUB")
+	src, err := requestToolFormatPath(ctx, toolLibraryDB(ctx), bookID, "EPUB", cfg.LibraryRoot)
 	if err != nil {
 		return nil, "", err
 	}
@@ -744,7 +746,7 @@ func UserTextReplaceRunHandler(cfg BookToolsConfig) HandlerFunc {
 		if format == "" {
 			return toolError(booktools.NewError("该书籍没有 TXT 或 EPUB 格式，无法执行替换")), nil
 		}
-		src, err := booktools.GetFormatPath(toolLibraryDB(ctx), bookID, format)
+		src, err := requestToolFormatPath(ctx, toolLibraryDB(ctx), bookID, format, cfg.LibraryRoot)
 		if err != nil {
 			return toolError(err), nil
 		}
@@ -819,7 +821,7 @@ func UserTxtFixerRunHandler(cfg BookToolsConfig) HandlerFunc {
 		if !pluginContains(booktools.AvailableFormats(book), "TXT") {
 			return toolError(booktools.NewError("该书籍没有 TXT 格式，无法执行修复")), nil
 		}
-		src, err := booktools.GetFormatPath(toolLibraryDB(ctx), bookID, "TXT")
+		src, err := requestToolFormatPath(ctx, toolLibraryDB(ctx), bookID, "TXT", cfg.LibraryRoot)
 		if err != nil {
 			return toolError(err), nil
 		}
@@ -887,7 +889,7 @@ func UserZhConverterRunHandler(cfg BookToolsConfig) HandlerFunc {
 		if format == "" {
 			return toolError(booktools.NewError("该书籍没有 EPUB / TXT 格式，无法转换")), nil
 		}
-		src, err := booktools.GetFormatPath(toolLibraryDB(ctx), bookID, format)
+		src, err := requestToolFormatPath(ctx, toolLibraryDB(ctx), bookID, format, cfg.LibraryRoot)
 		if err != nil {
 			return toolError(err), nil
 		}

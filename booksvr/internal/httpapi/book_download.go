@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"talebook/booksvr/internal/sourcefile"
-
-	"talebook/booksvr/internal/library"
 )
 
 // 本文件实现 /api/book/<id>.<fmt> 的书籍文件下载。
@@ -39,8 +37,8 @@ func BookDownloadHandler(cfg BookConfig) HandlerFunc {
 			return nil, notFound(ctx, "书籍不存在")
 		}
 
-		path, missing, err := library.ResolvePath(cfg.LibraryDB, bookID, format)
-		if err != nil || missing || path == "" {
+		path, err := requestFormatPath(ctx, cfg.LibraryDB, bookID, format, cfg.LibraryRoot)
+		if err != nil || path == "" {
 			return nil, notFound(ctx, fmt.Sprintf("%s格式无法下载", strings.ToLower(format)))
 		}
 		path, release, err := sourcefile.Acquire(sourceContext(ctx), path)

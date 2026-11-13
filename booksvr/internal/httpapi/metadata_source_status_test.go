@@ -161,7 +161,7 @@ func TestSourceDisabledWhileRunningDoesNotApplyResponse(t *testing.T) {
 	if e := m.network(context.Background()); e != nil {
 		t.Fatal(e)
 	}
-	b, _ := bookGetOne(w.Config(""), 1)
+	b, _ := bookGetOne(w.Config(""), nil, 1)
 	if b.Publisher != "" {
 		t.Fatal("disabled worker applied a result", b)
 	}

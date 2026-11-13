@@ -57,6 +57,10 @@ func newReaderOnlyDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher
 	}
 	server.DB = userDB
 	server.LibraryDB = db
+	if opts.accessRuntime != nil {
+		server.PrepareAccess = opts.accessRuntime.prepare
+		server.AccessCapability = opts.accessRuntime.capabilityProbe(opts.CookieSecret)
+	}
 	server.Identify = NewCookieIdentifier(opts.CookieSecret, nil)
 	server.IsPublic = func(identity Identity, id int64) (bool, error) {
 		return userdb.CanViewBook(userDB, id, identity.UserID, identity.IsAdmin)

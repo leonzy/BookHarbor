@@ -30,6 +30,7 @@ import (
 
 // ServeOptions 是 Serve 的装配参数。
 type ServeOptions struct {
+	accessRuntime *accessRuntime
 	// FullSourceSyncExecutable isolates full source snapshots from the HTTP heap.
 	FullSourceSyncExecutable string
 	PersistentScan           bool
@@ -169,6 +170,9 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if ctx.Err() != nil {
+		return nil
+	}
 	if opts.DBPath == "" {
 		return errors.New("httpapi: Serve 需要 DBPath")
 	}
@@ -202,6 +206,13 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 		}
 		defer userDB.Close()
 	}
+
+	var stopAccess func()
+	opts.accessRuntime, stopAccess, err = startAccessRuntime(ctx, opts, db, userDB)
+	if err != nil {
+		return err
+	}
+	defer stopAccess()
 
 	// 依赖 DB 句柄的服务实例由调用方在此时构造。
 	//
@@ -765,6 +776,10 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 	}).Config(opts.Demo))...)
 
 	applyCaptchaSettings(specs, CaptchaConfig{CookieSecret: opts.CookieSecret, Settings: opts.CaptchaSettings})
+	if opts.accessRuntime != nil {
+		specs = append(specs, AccessAdminRouteSpecs(AccessAdminConfig{Store: opts.accessRuntime.store, CheckRuntime: opts.accessRuntime.checkCapabilities(opts.CookieSecret, os.Getenv("BOOKSVR_ACCESS_PEERS"))})...)
+		specs = append(specs, AccessClassRouteSpecs(AccessAdminConfig{Store: opts.accessRuntime.store})...)
+	}
 	server, err := NewServer(specs)
 	if err != nil {
 		return nil, err
@@ -772,6 +787,10 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 	server.DB = userDB
 	// 作品/版本层要读 Calibre 元数据库的 books 表（work_id / edition_key）。
 	server.LibraryDB = db
+	if opts.accessRuntime != nil {
+		server.PrepareAccess = opts.accessRuntime.prepare
+		server.AccessCapability = opts.accessRuntime.capabilityProbe(opts.CookieSecret)
+	}
 	server.Identify = NewCookieIdentifier(opts.CookieSecret, nil)
 	// 接入 can_view_book：非管理员看不到他人的私藏书。
 	server.IsPublic = func(identity Identity, bookID int64) (bool, error) {

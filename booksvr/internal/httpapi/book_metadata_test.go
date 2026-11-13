@@ -139,7 +139,7 @@ func TestBookReferenceApplyFallbackPreservesOriginalPath(t *testing.T) {
 	if err != nil || result["err"] != "ok" {
 		t.Fatalf("result=%v err=%v", result, err)
 	}
-	book, err := bookGetOne(w.Config(""), 1)
+	book, err := bookGetOne(w.Config(""), nil, 1)
 	if err != nil || book.Title != "Selected title" || len(book.Authors) != 1 || book.Authors[0] != "Selected author" || book.Publisher != "Selected press" {
 		t.Fatalf("book=%+v err=%v", book, err)
 	}
@@ -185,7 +185,7 @@ func TestBookReferenceCoverOnlyReplacesManagedImage(t *testing.T) {
 	if bytes.Equal(before, after) {
 		t.Fatal("selected cover did not replace existing artwork")
 	}
-	book, _ := bookGetOne(w.Config(""), 1)
+	book, _ := bookGetOne(w.Config(""), nil, 1)
 	if book.Title != "Selected title (original edition)" {
 		t.Fatal("cover-only operation changed metadata")
 	}
@@ -217,7 +217,7 @@ func TestBookReferenceRejectsUnknownSelectionAndConflictingFlags(t *testing.T) {
 			t.Fatalf("invalid selection accepted: %v %v", result, err)
 		}
 	}
-	book, _ := bookGetOne(w.Config(""), 1)
+	book, _ := bookGetOne(w.Config(""), nil, 1)
 	if book.Title != "Selected title (original edition)" {
 		t.Fatal("invalid request changed metadata")
 	}

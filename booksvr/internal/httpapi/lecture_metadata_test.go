@@ -30,7 +30,7 @@ func TestMetadataWorkerRepairsCorroboratedLectureIdentity(t *testing.T) {
 	if err := worker.local(context.Background(), 1); err != nil {
 		t.Fatal(err)
 	}
-	b, err := bookGetOne(w.Config(""), 1)
+	b, err := bookGetOne(w.Config(""), nil, 1)
 	if err != nil || b.Title != "存在与人生" || len(b.Authors) != 1 || b.Authors[0] != "何光沪" {
 		t.Fatal(b, err)
 	}

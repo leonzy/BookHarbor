@@ -165,7 +165,7 @@ func TestUnrelatedCandidateIsFilteredAndCannotBeApplied(t *testing.T) {
 	if e != nil || result["err"] != "metadata.mismatch" {
 		t.Fatal(result, e)
 	}
-	b, _ := bookGetOne(w.Config(""), 1)
+	b, _ := bookGetOne(w.Config(""), nil, 1)
 	if b.Title != "Selected title (original edition)" || b.Publisher != "" {
 		t.Fatal("mismatched result changed the book", b)
 	}

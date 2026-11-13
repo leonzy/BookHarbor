@@ -17,7 +17,7 @@ func bookIdentityVersions(cfg BookConfig, ctx *Context, id int64) ([]map[string]
 		if cfg.CanViewBook != nil && !cfg.CanViewBook(ctx, other) {
 			continue
 		}
-		b, e := bookGetOne(cfg, other)
+		b, e := bookGetOne(cfg, ctx, other)
 		if e != nil {
 			return nil, e
 		}
@@ -35,7 +35,13 @@ func bookAttachIdentityCards(cfg BookConfig, ctx *Context, cards []map[string]an
 	for _, card := range cards {
 		ids = append(ids, int64Of(card["id"]))
 	}
-	groups, err := library.IdentityCardMembers(cfg.LibraryDB, ids)
+	var groups map[int64][]int64
+	var err error
+	if ctx.Access != nil && !ctx.Access.Unrestricted() {
+		groups, err = library.AccessIdentityCardMembers(ctx.Request.Context(), cfg.LibraryDB, *ctx.Access, ids)
+	} else {
+		groups, err = library.IdentityCardMembers(cfg.LibraryDB, ids)
+	}
 	if err != nil {
 		return err
 	}
@@ -57,7 +63,12 @@ func bookAttachIdentityCards(cfg BookConfig, ctx *Context, cards []map[string]an
 			all = append(all, id)
 		}
 	}
-	books, err := library.IdentityCardFormats(cfg.LibraryDB, all)
+	var books map[int64]*library.BookData
+	if ctx.Access != nil && !ctx.Access.Unrestricted() {
+		books, err = library.AccessIdentityCardFormats(ctx.Request.Context(), cfg.LibraryDB, *ctx.Access, all)
+	} else {
+		books, err = library.IdentityCardFormats(cfg.LibraryDB, all)
+	}
 	if err != nil {
 		return err
 	}

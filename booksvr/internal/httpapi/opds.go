@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,10 +45,10 @@ const (
 )
 
 // opdsContentType 是 OPDS 目录的 Content-Type。
-const opdsContentType = "application/atom+xml;profile=opds-catalog;type=feed;kind=acquisition"
+const opdsContentType = "application/atom+xml;profile=opds-catalog;kind=acquisition"
 
 // opdsNavContentType 是导航目录的 Content-Type。
-const opdsNavContentType = "application/atom+xml;profile=opds-catalog;type=feed;kind=navigation"
+const opdsNavContentType = "application/atom+xml;profile=opds-catalog;kind=navigation"
 
 // opdsHTTPContentType preserves compatibility with readers matching the base Atom MIME.
 const opdsHTTPContentType = "application/atom+xml; charset=utf-8"
@@ -56,18 +57,22 @@ const opdsHTTPContentType = "application/atom+xml; charset=utf-8"
 
 // atomFeedXML 是 Atom feed 的序列化结构。
 type atomFeedXML struct {
-	XMLName   xml.Name       `xml:"feed"`
-	Xmlns     string         `xml:"xmlns,attr"`
-	XmlnsDC   string         `xml:"xmlns:dc,attr"`
-	XmlnsOPDS string         `xml:"xmlns:opds,attr"`
-	Title     string         `xml:"title"`
-	Subtitle  string         `xml:"subtitle,omitempty"`
-	Author    atomAuthorXML  `xml:"author"`
-	ID        string         `xml:"id"`
-	Icon      string         `xml:"icon"`
-	Updated   string         `xml:"updated"`
-	Links     []atomLinkXML  `xml:"link"`
-	Entries   []atomEntryXML `xml:"entry"`
+	XMLName      xml.Name       `xml:"feed"`
+	Xmlns        string         `xml:"xmlns,attr"`
+	XmlnsDC      string         `xml:"xmlns:dc,attr"`
+	XmlnsOPDS    string         `xml:"xmlns:opds,attr"`
+	XmlnsSearch  string         `xml:"xmlns:opensearch,attr,omitempty"`
+	TotalResults *int           `xml:"opensearch:totalResults,omitempty"`
+	StartIndex   *int           `xml:"opensearch:startIndex,omitempty"`
+	ItemsPerPage *int           `xml:"opensearch:itemsPerPage,omitempty"`
+	Title        string         `xml:"title"`
+	Subtitle     string         `xml:"subtitle,omitempty"`
+	Author       atomAuthorXML  `xml:"author"`
+	ID           string         `xml:"id"`
+	Icon         string         `xml:"icon"`
+	Updated      string         `xml:"updated"`
+	Links        []atomLinkXML  `xml:"link"`
+	Entries      []atomEntryXML `xml:"entry"`
 }
 
 // atomAuthorXML 是 feed/entry 的作者。
@@ -162,6 +167,8 @@ func opdsBaseHref(cfg OpdsConfig) string {
 
 // opdsOffsets 计算分页偏移，对应 Python 的 Offsets。
 type opdsOffsets struct {
+	Total           int
+	PageSize        int
 	Offset          int
 	SliceUpperBound int
 	NextOffset      int
@@ -181,6 +188,8 @@ func newOpdsOffsets(offset, delta, total int) (*opdsOffsets, error) {
 	lastCurrent := offset + delta - 1
 
 	o := &opdsOffsets{
+		Total:           total,
+		PageSize:        delta,
 		Offset:          offset,
 		SliceUpperBound: offset + delta,
 		NextOffset:      lastCurrent + 1,
@@ -253,6 +262,9 @@ func newOpdsFeed(cfg OpdsConfig, id, title, subtitle string, updated time.Time) 
 			Updated:   opdsUpdated(updated),
 		},
 	}
+	if cfg.PublicURL != nil {
+		b.feed.Icon = cfg.PublicURL("/favicon.png")
+	}
 	// search / start 链接始终存在。
 	b.feed.Links = append(b.feed.Links,
 		atomLinkXML{Rel: "search", Title: "Search", Href: base + "/search/{searchTerms}", Type: "application/atom+xml"},
@@ -263,6 +275,11 @@ func newOpdsFeed(cfg OpdsConfig, id, title, subtitle string, updated time.Time) 
 
 // withNavLinks 追加 up/first/last/next/previous 链接。
 func (b *opdsFeedBuilder) withNavLinks(offsets *opdsOffsets, pageURL, upURL string, types ...string) *opdsFeedBuilder {
+	start := offsets.Offset + 1
+	b.feed.XmlnsSearch = "http://a9.com/-/spec/opensearch/1.1/"
+	b.feed.TotalResults = &offsets.Total
+	b.feed.StartIndex = &start
+	b.feed.ItemsPerPage = &offsets.PageSize
 	navType := opdsNavContentType
 	if len(types) > 0 {
 		navType = types[0]
@@ -409,7 +426,7 @@ func opdsAcquisitionEntry(cfg OpdsConfig, b library.BookData, updated time.Time,
 
 	entry := atomEntryXML{
 		Title:   title,
-		ID:      "urn:uuid:" + strconv.FormatInt(b.ID, 10),
+		ID:      opdsBookURN(cfg, b.ID),
 		Updated: opdsUpdated(updated),
 		Authors: []atomAuthorXML{{Name: authors}},
 	}
@@ -730,6 +747,8 @@ func opdsTopLevelFeed(cfg OpdsConfig, ctx *Context) ([]byte, error) {
 		b.addEntry(opdsNavCatalogEntry(cfg, updated,
 			"By "+c.title, "Books sorted by "+c.desc, c.query))
 	}
+	b.addEntry(opdsNavCatalogEntry(cfg, updated, "按页浏览 · 最新", "点选页码查看后续书目，适用于不显示翻页按钮的客户端", "Pnewest"))
+	b.addEntry(opdsNavCatalogEntry(cfg, updated, "按页浏览 · 书名", "点选页码查看后续书目，适用于不显示翻页按钮的客户端", "Ptitle"))
 	return b.bytes()
 }
 
@@ -773,6 +792,8 @@ func opdsNavCatalog(cfg OpdsConfig, ctx *Context, which string, offset int) ([]b
 		return opdsAllBooks(cfg, ctx, rest, pageURL, upURL, offset)
 	case "N":
 		return opdsCategoryNav(cfg, ctx, rest, pageURL, upURL, offset)
+	case "P":
+		return opdsPageDirectory(cfg, ctx, rest)
 	}
 	return nil, errOpdsNotFound
 }
@@ -791,6 +812,9 @@ func opdsAllBooks(cfg OpdsConfig, ctx *Context, which, pageURL, upURL string, of
 		label = "Newest"
 	}
 	feedTitle := opdsDefaultFeedTitle(cfg) + " :: By " + label
+	if ctx.Access != nil && !ctx.Access.Unrestricted() {
+		return accessOpdsFeed(cfg, ctx, library.AccessBrowseQuery{BrowseQuery: library.BrowseQuery{TimestampSort: which == "newest", TitleSort: which == "title"}}, offset, pageURL, upURL, "calibre-all:"+sortBy, feedTitle)
+	}
 	if cfg.ExcludedBookIDs != nil || (cfg.FilterVisibleBookIDs == nil && cfg.CanViewBook == nil) {
 		var excluded map[int64]bool
 		var err error
@@ -851,6 +875,9 @@ func opdsAllBookIDs(cfg OpdsConfig) ([]int64, error) {
 
 // opdsCategoryNav 构造分类导航 feed（条目少时直接列出，多时按首字母分组）。
 func opdsCategoryNav(cfg OpdsConfig, ctx *Context, which, pageURL, upURL string, offset int) ([]byte, error) {
+	if ctx.Access != nil && !ctx.Access.Unrestricted() {
+		return accessOpdsCategories(cfg, ctx, which, pageURL, upURL, offset)
+	}
 	cats, err := library.GetCategories(cfg.DB, which)
 	if err != nil {
 		return nil, err
@@ -931,6 +958,11 @@ func opdsCategoryGroup(cfg OpdsConfig, ctx *Context, categoryHex, whichHex strin
 	if err != nil {
 		return nil, errOpdsNotFound
 	}
+	if ctx.Access != nil && !ctx.Access.Unrestricted() {
+		pageURL := opdsURLFor(cfg, "opdscategorygroup", map[string]string{"category": categoryHex, "which": whichHex})
+		upURL := opdsURLFor(cfg, "opdsnavcatalog", map[string]string{"which": opdsHexlify("N" + category)})
+		return accessOpdsCategories(cfg, ctx, category, pageURL, upURL, offset, which)
+	}
 
 	cats, err := library.GetCategories(cfg.DB, category)
 	if err != nil {
@@ -1003,6 +1035,9 @@ func opdsCategory(cfg OpdsConfig, ctx *Context, categoryHex, whichHex string, of
 
 	// 搜索分类：which 就是查询词。
 	if category == "search" {
+		if ctx.Access != nil && !ctx.Access.Unrestricted() {
+			return accessOpdsFeed(cfg, ctx, library.AccessBrowseQuery{Search: rest, BrowseQuery: library.BrowseQuery{TitleSort: true}}, offset, pageURL, upURL, "calibre-search:"+rest, "")
+		}
 		ids, err := opdsSearchIDs(cfg, `search:"`+rest+`"`)
 		if err != nil {
 			return nil, fmt.Errorf("Search: %q not understood", rest)
@@ -1034,6 +1069,9 @@ func opdsCategory(cfg OpdsConfig, ctx *Context, categoryHex, whichHex string, of
 	if query == "news" {
 		query = "tags"
 	}
+	if ctx.Access != nil && !ctx.Access.Unrestricted() {
+		return accessOpdsFeed(cfg, ctx, library.AccessBrowseQuery{CategoryID: itemID, CategoryKind: query, BrowseQuery: library.BrowseQuery{TitleSort: true}}, offset, pageURL, upURL, "calibre-category:"+category+":"+strconv.FormatInt(itemID, 10), "")
+	}
 	ids, err := library.GetBooksForCategory(cfg.DB, query, itemID)
 	if err != nil {
 		return nil, err
@@ -1055,6 +1093,9 @@ func opdsCategory(cfg OpdsConfig, ctx *Context, categoryHex, whichHex string, of
 func opdsSearch(cfg OpdsConfig, ctx *Context, query string, offset int) ([]byte, error) {
 	if query == "" {
 		return nil, errOpdsNotFound
+	}
+	if ctx.Access != nil && !ctx.Access.Unrestricted() {
+		return accessOpdsFeed(cfg, ctx, library.AccessBrowseQuery{Search: query, BrowseQuery: library.BrowseQuery{TitleSort: true}}, offset, opdsURLFor(cfg, "opdssearch", map[string]string{"query": query}), opdsURLFor(cfg, "opds", nil), "calibre-search:"+query, "")
 	}
 	ids, err := opdsSearchIDs(cfg, query)
 	if err != nil {
@@ -1119,7 +1160,7 @@ func opdsOffsetArg(ctx *Context) (int, error) {
 // OpdsIndexHandler 实现 /opds/。
 func OpdsIndexHandler(cfg OpdsConfig) HandlerFunc {
 	return opdsHandler(cfg, func(ctx *Context) ([]byte, error) {
-		return opdsTopLevelFeed(cfg, ctx)
+		return opdsTopLevelFeed(opdsRequestConfig(cfg, ctx), ctx)
 	})
 }
 
@@ -1130,7 +1171,7 @@ func OpdsNavHandler(cfg OpdsConfig) HandlerFunc {
 		if err != nil {
 			return nil, err
 		}
-		return opdsNavCatalog(cfg, ctx, ctx.Param(0), offset)
+		return opdsNavCatalog(opdsRequestConfig(cfg, ctx), ctx, ctx.Param(0), offset)
 	})
 }
 
@@ -1141,7 +1182,7 @@ func OpdsCategoryHandler(cfg OpdsConfig) HandlerFunc {
 		if err != nil {
 			return nil, err
 		}
-		return opdsCategory(cfg, ctx, ctx.Param(0), ctx.Param(1), offset)
+		return opdsCategory(opdsRequestConfig(cfg, ctx), ctx, ctx.Param(0), ctx.Param(1), offset)
 	})
 }
 
@@ -1152,7 +1193,7 @@ func OpdsCategoryGroupHandler(cfg OpdsConfig) HandlerFunc {
 		if err != nil {
 			return nil, err
 		}
-		return opdsCategoryGroup(cfg, ctx, ctx.Param(0), ctx.Param(1), offset)
+		return opdsCategoryGroup(opdsRequestConfig(cfg, ctx), ctx, ctx.Param(0), ctx.Param(1), offset)
 	})
 }
 
@@ -1163,8 +1204,57 @@ func OpdsSearchHandler(cfg OpdsConfig) HandlerFunc {
 		if err != nil {
 			return nil, err
 		}
-		return opdsSearch(cfg, ctx, ctx.Param(0), offset)
+		return opdsSearch(opdsRequestConfig(cfg, ctx), ctx, ctx.Param(0), offset)
 	})
+}
+
+// Keep all catalogue, artwork and acquisition IRIs self-contained for clients
+// whose native book parser does not share the navigation parser's base URL.
+func opdsRequestConfig(cfg OpdsConfig, ctx *Context) OpdsConfig {
+	if ctx == nil || ctx.Request == nil || ctx.Request.Host == "" {
+		return cfg
+	}
+	scheme := "http"
+	if ctx.Request.TLS != nil {
+		scheme = "https"
+	}
+	forwarded := ctx.Request.Header.Get("X-Forwarded-Proto")
+	if forwarded == "" {
+		forwarded = ctx.Request.Header.Get("X-Scheme")
+	}
+	if forwarded == "http" || forwarded == "https" {
+		scheme = forwarded
+	}
+	base := &url.URL{Scheme: scheme, Host: ctx.Request.Host, Path: "/"}
+	previous := cfg.PublicURL
+	cfg.PublicURL = func(path string) string {
+		if previous != nil {
+			path = previous(path)
+		}
+		u, err := url.Parse(path)
+		if err != nil {
+			return path
+		}
+		result := base.ResolveReference(u).String()
+		if path == "" {
+			result = strings.TrimSuffix(result, "/")
+		}
+		return result
+	}
+	return cfg
+}
+
+// UUID URNs contain a UUID, never a decimal database key. A UUIDv5 of the
+// canonical book URL is stable across pages and does not alter stored IDs.
+func opdsBookURN(cfg OpdsConfig, id int64) string {
+	namespace := [16]byte{0x6b, 0xa7, 0xb8, 0x11, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8}
+	h := sha1.New()
+	h.Write(namespace[:])
+	h.Write([]byte(opdsPrefix(cfg) + "/book/" + strconv.FormatInt(id, 10)))
+	b := h.Sum(nil)[:16]
+	b[6] = (b[6] & 0x0f) | 0x50
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("urn:uuid:%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 // ---- 路由表 ----

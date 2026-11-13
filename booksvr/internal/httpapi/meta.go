@@ -129,12 +129,17 @@ func MetaListHandler(cfg MetaConfig) HandlerFunc {
 			}
 			projectedAuthors = indexed > 0
 		}
-		if meta != "author" || projectedAuthors {
+		scoped := ctx.Access != nil && !ctx.Access.Unrestricted()
+		if scoped || meta != "author" || projectedAuthors {
 			var cats []library.Category
 			var total, unfiltered int
 			var paginated bool
 			var e error
-			if projectedAuthors {
+			if scoped {
+				cats, total, e = library.AccessCategoryPage(ctx.Request.Context(), cfg.DB, *ctx.Access, metaCategory(meta), query, page, pageSize)
+				unfiltered = total
+				paginated = true
+			} else if projectedAuthors {
 				mapping, err := userdb.NewAliasService(cfg.userDB()).AuthorMapping()
 				if err != nil {
 					return nil, err
@@ -490,11 +495,11 @@ func metaCategoryBookIDs(db *sql.DB, meta, name string) ([]int64, error) {
 //
 // 对应 Python 的 `[self.fmt(b) for b in books]`：必须用完整的 BookFormatter，
 // 否则返回的书籍缺少 img / thumb / href，前端 BookCards 拿不到封面地址。
-func metaLoadBooks(cfg MetaConfig, ids []int64) ([]map[string]any, error) {
+func metaLoadBooks(ctx *Context, cfg MetaConfig, ids []int64) ([]map[string]any, error) {
 	if len(ids) == 0 {
 		return []map[string]any{}, nil
 	}
-	data, err := library.GetBooksData(cfg.DB, ids)
+	data, err := requestBooksData(ctx, cfg.DB, ids)
 	if err != nil {
 		return nil, err
 	}

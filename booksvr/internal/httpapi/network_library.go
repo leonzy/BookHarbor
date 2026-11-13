@@ -884,12 +884,17 @@ func renderBookList(ctx *Context, cfg NetworkConfig, allBooks []map[string]any,
 		}
 		count = len(filtered)
 		page := sliceInt64(filtered, start, start+delta)
-		if bookSizeSort(ctx) != "" {
+		if bookSizeSort(ctx) != "" || (ctx.Access != nil && !ctx.Access.Unrestricted()) {
 			db := ctx.LibraryDB
 			if db == nil {
 				db = ctx.DB
 			}
-			page, count, err = library.BrowseBooks(ctx.Request.Context(), db, library.BrowseQuery{Candidates: filtered, SizeSort: bookSizeSort(ctx), Start: start, Size: delta})
+			q := library.BrowseQuery{Candidates: filtered, SizeSort: bookSizeSort(ctx), Start: start, Size: delta}
+			if ctx.Access != nil && !ctx.Access.Unrestricted() {
+				page, count, err = library.AccessBrowseBooks(ctx.Request.Context(), db, *ctx.Access, library.AccessBrowseQuery{BrowseQuery: q})
+			} else {
+				page, count, err = library.BrowseBooks(ctx.Request.Context(), db, q)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -964,7 +969,7 @@ func loadFormattedBooks(ctx *Context, cfg NetworkConfig, ids []int64) ([]map[str
 	if db == nil {
 		db = ctx.DB
 	}
-	data, err := library.GetBooksData(db, ids)
+	data, err := requestBooksData(ctx, db, ids)
 	if err != nil {
 		return nil, err
 	}

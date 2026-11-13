@@ -254,17 +254,27 @@ func audioGenerationCapability(cfg AudioConfig, ctx *Context, book library.BookD
 }
 
 // audioLoadBooks 按 id 批量取书并建索引。
-func audioLoadBooks(cfg AudioConfig, ids []int64) (map[int64]library.BookData, error) {
+func audioLoadBooks(cfg AudioConfig, ids []int64, contexts ...*Context) (map[int64]library.BookData, error) {
 	out := map[int64]library.BookData{}
 	if len(ids) == 0 {
 		return out, nil
 	}
-	books, err := library.GetBooksData(cfg.LibraryDB, ids)
-	if err != nil {
-		return nil, err
+	var ctx *Context
+	if len(contexts) > 0 {
+		ctx = contexts[0]
 	}
-	for _, b := range books {
-		out[b.ID] = b
+	for start := 0; start < len(ids); start += 500 {
+		end := start + 500
+		if end > len(ids) {
+			end = len(ids)
+		}
+		books, err := requestBooksData(ctx, cfg.LibraryDB, ids[start:end])
+		if err != nil {
+			return nil, err
+		}
+		for _, b := range books {
+			out[b.ID] = b
+		}
 	}
 	return out, nil
 }
@@ -314,7 +324,7 @@ func AudioHomeHandler(cfg AudioConfig) HandlerFunc {
 		for _, e := range visible {
 			ids = append(ids, e.BookID)
 		}
-		books, err := audioLoadBooks(cfg, ids)
+		books, err := audioLoadBooks(cfg, ids, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -392,7 +402,7 @@ func AudioListHandler(cfg AudioConfig) HandlerFunc {
 		for _, e := range visible {
 			ids = append(ids, e.BookID)
 		}
-		books, err := audioLoadBooks(cfg, ids)
+		books, err := audioLoadBooks(cfg, ids, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -428,7 +438,7 @@ func AudioDetailHandler(cfg AudioConfig) HandlerFunc {
 		if err != nil {
 			return map[string]any{"err": "not_found", "msg": "书籍不存在"}, nil
 		}
-		books, err := library.GetBooksData(cfg.LibraryDB, []int64{bookID})
+		books, err := requestBooksData(ctx, cfg.LibraryDB, []int64{bookID})
 		if err != nil {
 			return nil, err
 		}
@@ -951,7 +961,7 @@ func PodcastFeedHandler(cfg AudioConfig) HandlerFunc {
 		if err != nil {
 			return nil, err
 		}
-		if sub == nil {
+		if !authorizePodcast(ctx, cfg, sub) {
 			http.Error(ctx.Writer, "Not Found", http.StatusNotFound)
 			return nil, nil
 		}
@@ -970,6 +980,20 @@ func PodcastFeedHandler(cfg AudioConfig) HandlerFunc {
 func audioSubscriptionByToken(cfg AudioConfig, token string) (*userdb.PodcastSubscription, error) {
 	sum := sha256.Sum256([]byte(token))
 	return userdb.GetPodcastSubscriptionByTokenHash(cfg.DB, hex.EncodeToString(sum[:]))
+}
+
+func authorizePodcast(ctx *Context, cfg AudioConfig, sub *userdb.PodcastSubscription) bool {
+	if sub == nil || !sub.Active || sub.RevokedAt != "" || sub.FrozenAt != "" {
+		return false
+	}
+	if ctx.reauthorize == nil {
+		return ctx.Access == nil
+	}
+	reader, err := userdb.GetReaderByID(cfg.DB, sub.ReaderID)
+	if err != nil || reader == nil || !reader.Active {
+		return false
+	}
+	return ctx.reauthorize(Identity{UserID: reader.ID, Username: reader.Username, IsAdmin: reader.Admin}) == nil
 }
 
 // podcastFeedXML 是播客 RSS 的序列化结构。
@@ -1055,9 +1079,20 @@ func PodcastCoverHandler(cfg AudioConfig) HandlerFunc {
 			return nil, nil
 		}
 		sub, err := audioSubscriptionByToken(cfg, token)
-		if err != nil || sub == nil {
+		if err != nil || !authorizePodcast(ctx, cfg, sub) {
 			http.Error(ctx.Writer, "Not Found", http.StatusNotFound)
 			return nil, nil
+		}
+		if cfg.CanViewBook != nil && !cfg.CanViewBook(ctx, bookID) {
+			http.NotFound(ctx.Writer, ctx.Request)
+			return nil, nil
+		}
+		if ctx.Access != nil && !ctx.Access.Unrestricted() {
+			allowed, e := (library.AccessStore{DB: cfg.LibraryDB}).AccessCanShareCover(ctx.Request.Context(), *ctx.Access, bookID)
+			if e != nil || !allowed {
+				http.NotFound(ctx.Writer, ctx.Request)
+				return nil, nil
+			}
 		}
 		cover, err := library.Cover(cfg.LibraryDB, bookID, "")
 		if err != nil || cover == nil {
@@ -1075,7 +1110,7 @@ func PodcastSiteCoverHandler(cfg AudioConfig) HandlerFunc {
 	return func(ctx *Context) (map[string]any, error) {
 		token := ctx.Param(0)
 		sub, err := audioSubscriptionByToken(cfg, token)
-		if err != nil || sub == nil {
+		if err != nil || !authorizePodcast(ctx, cfg, sub) {
 			http.Error(ctx.Writer, "Not Found", http.StatusNotFound)
 			return nil, nil
 		}
@@ -1099,7 +1134,7 @@ func PodcastAudioHandler(cfg AudioConfig) HandlerFunc {
 			return nil, nil
 		}
 		sub, err := audioSubscriptionByToken(cfg, token)
-		if err != nil || sub == nil {
+		if err != nil || !authorizePodcast(ctx, cfg, sub) {
 			http.Error(ctx.Writer, "Not Found", http.StatusNotFound)
 			return nil, nil
 		}
@@ -1108,7 +1143,7 @@ func PodcastAudioHandler(cfg AudioConfig) HandlerFunc {
 			http.Error(ctx.Writer, "Not Found", http.StatusNotFound)
 			return nil, nil
 		}
-		if cfg.AudioFile == nil {
+		if (cfg.CanViewBook != nil && !cfg.CanViewBook(ctx, edition.BookID)) || cfg.AudioFile == nil {
 			http.Error(ctx.Writer, "Not Found", http.StatusNotFound)
 			return nil, nil
 		}

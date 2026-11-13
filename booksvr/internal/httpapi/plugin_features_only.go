@@ -43,6 +43,10 @@ func newPluginFeaturesOnlyDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Di
 	}
 	server.DB = userDB
 	server.LibraryDB = db
+	if opts.accessRuntime != nil {
+		server.PrepareAccess = opts.accessRuntime.prepare
+		server.AccessCapability = opts.accessRuntime.capabilityProbe(opts.CookieSecret)
+	}
 	server.Identify = NewCookieIdentifier(opts.CookieSecret, nil)
 	return NewDispatcher(server, opts.TornadoURL, nil, true)
 }

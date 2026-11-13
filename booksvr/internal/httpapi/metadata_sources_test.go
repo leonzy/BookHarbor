@@ -240,7 +240,7 @@ func TestGuardedNetworkFillRejectsConcurrentIdentityChanges(t *testing.T) {
 	if e != nil || len(fields) != 0 {
 		t.Fatal(fields, e)
 	}
-	b, _ := bookGetOne(w.Config(""), 1)
+	b, _ := bookGetOne(w.Config(""), nil, 1)
 	if b.Publisher != "" || b.Comments != "" {
 		t.Fatal("stale response mixed metadata", b)
 	}

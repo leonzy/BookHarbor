@@ -356,12 +356,12 @@ func toStrSetting(settings map[string]any, key string) string {
 }
 
 // bookLoadBooks 按 id 批量取书并建索引。
-func bookLoadBooks(cfg BookConfig, ids []int64) (map[int64]library.BookData, error) {
+func bookLoadBooks(cfg BookConfig, ctx *Context, ids []int64) (map[int64]library.BookData, error) {
 	out := map[int64]library.BookData{}
 	if len(ids) == 0 {
 		return out, nil
 	}
-	books, err := library.GetBooksData(cfg.LibraryDB, ids)
+	books, err := requestBooksData(ctx, cfg.LibraryDB, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -413,6 +413,12 @@ func bookAttachStates(cfg BookConfig, ctx *Context, books []map[string]any) ([]m
 
 // bookRenderList 复刻 ListHandler.render_book_list。
 func bookRenderList(cfg BookConfig, ctx *Context, ids []int64, title string, sortByID bool) (map[string]any, error) {
+	if ctx.Access != nil && !ctx.Access.Unrestricted() {
+		if cfg.BrowsePage == nil {
+			return nil, library.ErrAccessNotReady
+		}
+		return bookBrowsePage(cfg, ctx, library.BrowseQuery{Candidates: ids}, title)
+	}
 	if bookSizeSort(ctx) != "" && cfg.BrowsePage != nil {
 		return bookBrowsePage(cfg, ctx, library.BrowseQuery{Candidates: ids}, title)
 	}
@@ -442,7 +448,7 @@ func bookRenderList(cfg BookConfig, ctx *Context, ids []int64, title string, sor
 
 // bookRenderResolvedPage renders an already filtered and paginated SQL result.
 func bookRenderResolvedPage(cfg BookConfig, ctx *Context, page []int64, title string, count int, sortByID bool) (map[string]any, error) {
-	booksMap, err := bookLoadBooks(cfg, page)
+	booksMap, err := bookLoadBooks(cfg, ctx, page)
 	if err != nil {
 		return nil, err
 	}
@@ -651,7 +657,7 @@ func bookIndexSample(cfg BookConfig, ctx *Context, ids []int64, count int) ([]ma
 	}
 	picked := bookSampleIDs(pool, count)
 
-	booksMap, err := bookLoadBooks(cfg, picked)
+	booksMap, err := bookLoadBooks(cfg, ctx, picked)
 	if err != nil {
 		return nil, err
 	}
@@ -845,6 +851,28 @@ func BookSearchHandler(cfg BookConfig) HandlerFunc {
 		if strings.TrimSpace(name) == "" {
 			return map[string]any{"err": "params.invalid", "msg": "请输入搜索关键字"}, nil
 		}
+		if ctx.Access != nil && !ctx.Access.Unrestricted() {
+			q := library.AccessBrowseQuery{Search: name, BrowseQuery: library.BrowseQuery{GroupWorks: true, SizeSort: bookSizeSort(ctx), Start: bookArgumentStart(ctx), Size: bookPageDelta(ctx, bookMaxPageSize(cfg))}}
+			q.SearchRelevance = true
+			var err error
+			if cfg.AliasBookIDs != nil {
+				q.SearchAliasIDs, err = cfg.AliasBookIDs(ctx, name)
+				if err != nil {
+					return nil, err
+				}
+			}
+			if cfg.AliasAuthorNames != nil {
+				q.SearchAuthors, err = cfg.AliasAuthorNames(ctx, name)
+				if err != nil {
+					return nil, err
+				}
+			}
+			ids, total, err := library.AccessBrowseBooks(ctx.Request.Context(), cfg.LibraryDB, *ctx.Access, q)
+			if err != nil {
+				return nil, err
+			}
+			return bookRenderResolvedPage(cfg, ctx, ids, fmt.Sprintf("搜索：%s", name), total, false)
+		}
 		idSet := map[int64]bool{}
 		if cfg.Search != nil {
 			ids, err := cfg.Search(ctx, name)
@@ -957,7 +985,7 @@ func BookHotHandler(cfg BookConfig) HandlerFunc {
 			}
 			ids, count = got, total
 		}
-		booksMap, err := bookLoadBooks(cfg, ids)
+		booksMap, err := bookLoadBooks(cfg, ctx, ids)
 		if err != nil {
 			return nil, err
 		}
@@ -1009,7 +1037,7 @@ func bookReadingListHandler(cfg BookConfig, readState int64, title string) Handl
 				return nil, err
 			}
 		}
-		booksMap, err := bookLoadBooks(cfg, ids)
+		booksMap, err := bookLoadBooks(cfg, ctx, ids)
 		if err != nil {
 			return nil, err
 		}
@@ -1038,7 +1066,7 @@ func BookReadStateHandler(cfg BookConfig) HandlerFunc {
 			return map[string]any{"err": "user.need_login", "msg": "请先登录"}, nil
 		}
 		if ctx.Request.Method == http.MethodPost {
-			book, err := bookGetOne(cfg, bookID)
+			book, err := bookGetOne(cfg, ctx, bookID)
 			if err != nil {
 				return nil, err
 			}
@@ -1100,7 +1128,7 @@ func BookProgressHandler(cfg BookConfig) HandlerFunc {
 
 // bookSaveProgress 保存阅读进度（上限 8 KiB）。
 func bookSaveProgress(cfg BookConfig, ctx *Context, bookID int64) (map[string]any, error) {
-	book, err := bookGetOne(cfg, bookID)
+	book, err := bookGetOne(cfg, ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -1153,7 +1181,7 @@ func BookReadingStatsHandler(cfg BookConfig) HandlerFunc {
 			ids = append(ids, s.BookID)
 			stateByID[s.BookID] = s
 		}
-		booksMap, err := bookLoadBooks(cfg, ids)
+		booksMap, err := bookLoadBooks(cfg, ctx, ids)
 		if err != nil {
 			return nil, err
 		}
@@ -1173,8 +1201,8 @@ func BookReadingStatsHandler(cfg BookConfig) HandlerFunc {
 }
 
 // bookGetOne 取单本书；不存在返回 nil。
-func bookGetOne(cfg BookConfig, bookID int64) (*library.BookData, error) {
-	books, err := library.GetBooksData(cfg.LibraryDB, []int64{bookID})
+func bookGetOne(cfg BookConfig, ctx *Context, bookID int64) (*library.BookData, error) {
+	books, err := requestBooksData(ctx, cfg.LibraryDB, []int64{bookID})
 	if err != nil {
 		return nil, err
 	}
@@ -1186,7 +1214,7 @@ func bookGetOne(cfg BookConfig, bookID int64) (*library.BookData, error) {
 
 func bookBrowsePage(cfg BookConfig, ctx *Context, q library.BrowseQuery, title string) (map[string]any, error) {
 	var err error
-	if cfg.PrivateBookIDs != nil {
+	if cfg.PrivateBookIDs != nil && (ctx.Access == nil || ctx.Access.Unrestricted()) {
 		q.Excluded, err = cfg.PrivateBookIDs(ctx)
 		if err != nil {
 			return nil, err

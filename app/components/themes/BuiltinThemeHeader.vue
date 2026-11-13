@@ -163,6 +163,7 @@
                         :title="t('messages.adminEntry')"
                         prepend-icon="mdi-console"
                     />
+                    <v-list-item v-if="store.user.is_admin" to="/admin/access" :title="t('accessControl.page.title')" prepend-icon="mdi-shield-account-outline" />
                     <v-divider />
                     <v-list-item
                         to="/logout"

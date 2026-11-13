@@ -204,6 +204,9 @@ type ImportOptions struct {
 	ConvertText func(string) string
 	// CollectorID 是操作用户 ID（创建收藏记录）。
 	CollectorID int64
+	// SourceFormat and LibraryRoot preserve inherited access restrictions.
+	SourceFormat string
+	LibraryRoot  string
 }
 
 // ImportAsNewBook 以新书身份入库：复用原书完整元数据，标题追加后缀。
@@ -251,7 +254,7 @@ func ImportAsNewBook(db *sql.DB, srcBookID int64, outPath string, opts ImportOpt
 		language = "zho"
 	}
 
-	newBookID, err := insertBook(db, src, title, authors, language, outPath)
+	newBookID, err := insertBook(db, src, title, authors, language, outPath, opts)
 	if err != nil {
 		return 0, err
 	}
@@ -270,7 +273,7 @@ func ImportAsNewBook(db *sql.DB, srcBookID int64, outPath string, opts ImportOpt
 // 对应 Calibre 的 `db.import_book(mi, [out_path])`：建 books 行、关联
 // 作者/出版社/标签/丛书/语言、写简介与标识符、登记格式文件。
 func insertBook(db *sql.DB, src *library.BookData, title string, authors []string,
-	language, outPath string) (int64, error) {
+	language, outPath string, options ...ImportOptions) (int64, error) {
 	tx, err := db.Begin()
 	if err != nil {
 		return 0, err
@@ -290,6 +293,13 @@ func insertBook(db *sql.DB, src *library.BookData, title string, authors []strin
 	}
 	bookID, err := res.LastInsertId()
 	if err != nil {
+		return 0, err
+	}
+	opt := ImportOptions{}
+	if len(options) > 0 {
+		opt = options[0]
+	}
+	if err = library.InheritAccessSource(src.ID, opt.SourceFormat, bookID, strings.TrimPrefix(filepath.Ext(outPath), "."), opt.LibraryRoot)(tx); err != nil {
 		return 0, err
 	}
 

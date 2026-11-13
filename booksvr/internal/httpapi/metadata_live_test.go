@@ -54,14 +54,14 @@ func TestTrustedLiveAutomaticOpenLibrary(t *testing.T) {
 	if e = worker.local(context.Background(), 1); e != nil {
 		t.Fatal(e)
 	}
-	before, e := bookGetOne(w.Config(""), 1)
+	before, e := bookGetOne(w.Config(""), nil, 1)
 	if e != nil || before.Publisher != "" || before.ISBN != "9780141439518" {
 		t.Fatal(before, e)
 	}
 	if e = runMetadataNetwork(t, worker); e != nil {
 		t.Fatal(e)
 	}
-	after, e := bookGetOne(w.Config(""), 1)
+	after, e := bookGetOne(w.Config(""), nil, 1)
 	if e != nil || after.Publisher == "" {
 		t.Fatal("live worker did not fill publisher", after, e)
 	}

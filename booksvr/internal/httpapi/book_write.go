@@ -27,7 +27,7 @@ import (
 //  3. 外部索引书仅删除书库登记，元数据进入回收站，源文件不动；
 //  4. 可恢复删除保留扫描记录与别名，避免扫描立即重导入；永久删除清理关联。
 func (w *bookWiring) bookDelete(ctx *Context, bookID int64) (map[string]any, error) {
-	book, err := bookGetOne(w.Config(""), bookID)
+	book, err := bookGetOne(w.Config(""), ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (w *bookWiring) recordHistory(ctx *Context, bookID int64, title, action str
 
 // bookDeleteFormat 复刻 Python BookDeleteFormat.post。
 func (w *bookWiring) bookDeleteFormat(ctx *Context, bookID int64, format string) (map[string]any, error) {
-	book, err := bookGetOne(w.Config(""), bookID)
+	book, err := bookGetOne(w.Config(""), ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ func (w *bookWiring) bookDeleteFormat(ctx *Context, bookID int64, format string)
 
 // bookEdit 复刻 Python BookEdit.post 的字段写入部分。
 func (w *bookWiring) bookEdit(ctx *Context, bookID int64, args map[string]any) (map[string]any, error) {
-	book, err := bookGetOne(w.Config(""), bookID)
+	book, err := bookGetOne(w.Config(""), ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -491,7 +491,7 @@ func ensureNamedRow(tx *sql.Tx, table, column, name string) (int64, error) {
 //   - 只有 TXT → 重定向到 /book/<id>/readtxt
 //   - 只有 mobi/azw/azw3 → Readest 直接读取原文件，不创建转换任务
 func (w *bookWiring) bookReadBook(ctx *Context, bookID int64) (map[string]any, error) {
-	book, err := bookGetOne(w.Config(""), bookID)
+	book, err := bookGetOne(w.Config(""), ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -504,7 +504,7 @@ func (w *bookWiring) bookReadBook(ctx *Context, bookID int64) (map[string]any, e
 		return nil, nil
 	}
 
-	formats := w.availableFormats(bookID)
+	formats := book.Formats
 	has := map[string]bool{}
 	for _, f := range formats {
 		has[strings.ToLower(f)] = true
@@ -734,7 +734,7 @@ func (w *bookWiring) bookReaderBootstrap(ctx *Context, bookID int64) (map[string
 		return map[string]any{"err": "reader.engine_unsupported"}, nil
 	}
 
-	book, err := bookGetOne(w.Config(""), bookID)
+	book, err := bookGetOne(w.Config(""), ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -751,7 +751,7 @@ func (w *bookWiring) bookReaderBootstrap(ctx *Context, bookID int64) (map[string
 		return map[string]any{"err": "permission"}, nil
 	}
 
-	format, epubPath := w.readerSource(bookID, ctx.Query("format"))
+	format, epubPath := w.readerSourceFor(ctx, bookID, ctx.Query("format"))
 	if epubPath == "" {
 		if ctx.Writer != nil {
 			ctx.Writer.WriteHeader(http.StatusNotFound)
@@ -824,7 +824,7 @@ func readerBootstrapCapabilities() map[string]any {
 
 // bookReadTxt 返回 TXT 阅读内容（按章节切分）。
 func (w *bookWiring) bookReadTxt(ctx *Context, bookID int64) (map[string]any, error) {
-	book, err := bookGetOne(w.Config(""), bookID)
+	book, err := bookGetOne(w.Config(""), ctx, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -838,7 +838,7 @@ func (w *bookWiring) bookReadTxt(ctx *Context, bookID int64) (map[string]any, er
 		return map[string]any{"err": "format.not_found", "msg": "书籍不包含 TXT 格式"}, nil
 	}
 
-	path, err := library.FormatAbsPath(w.libraryDB, bookID, "TXT", w.libraryRoot)
+	path, err := requestFormatPath(ctx, w.libraryDB, bookID, "TXT", w.libraryRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -888,6 +888,9 @@ func (w *bookWiring) bookReadTxt(ctx *Context, bookID int64) (map[string]any, er
 // canView 判定当前请求方能否查看该书。
 func (w *bookWiring) canView(ctx *Context, bookID int64) bool {
 	ok, err := userdb.CanViewBook(w.db, bookID, ctx.Identity.UserID, ctx.Identity.IsAdmin)
+	if err == nil && ok && ctx.Access != nil && !ctx.Access.Unrestricted() {
+		ok, err = (library.AccessStore{DB: w.libraryDB}).AccessCanViewBook(ctx.Request.Context(), *ctx.Access, bookID)
+	}
 	return err == nil && ok
 }
 
@@ -900,7 +903,7 @@ func (w *bookWiring) bookReadResource(ctx *Context, bookID int64, name string) (
 	if _, ok := readerFormatMIME[format]; !ok || name != fmt.Sprintf("%d.%s", bookID, format) {
 		return "", fmt.Errorf("httpapi: 非法阅读资源")
 	}
-	_, path := w.readerSource(bookID, format)
+	_, path := w.readerSourceFor(ctx, bookID, format)
 	if path == "" {
 		return "", fmt.Errorf("httpapi: 原文件不存在")
 	}
@@ -921,6 +924,26 @@ var readerFormatMIME = map[string]string{
 	"mobi": "application/x-mobipocket-ebook",
 	"azw":  "application/vnd.amazon.ebook",
 	"azw3": "application/vnd.amazon.mobi8-ebook",
+}
+
+func (w *bookWiring) readerSourceFor(ctx *Context, bookID int64, requested string) (string, string) {
+	if ctx.Access == nil || ctx.Access.Revision() == 0 || ctx.Identity.IsAdmin {
+		return w.readerSource(bookID, requested)
+	}
+	formats := []string{"epub", "azw3", "mobi", "azw"}
+	if requested != "" {
+		formats = []string{strings.ToLower(requested)}
+	}
+	for _, format := range formats {
+		if _, ok := readerFormatMIME[format]; !ok {
+			continue
+		}
+		path, err := requestFormatPath(ctx, w.libraryDB, bookID, format, w.libraryRoot)
+		if err == nil && path != "" {
+			return format, path
+		}
+	}
+	return "", ""
 }
 
 func (w *bookWiring) readerSource(bookID int64, requested string) (string, string) {
