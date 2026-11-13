@@ -23,6 +23,7 @@ import (
 	textunicode "golang.org/x/text/encoding/unicode"
 	"talebook/booksvr/internal/epubpath"
 	"talebook/booksvr/internal/importmeta"
+	"talebook/booksvr/internal/normalize"
 )
 
 const TextLimit = 512 << 10
@@ -80,11 +81,14 @@ func ISBN(s string) string {
 }
 
 func UnknownAuthor(s string) bool {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "", "佚名", "未知", "未知作者", "不详", "unknown", "unknown author", "anonymous":
-		return true
+	for _, name := range normalize.CleanAuthors([]string{s}) {
+		switch strings.ToLower(strings.TrimSpace(name)) {
+		case "", "佚名", "未知", "未知作者", "不详", "unknown", "unknown author", "anonymous":
+		default:
+			return false
+		}
 	}
-	return false
+	return true
 }
 func MissingAuthors(a []string) bool {
 	for _, s := range a {
@@ -95,7 +99,7 @@ func MissingAuthors(a []string) bool {
 	return true
 }
 
-var labels = regexp.MustCompile(`(?im)(ISBN(?:[-－](?:10|13))?|书名|作者|著者|作\s*者|出版社|出版发行|出版单位|出版时间|出版日期|Title|Author|Publisher)\s*[:：]\s*`)
+var labels = regexp.MustCompile(`(?im)(ISBN(?:[-－](?:10|13))?|书名|作者|著者|作[\t ]*者|出版社|出版发行|出版单位|出版时间|出版日期|Title|Author|Publisher)[\t ]*[:：][\t ]*`)
 var isbnText = regexp.MustCompile(`(?i)(?:ISBN(?:[-－](?:10|13))?|国际标准书号)\s*[:：]?\s*((?:97[89][\s-]*)?[0-9０-９][0-9０-９Xx\s-]{8,25})`)
 
 // FromText only trusts explicitly labelled fields, never free-form prose guesses.
@@ -133,7 +137,7 @@ func FromText(text string) importmeta.Metadata {
 			}
 		case "作者", "著者", "author":
 			if len(m.Authors) == 0 && utf8.RuneCountInString(v) <= 80 && !UnknownAuthor(v) {
-				m.Authors = []string{v}
+				m.Authors = normalize.CleanAuthors([]string{v})
 			}
 		case "出版社", "出版发行", "出版单位", "publisher":
 			if m.Publisher == "" && ISBN(v) == "" {
@@ -479,7 +483,25 @@ func palmText(path string) string {
 	}
 	count := int(binary.BigEndian.Uint16(h[8:]))
 	var out []byte
-	for i := 1; i < n && i <= count && i <= 32 && len(out) < TextLimit; i++ {
+	// MOBI explicitly declares its text encoding. Record trailers and a bounded
+	// read ending mid-codepoint must not turn an entire UTF-8 book into GB18030.
+	encoding := make([]byte, 16)
+	_, _ = f.ReadAt(encoding, off+16)
+	utf8Text := string(encoding[:4]) == "MOBI" && binary.BigEndian.Uint32(encoding[12:]) == 65001
+	var trailingFlags uint32
+	if string(encoding[:4]) == "MOBI" && binary.BigEndian.Uint32(encoding[4:]) >= 228 {
+		flags := make([]byte, 4)
+		if _, err := f.ReadAt(flags, off+240); err == nil {
+			trailingFlags = binary.BigEndian.Uint32(flags)
+		}
+	}
+	finish := func() string {
+		if utf8Text {
+			return visible(bytes.ToValidUTF8(out, []byte("�")))
+		}
+		return visible(out)
+	}
+	for i := 1; i < n && i <= count && i <= 128 && len(out) < TextLimit; i++ {
 		start := int64(binary.BigEndian.Uint32(table[i*8:]))
 		end := start + 65536
 		if i+1 < n {
@@ -491,8 +513,14 @@ func palmText(path string) string {
 		b := make([]byte, end-start)
 		nr, _ := f.ReadAt(b, start)
 		b = b[:nr]
+		var valid bool
+		b, valid = palmWithoutTrailer(b, trailingFlags)
+		if !valid {
+			break
+		}
+		recordStart := len(out)
 		if compression == 1 {
-			out = append(out, b...)
+			out = append(out, b[:min(len(b), TextLimit-len(out))]...)
 			continue
 		}
 		for p := 0; p < len(b) && len(out) < TextLimit; {
@@ -519,8 +547,8 @@ func palmText(path string) string {
 				p++
 				distance := (pair >> 3) & 2047
 				length := (pair & 7) + 3
-				if distance == 0 || distance > len(out) {
-					return visible(out)
+				if distance == 0 || distance > len(out)-recordStart {
+					return finish()
 				}
 				for j := 0; j < length; j++ {
 					out = append(out, out[len(out)-distance])
@@ -528,10 +556,11 @@ func palmText(path string) string {
 			}
 		}
 	}
-	return visible(out)
+	return finish()
 }
 
 func Supplement(ctx context.Context, path, format string, m importmeta.Metadata, logicalNames ...string) importmeta.Metadata {
+	m.Authors = normalize.CleanAuthors(m.Authors)
 	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	if len(logicalNames) > 0 {
 		name = strings.TrimSuffix(filepath.Base(logicalNames[0]), filepath.Ext(logicalNames[0]))
@@ -547,9 +576,21 @@ func Supplement(ctx context.Context, path, format string, m importmeta.Metadata,
 	if m.ISBN == "" || MissingAuthors(m.Authors) || m.Publisher == "" || (strings.EqualFold(format, "txt") && m.Comments == "") {
 		switch strings.ToLower(format) {
 		case "epub":
-			Merge(&m, FromText(epubText(path)))
+			text := epubText(path)
+			Merge(&m, FromText(text))
+			if MissingAuthors(m.Authors) {
+				if author := prefaceAuthor(text, m.Title); author != "" {
+					m.Authors = []string{author}
+				}
+			}
 		case "mobi", "azw", "azw3":
-			Merge(&m, FromText(palmText(path)))
+			text := palmText(path)
+			Merge(&m, FromText(text))
+			if MissingAuthors(m.Authors) {
+				if author := prefaceAuthor(text, m.Title); author != "" {
+					m.Authors = []string{author}
+				}
+			}
 		case "pdf":
 			Merge(&m, pdf(ctx, path))
 		case "txt":

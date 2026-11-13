@@ -361,8 +361,8 @@ func (m *metadataWorker) network(ctx context.Context) error {
 			continue
 		}
 		book := metadataLookupBook(books[0])
-		if localmeta.ISBN(book.ISBN) == "" && localmeta.MissingAuthors(book.Authors) {
-			if e = m.saveJob(task.book, "insufficient", "缺少有效 ISBN，且无法确认作者，等待补充身份信息", 0); e != nil {
+		if !metadataSearchable(book) {
+			if e = m.saveJob(task.book, "insufficient", "缺少可用于检索的书名和有效 ISBN", 0); e != nil {
 				return e
 			}
 			continue
@@ -582,7 +582,8 @@ func (m *metadataWorker) finishSource(r sourceResult, settings map[string]any) e
 			}
 		}
 	}
-	if record == nil || matchingMetadata(book, []map[string]any{record}) == nil {
+	record = matchingMetadata(book, []map[string]any{record})
+	if record == nil {
 		if e = m.setSourceOutcome(t, "no_match", nil); e != nil {
 			return e
 		}

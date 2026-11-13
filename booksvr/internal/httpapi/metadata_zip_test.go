@@ -86,7 +86,7 @@ func TestMetadataZIPReadOnlySources(t *testing.T) {
 					t.Fatal(status, b)
 				}
 			case "insufficient":
-				if status != "insufficient" || b.ISBN != "" {
+				if status != "network_pending" || b.ISBN != "" {
 					t.Fatal(status, b)
 				}
 			case "locked":

@@ -26,6 +26,13 @@ type IdentityResult struct {
 	ID, WorkID int64
 	Members    []int64
 	Reason     string
+	ack        map[int64]identityAck
+}
+
+type identityAck struct {
+	version   int64
+	signature string
+	work      int64
 }
 
 var ErrIdentityAmbiguous = errors.New("identity candidates require review")
@@ -451,14 +458,11 @@ func ReconcileBookIdentity(db *sql.DB, id int64, dry bool) (IdentityResult, erro
 			members = append(members, next)
 		}
 	}
-	compatible := current.Metadata.ISBN != "!conflict"
-	for i := range members {
-		for j := 0; j < i; j++ {
-			if !bookidentity.Compare(members[i].Metadata, members[j].Metadata).Work {
-				compatible = false
-			}
-		}
+	metadata := make([]bookidentity.Metadata, 0, len(members))
+	for _, member := range members {
+		metadata = append(metadata, member.Metadata)
 	}
+	compatible := current.Metadata.ISBN != "!conflict" && bookidentity.GroupCompatible(metadata)
 	if !compatible {
 		members = []IdentityBook{current}
 		reason = "conflicting_candidates"
@@ -504,6 +508,33 @@ func ReconcileBookIdentity(db *sql.DB, id int64, dry bool) (IdentityResult, erro
 			return result, err
 		}
 	}
+	marks := make([]string, 0, len(members))
+	args := make([]any, 0, len(members))
+	signatures := map[int64]string{}
+	for _, b := range members {
+		marks = append(marks, "?")
+		args = append(args, b.ID)
+		signatures[b.ID] = identitySignature(b.Metadata)
+	}
+	rows, e := tx.Query(`SELECT book_id,version FROM book_identity_queue WHERE book_id IN (`+strings.Join(marks, ",")+`)`, args...)
+	if e != nil {
+		return result, e
+	}
+	result.ack = map[int64]identityAck{}
+	for rows.Next() {
+		var id, version int64
+		if e = rows.Scan(&id, &version); e != nil {
+			rows.Close()
+			return result, e
+		}
+		result.ack[id] = identityAck{version, signatures[id], work}
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil {
+		return result, e
+	}
+	// Generations are captured before our writes can fire metadata-change triggers.
 	for _, b := range members {
 		k := bookidentity.Key(b.Metadata)
 		if _, err = tx.Exec(`UPDATE books SET work_id=?,title_norm=?,author_norm=? WHERE id=?`, work, k.Title, k.Authors, b.ID); err != nil {
@@ -515,6 +546,25 @@ func ReconcileBookIdentity(db *sql.DB, id int64, dry bool) (IdentityResult, erro
 	}
 	result.WorkID = work
 	return result, tx.Commit()
+}
+
+func acknowledgeIdentity(db *sql.DB, id, version int64, result IdentityResult) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, captured := result.ack[id]; !captured {
+		if _, err = tx.Exec(`DELETE FROM book_identity_queue WHERE book_id=? AND version=?`, id, version); err != nil {
+			return err
+		}
+	}
+	for member, proof := range result.ack {
+		if _, err = tx.Exec(`DELETE FROM book_identity_queue WHERE book_id=? AND version=? AND EXISTS(SELECT 1 FROM book_identity_keys k JOIN books b ON b.id=k.book_id WHERE k.book_id=? AND k.signature=? AND k.managed_work=? AND b.work_id=k.managed_work)`, member, proof.version, member, proof.signature, proof.work); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // IdentityVersions is bounded and read-only; HTTP must filter each ID by visibility.
@@ -571,6 +621,16 @@ func RunIdentityBatch(ctx context.Context, db *sql.DB, owner string, limit int) 
 	defer db.Exec(`DELETE FROM book_identity_lease WHERE id=1 AND owner=?`, owner)
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
+		return 0, err
+	}
+	// Acquire the writer before reading a snapshot. Source synchronization and
+	// metadata updates may otherwise commit between the read and its upgrade.
+	if _, err = tx.ExecContext(ctx, `UPDATE book_identity_state SET value=value WHERE key='cursor'`); err != nil {
+		tx.Rollback()
+		return 0, err
+	}
+	if err = refreshIdentityAuthors(tx); err != nil {
+		tx.Rollback()
 		return 0, err
 	}
 	var cursor int64
@@ -658,6 +718,12 @@ func RunIdentityBatch(ctx context.Context, db *sql.DB, owner string, limit int) 
 		if err = ctx.Err(); err != nil {
 			return done, err
 		}
+		var currentVersion int64
+		if e := db.QueryRowContext(ctx, `SELECT version FROM book_identity_queue WHERE book_id=?`, i.id).Scan(&currentVersion); e == sql.ErrNoRows || (e == nil && currentVersion != i.version) {
+			continue
+		} else if e != nil {
+			return done, e
+		}
 		renewed, e := db.ExecContext(ctx, `UPDATE book_identity_lease SET expires=unixepoch()+60 WHERE id=1 AND owner=? AND expires>=unixepoch()`, owner)
 		if e != nil {
 			return done, e
@@ -666,9 +732,9 @@ func RunIdentityBatch(ctx context.Context, db *sql.DB, owner string, limit int) 
 		if held != 1 {
 			return done, nil
 		}
-		_, e = ReconcileBookIdentity(db, i.id, false)
+		result, e := ReconcileBookIdentity(db, i.id, false)
 		if e == nil || errors.Is(e, sql.ErrNoRows) {
-			_, err = db.ExecContext(ctx, `DELETE FROM book_identity_queue WHERE book_id=? AND version=?`, i.id, i.version)
+			err = acknowledgeIdentity(db, i.id, i.version, result)
 			done++
 		} else {
 			_, err = db.ExecContext(ctx, `UPDATE book_identity_queue SET next_at=unixepoch()+30,last_error=? WHERE book_id=? AND version=?`, e.Error(), i.id, i.version)

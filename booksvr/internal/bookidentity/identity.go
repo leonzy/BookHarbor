@@ -97,7 +97,7 @@ func compact(s string) string {
 }
 func authorKeys(authors []string) []string {
 	set := map[string]bool{}
-	for _, raw := range authors {
+	for _, raw := range normalize.CleanAuthors(authors) {
 		for _, s := range strings.FieldsFunc(raw, func(r rune) bool { return strings.ContainsRune("&＆;；、", r) }) {
 			if localmeta.UnknownAuthor(s) {
 				continue
@@ -127,7 +127,11 @@ func subset(a, b []string) bool {
 		set[v] = true
 	}
 	for _, v := range a {
-		if !set[v] {
+		matched := set[v]
+		for _, other := range b {
+			matched = matched || normalize.LatinAuthorAlias(v, other)
+		}
+		if !matched {
 			return false
 		}
 	}
@@ -147,7 +151,7 @@ func language(s string) string {
 func Compare(a, b Metadata) Decision {
 	x, y := Key(a), Key(b)
 	sameISBN := x.ISBN != "" && x.ISBN == y.ISBN
-	if x.Title == "" || x.Title != y.Title {
+	if x.Title == "" || (x.Title != y.Title && !(sameISBN && strongTitle(a.Title, b.Title))) {
 		return Decision{Reason: "title_conflict"}
 	}
 	aa, bb := authorKeys(a.Authors), authorKeys(b.Authors)
@@ -187,4 +191,54 @@ func Compare(a, b Metadata) Decision {
 		d.Reason = "publication_conflict"
 	}
 	return d
+}
+
+// Strong identifiers may corroborate a missing subtitle, never two different
+// explicit subtitles. Without the identifier the ordinary strict title rule wins.
+func strongTitle(a, b string) bool {
+	parts := func(s string) (string, string) {
+		s = CleanTitle(s)
+		if i := strings.IndexAny(s, ":："); i >= 0 {
+			return compact(s[:i]), compact(s[i+len(string([]rune(s[i:])[0])):])
+		}
+		return compact(s), ""
+	}
+	x, xs := parts(a)
+	y, ys := parts(b)
+	return x != "" && x == y && (xs == "" || ys == "" || xs == ys)
+}
+
+// A complete author list may explain complementary incomplete lists under one
+// ISBN. A partial A/B -> A -> A/C bridge has no such witness and remains split.
+func GroupCompatible(members []Metadata) bool {
+	all := true
+	for i := range members {
+		for j := 0; j < i; j++ {
+			all = all && Compare(members[i], members[j]).Work
+		}
+	}
+	if all {
+		return true
+	}
+	for _, witness := range members {
+		isbn := ISBN(witness.ISBN)
+		if isbn == "" {
+			continue
+		}
+		authors := authorKeys(witness.Authors)
+		if len(authors) == 0 {
+			continue
+		}
+		covers := true
+		for _, other := range members {
+			if ISBN(other.ISBN) != isbn || !strongTitle(witness.Title, other.Title) || !subset(authorKeys(other.Authors), authors) {
+				covers = false
+				break
+			}
+		}
+		if covers {
+			return true
+		}
+	}
+	return false
 }

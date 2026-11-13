@@ -28,6 +28,14 @@ type referenceOutcome struct {
 
 func referenceQuery(book *library.BookData) map[string]any {
 	identity := metadataLookupBook(*book)
+	identity.Authors = append([]string{}, identity.Authors...)
+	known := identity.Authors[:0]
+	for _, author := range identity.Authors {
+		if !localmeta.UnknownAuthor(author) {
+			known = append(known, author)
+		}
+	}
+	identity.Authors = known
 	return map[string]any{"title": localmeta.SearchTitle(identity.Title), "authors": identity.Authors, "isbn": identity.ISBN, "publisher": identity.Publisher}
 }
 

@@ -144,6 +144,11 @@ func normalizeTitleWithSuffixes(s string) (string, []string) {
 // punctuation, traditional→simplified, case fold, then author-specific cleanup.
 func NormalizeAuthor(s string) string {
 	s = RemovePiracySuffix(s)
+	s = authorComparisonText(stripAuthorCountry(s))
+	parts := strings.Split(s, ",")
+	if len(parts) == 2 && invertedName(parts[0], parts[1]) {
+		s = strings.TrimSpace(parts[1]) + " " + strings.TrimSpace(parts[0])
+	}
 	s = NormalizeWidth(s)
 	s = NormalizeSpace(s)
 	s = NormalizePunct(s)

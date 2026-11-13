@@ -323,12 +323,12 @@ func (m *metadataWorker) applyLocalMetadata(id int64, found importmeta.Metadata,
 	if localmeta.ISBN(b.ISBN) != "" && b.Publisher != "" && !localmeta.MissingAuthors(b.Authors) && b.Comments != "" {
 		status = "complete"
 	}
-	if status != "complete" && !identityChanged && (existing == "partial" || existing == "needs_review" || existing == "unmatched" || existing == "insufficient" || existing == "source_failed") {
+	if status != "complete" && !identityChanged && (existing == "partial" || existing == "needs_review" || existing == "unmatched" || existing == "source_failed") {
 		return nil
 	}
 	identity := metadataLookupBook(b)
-	if status != "complete" && localmeta.ISBN(identity.ISBN) == "" && localmeta.MissingAuthors(identity.Authors) {
-		return m.saveJob(id, "insufficient", "缺少有效 ISBN，且无法确认作者，等待补充身份信息", 0)
+	if status != "complete" && !metadataSearchable(identity) {
+		return m.saveJob(id, "insufficient", "缺少可用于检索的书名和有效 ISBN", 0)
 	}
 	return m.saveJob(id, status, "", 0)
 }
@@ -342,6 +342,9 @@ func (m *metadataWorker) step(ctx context.Context) error {
 		return err
 	}
 	if err := m.discoverLectureRechecks(); err != nil {
+		return err
+	}
+	if err := m.recheckSearchEligibility(ctx); err != nil {
 		return err
 	}
 	id, cursor, err := m.nextBook()
@@ -402,6 +405,7 @@ func isbn13(s string) string {
 func matchingMetadata(book library.BookData, candidates []map[string]any) map[string]any {
 	book = metadataLookupBook(book)
 	var selected map[string]any
+	selectedWorkOnly := false
 	for _, candidate := range candidates {
 		if !referenceRelevant(book, candidate) {
 			continue
@@ -415,7 +419,9 @@ func matchingMetadata(book library.BookData, candidates []map[string]any) map[st
 			continue
 		}
 		match := current != "" && current == isbn
-		if !match && normalizeMetadataName(localmeta.SearchTitle(book.Title)) == normalizeMetadataName(localmeta.SearchTitle(stringOf(candidate["title"]))) && !localmeta.MissingAuthors(book.Authors) {
+		exactTitle := normalizeMetadataName(localmeta.SearchTitle(book.Title)) == normalizeMetadataName(localmeta.SearchTitle(stringOf(candidate["title"])))
+		workOnly := current == "" && !exactTitle && missingSubtitleTitle(book.Title, stringOf(candidate["title"]))
+		if !match && (exactTitle || workOnly) && !localmeta.MissingAuthors(book.Authors) {
 			for _, a := range book.Authors {
 				if localmeta.UnknownAuthor(a) {
 					continue
@@ -431,15 +437,43 @@ func matchingMetadata(book library.BookData, candidates []map[string]any) map[st
 			continue
 		}
 		if selected != nil {
+			if selectedWorkOnly && workOnly {
+				if normalizeMetadataName(stringOf(selected["title"])) != normalizeMetadataName(stringOf(candidate["title"])) {
+					return nil
+				}
+				continue
+			}
 			// Same-title searches returning multiple editions require a human decision.
 			if current == "" && (isbn13(stringOf(selected["isbn"])) != isbn || stringOf(selected["provider_value"]) != stringOf(candidate["provider_value"])) {
 				return nil
 			}
 		} else {
 			selected = candidate
+			selectedWorkOnly = workOnly
 		}
 	}
+	if selected != nil && selectedWorkOnly {
+		copy := make(map[string]any, len(selected))
+		for key, value := range selected {
+			copy[key] = value
+		}
+		// A corroborated work title/author does not identify its publication edition.
+		for _, key := range []string{"isbn", "publisher", "pubdate"} {
+			delete(copy, key)
+		}
+		selected = copy
+	}
 	return selected
+}
+
+func missingSubtitleTitle(short, full string) bool {
+	short = localmeta.SearchTitle(short)
+	full = localmeta.SearchTitle(full)
+	if strings.ContainsAny(short, ":：") {
+		return false
+	}
+	i := strings.IndexAny(full, ":：")
+	return i > 0 && len([]rune(normalizeMetadataName(short))) >= 4 && normalizeMetadataName(short) == normalizeMetadataName(full[:i])
 }
 
 func metadataCandidate(record map[string]any) importmeta.Metadata {
