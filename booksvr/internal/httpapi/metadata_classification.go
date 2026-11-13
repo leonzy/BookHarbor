@@ -8,11 +8,13 @@ import (
 
 	"talebook/booksvr/internal/library"
 	"talebook/booksvr/internal/localmeta"
+	"talebook/booksvr/internal/normalize"
 )
 
 // Filename author labels are lookup hints only. No stored or manually cleared
 // metadata is overwritten by deriving this temporary search identity.
 func metadataLookupBook(book library.BookData) library.BookData {
+	book.Authors = normalize.CleanAuthors(book.Authors)
 	if localmeta.MissingAuthors(book.Authors) && localmeta.FilenameTitle(book.Title) != book.Title {
 		if hint := localmeta.FromText(book.Title); !localmeta.MissingAuthors(hint.Authors) {
 			book.Authors = hint.Authors

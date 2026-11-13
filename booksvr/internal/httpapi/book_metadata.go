@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"talebook/booksvr/internal/bookidentity"
 	"talebook/booksvr/internal/library"
 	"talebook/booksvr/internal/localmeta"
 	"talebook/booksvr/internal/pluginiface"
@@ -36,7 +37,7 @@ func referenceQuery(book *library.BookData) map[string]any {
 		}
 	}
 	identity.Authors = known
-	return map[string]any{"title": localmeta.SearchTitle(identity.Title), "authors": identity.Authors, "isbn": identity.ISBN, "publisher": identity.Publisher}
+	return map[string]any{"title": bookidentity.CleanTitle(identity.Title), "authors": identity.Authors, "isbn": identity.ISBN, "publisher": identity.Publisher}
 }
 
 // Search uses the same audited registry as plugin management. NDJSON preserves

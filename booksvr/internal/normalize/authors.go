@@ -16,6 +16,7 @@ var authorTail = regexp.MustCompile(`(?i)(?:\s+等|\s+et\s+al\.?)$`)
 var authorLatinAlias = regexp.MustCompile(`[（(][\p{Latin}\p{M}.'’\- ]+[）)]`)
 var authorEmptyBrackets = regexp.MustCompile(`\([ \t]*\)|（[ \t]*）|\[[ \t]*\]|【[ \t]*】`)
 var authorBy = regexp.MustCompile(`(?i)^(?:by|and)\s+`)
+var creditedChineseName = regexp.MustCompile(`^(?:[\p{Han}]{2,6}|[\p{Han}]+[·•][\p{Han}·•]+)$`)
 var latinWord = regexp.MustCompile(`^[\p{Latin}\p{M}.'’\- ]+$`)
 
 func latinName(s string) bool { return latinWord.MatchString(strings.TrimSpace(s)) }
@@ -44,7 +45,8 @@ func CleanAuthors(values []string) []string {
 		s = authorRoleSeparator.ReplaceAllString(s, ";")
 		for _, part := range strings.FieldsFunc(s, func(r rune) bool { return strings.ContainsRune("&＆;；、/|", r) }) {
 			part = strings.Trim(part, " \t\r\n,，")
-			pieces := strings.FieldsFunc(part, func(r rune) bool { return r == ',' || r == '，' })
+			part = splitBilingualCredits(part)
+			pieces := strings.FieldsFunc(part, func(r rune) bool { return r == ',' || r == '，' || r == ';' })
 			// A single Western surname-first form is one person, not two authors.
 			if len(pieces) == 2 && invertedName(pieces[0], pieces[1]) {
 				pieces = []string{strings.TrimSpace(pieces[1]) + " " + strings.TrimSpace(pieces[0])}
@@ -61,6 +63,20 @@ func CleanAuthors(values []string) []string {
 		}
 	}
 	return out
+}
+
+// A Latin original-name annotation marks the end of one credited Chinese name.
+// Ordinary spaces, including spaces inside Western names, are not separators.
+func splitBilingualCredits(s string) string {
+	for _, annotation := range authorLatinAlias.FindAllStringIndex(s, -1) {
+		before := strings.TrimSpace(stripAuthorCountry(s[:annotation[0]]))
+		after := s[annotation[1]:]
+		name := strings.TrimSpace(after)
+		if after != name && name != "" && creditedChineseName.MatchString(before) && creditedChineseName.MatchString(name) {
+			return s[:annotation[1]] + ";" + name
+		}
+	}
+	return s
 }
 
 func invertedName(surname, given string) bool {

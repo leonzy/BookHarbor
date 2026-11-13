@@ -3,8 +3,10 @@ package httpapi
 import (
 	"regexp"
 	"strings"
+	"talebook/booksvr/internal/bookidentity"
 	"talebook/booksvr/internal/library"
 	"talebook/booksvr/internal/localmeta"
+	"talebook/booksvr/internal/normalize"
 	"unicode/utf8"
 )
 
@@ -53,15 +55,29 @@ func metadataAuthor(s string) string {
 	}
 	return normalizeMetadataName(s)
 }
-func sharedAuthor(a, b []string) bool {
-	for _, x := range a {
-		for _, y := range b {
-			if !localmeta.UnknownAuthor(x) && !localmeta.UnknownAuthor(y) && metadataAuthor(x) == metadataAuthor(y) {
-				return true
+func consistentMetadataAuthors(a, b []string) bool {
+	keys := func(values []string) map[string]bool {
+		out := map[string]bool{}
+		for _, name := range normalize.CleanAuthors(values) {
+			if !localmeta.UnknownAuthor(name) {
+				out[metadataAuthor(name)] = true
 			}
 		}
+		return out
 	}
-	return false
+	x, y := keys(a), keys(b)
+	if len(x) == 0 || len(y) == 0 {
+		return false
+	}
+	subset := func(left, right map[string]bool) bool {
+		for name := range left {
+			if !right[name] {
+				return false
+			}
+		}
+		return true
+	}
+	return subset(x, y) || subset(y, x)
 }
 
 // A search parameter must never turn an unrelated title into a matching edition.
@@ -71,9 +87,17 @@ func referenceRelevant(book library.BookData, record map[string]any) bool {
 		return false
 	}
 	a, b := isbn13(book.ISBN), isbn13(stringOf(record["isbn"]))
-	if a != "" && b != "" {
-		return a == b
+	if a != "" && b != "" && a != b {
+		return false
 	}
 	authors := toStringSlice(record["authors"])
-	return localmeta.MissingAuthors(book.Authors) || localmeta.MissingAuthors(authors) || sharedAuthor(book.Authors, authors)
+	if localmeta.MissingAuthors(book.Authors) || localmeta.MissingAuthors(authors) || consistentMetadataAuthors(book.Authors, authors) {
+		return true
+	}
+	// Reuse the existing strong-ISBN aliases instead of treating a missing
+	// Western middle initial as a new author conflict. Bound this extra work.
+	if a != "" && a == b && len(book.Authors) <= 16 && len(authors) <= 16 {
+		return bookidentity.Compare(bookidentity.Metadata{Title: book.Title, Authors: book.Authors, ISBN: a}, bookidentity.Metadata{Title: stringOf(record["title"]), Authors: authors, ISBN: b}).Work
+	}
+	return false
 }

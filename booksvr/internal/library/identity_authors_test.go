@@ -43,14 +43,14 @@ func TestHistoricalAuthorRepairResumesAndKeepsMetadataAndManualGroups(t *testing
 		t.Fatal("raw metadata edited", raw)
 	}
 	var done int
-	db.QueryRow(`SELECT value FROM book_identity_state WHERE key='authors_v3_done'`).Scan(&done)
+	db.QueryRow(`SELECT value FROM book_identity_state WHERE key='authors_v5_done'`).Scan(&done)
 	if done != 1 {
 		t.Fatal("discovery not checkpointed")
 	}
 	if _, e = SplitBook(db, b); e != nil {
 		t.Fatal(e)
 	}
-	db.Exec(`DELETE FROM book_identity_state WHERE key LIKE 'authors_v3_%'`)
+	db.Exec(`DELETE FROM book_identity_state WHERE key LIKE 'authors_v5_%'`)
 	for i := 0; i < 3; i++ {
 		if _, e = RunIdentityBatch(context.Background(), db, "second-pass", 10); e != nil {
 			t.Fatal(e)
@@ -125,7 +125,7 @@ func TestIdentityAuthorRepairWithConcurrentMetadataWriter(t *testing.T) {
 		t.Fatal(e)
 	}
 	var done int
-	db.QueryRow(`SELECT value FROM book_identity_state WHERE key='authors_v3_done'`).Scan(&done)
+	db.QueryRow(`SELECT value FROM book_identity_state WHERE key='authors_v5_done'`).Scan(&done)
 	if done != 1 {
 		t.Fatal("cursor failed under concurrent writes")
 	}
@@ -206,7 +206,7 @@ func TestIdentityBatchAcknowledgesSiblingsAndSparseUniqueRekey(t *testing.T) {
 	}
 	db.Exec(`UPDATE book_identity_keys SET author_key='old polluted key' WHERE book_id=?`, u)
 	db.Exec(`DELETE FROM book_identity_queue`)
-	db.Exec(`DELETE FROM book_identity_state WHERE key LIKE 'authors_v3_%'`)
+	db.Exec(`DELETE FROM book_identity_state WHERE key LIKE 'authors_v5_%'`)
 	db.Exec(`INSERT INTO book_identity_state(key,value) VALUES('cursor',999999) ON CONFLICT(key) DO UPDATE SET value=excluded.value`)
 	if _, e = RunIdentityBatch(context.Background(), db, "sparse", 10); e != nil {
 		t.Fatal(e)

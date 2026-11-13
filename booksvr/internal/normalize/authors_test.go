@@ -21,6 +21,8 @@ func TestCleanAuthorsSeparatorsSitesAndSurnameOrder(t *testing.T) {
 		{"李开复，陈楸帆", []string{"李开复", "陈楸帆"}},
 		{"J. K. Rowling", []string{"J. K. Rowling"}},
 		{"[美] 理查德·道金斯", []string{"[美] 理查德·道金斯"}},
+		{"【德】尤尔根·梅菲特（Jürgen Meffert） 沙莎", []string{"【德】尤尔根·梅菲特（Jürgen Meffert）", "沙莎"}},
+		{"其他作者;【德】尤尔根·梅菲特（Jürgen Meffert） 沙莎", []string{"其他作者", "尤尔根·梅菲特（Jürgen Meffert）", "沙莎"}},
 		{"Kathy Walrath and Seth Ladd", []string{"Kathy Walrath", "Seth Ladd"}},
 		{"Mitch Tulloch with the Windows Azure Team", []string{"Mitch Tulloch", "the Windows Azure Team"}},
 		{"（俄）契诃夫著 汝龙译", []string{"（俄）契诃夫", "汝龙译"}},

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -13,6 +14,7 @@ import (
 	"time"
 	"unicode"
 
+	"talebook/booksvr/internal/bookidentity"
 	"talebook/booksvr/internal/importmeta"
 	"talebook/booksvr/internal/library"
 	"talebook/booksvr/internal/localmeta"
@@ -31,6 +33,8 @@ type metadataWorker struct {
 	lastRetry      time.Time
 	enrollmentNext map[int64]time.Time
 }
+
+var errMetadataSourceUnreadable = errors.New("metadata source temporarily unreadable")
 
 func startMetadataWorker(ctx context.Context, opts ServeOptions, db, userDB *sql.DB) (func(), error) {
 	if err := ensureMetadataDiagnosticsIndex(userDB); err != nil {
@@ -269,12 +273,20 @@ func (m *metadataWorker) local(ctx context.Context, id int64, force ...bool) err
 			continue
 		}
 		readable = true
+		if len(force) > 1 && force[1] {
+			if authors := library.FileAuthorSupplement(found.Authors, metadata.Authors); len(authors) > 0 {
+				found.Authors = authors
+			}
+		}
 		localmeta.Merge(&found, metadata)
-		if found.ISBN != "" && found.Publisher != "" && !localmeta.MissingAuthors(found.Authors) {
+		if found.ISBN != "" && found.Publisher != "" && !localmeta.MissingAuthors(found.Authors) && !(len(force) > 1 && force[1]) {
 			break
 		}
 	}
 	if !readable {
+		if len(force) > 1 && force[1] {
+			return errMetadataSourceUnreadable
+		}
 		return m.saveJob(id, "file_retry", "来源文件暂不可读、未挂载或超过 ZIP 临时读取预算，未修改来源状态", time.Hour)
 	}
 	return m.applyLocalMetadata(id, found, existing)
@@ -347,6 +359,9 @@ func (m *metadataWorker) step(ctx context.Context) error {
 	if err := m.recheckSearchEligibility(ctx); err != nil {
 		return err
 	}
+	if err := m.discoverCoauthorRechecks(); err != nil {
+		return err
+	}
 	id, cursor, err := m.nextBook()
 	if err != nil {
 		return err
@@ -373,7 +388,10 @@ func (m *metadataWorker) step(ctx context.Context) error {
 		}
 	}
 
-	return m.recheckLectureOne(ctx)
+	if err := m.recheckLectureOne(ctx); err != nil {
+		return err
+	}
+	return m.recheckCoauthorOne(ctx)
 }
 
 func normalizeMetadataName(s string) string {
@@ -419,7 +437,7 @@ func matchingMetadata(book library.BookData, candidates []map[string]any) map[st
 			continue
 		}
 		match := current != "" && current == isbn
-		exactTitle := normalizeMetadataName(localmeta.SearchTitle(book.Title)) == normalizeMetadataName(localmeta.SearchTitle(stringOf(candidate["title"])))
+		exactTitle := normalizeMetadataName(bookidentity.CleanTitle(book.Title)) == normalizeMetadataName(bookidentity.CleanTitle(stringOf(candidate["title"])))
 		workOnly := current == "" && !exactTitle && missingSubtitleTitle(book.Title, stringOf(candidate["title"]))
 		if !match && (exactTitle || workOnly) && !localmeta.MissingAuthors(book.Authors) {
 			for _, a := range book.Authors {
@@ -467,8 +485,8 @@ func matchingMetadata(book library.BookData, candidates []map[string]any) map[st
 }
 
 func missingSubtitleTitle(short, full string) bool {
-	short = localmeta.SearchTitle(short)
-	full = localmeta.SearchTitle(full)
+	short = bookidentity.CleanTitle(short)
+	full = bookidentity.CleanTitle(full)
 	if strings.ContainsAny(short, ":：") {
 		return false
 	}

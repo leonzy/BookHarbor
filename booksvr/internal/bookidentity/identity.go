@@ -69,6 +69,7 @@ func ISBNForms(raw string) []string {
 var brackets = regexp.MustCompile(`\([^()]*\)|（[^（）]*）|【[^【】]*】|\[[^\[\]]*\]`)
 var volume = regexp.MustCompile(`第[0-9一二三四五六七八九十百]+[册卷部集版]|[上中下][册卷部集]|修订版|增订版|全译本|节选本|缩写本|译本|精装版|平装版|套装|合集|全集`)
 var series = regexp.MustCompile(`^[^()（）【】\[\]]{1,35}(?:丛书|文库|书系)$`)
+var promotionalAttribution = regexp.MustCompile(`^来自[^()（）]{1,40}(?:团队|专家|作者|机构|学者)的[^()（）]{1,40}(?:指南|力作|推荐|作品)$`)
 
 func CleanTitle(raw string) string {
 	s := localmeta.SearchTitle(raw)
@@ -78,6 +79,9 @@ func CleanTitle(raw string) string {
 			return group
 		}
 		if series.MatchString(inner) {
+			return ""
+		}
+		if promotionalAttribution.MatchString(inner) {
 			return ""
 		}
 		if len([]rune(inner)) >= 12 && (strings.Contains(inner, "推荐") || strings.Contains(inner, "新书") || strings.Contains(inner, "畅销")) && (strings.ContainsAny(inner, "，、！!") || len([]rune(inner)) >= 30) {
@@ -211,6 +215,11 @@ func strongTitle(a, b string) bool {
 // A complete author list may explain complementary incomplete lists under one
 // ISBN. A partial A/B -> A -> A/C bridge has no such witness and remains split.
 func GroupCompatible(members []Metadata) bool {
+	for _, m := range members {
+		if m.ISBN == "!conflict" {
+			return false
+		}
+	}
 	all := true
 	for i := range members {
 		for j := 0; j < i; j++ {
@@ -231,7 +240,8 @@ func GroupCompatible(members []Metadata) bool {
 		}
 		covers := true
 		for _, other := range members {
-			if ISBN(other.ISBN) != isbn || !strongTitle(witness.Title, other.Title) || !subset(authorKeys(other.Authors), authors) {
+			otherISBN := ISBN(other.ISBN)
+			if (otherISBN != "" && otherISBN != isbn) || (otherISBN == "" && !Compare(witness, other).Work) || !strongTitle(witness.Title, other.Title) || !subset(authorKeys(other.Authors), authors) {
 				covers = false
 				break
 			}

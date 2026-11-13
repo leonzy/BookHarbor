@@ -373,89 +373,27 @@ func ReconcileBookIdentity(db *sql.DB, id int64, dry bool) (IdentityResult, erro
 		result.Reason = "manual_group"
 		return result, nil
 	}
-	ids, err := identityCandidates(tx, current.Metadata)
-	if err != nil {
+	members, err := identityNeighborhood(tx, current)
+	if errors.Is(err, ErrIdentityAmbiguous) {
 		result.Reason = "too_many_candidates"
 		if !dry {
 			if e := saveIdentityKey(tx, current, current.WorkID, result.Reason); e != nil {
 				return result, e
 			}
 			err = tx.Commit()
+		} else {
+			err = nil
 		}
 		return result, err
 	}
-	members := []IdentityBook{current}
-	seen := map[int64]bool{id: true}
-	reason := "single"
-	for _, other := range ids {
-		if seen[other] {
-			continue
-		}
-		b, e := identityBook(tx, other)
-		if e != nil {
-			return result, e
-		}
-		d := bookidentity.Compare(current.Metadata, b.Metadata)
-		if !d.Work || b.Metadata.ISBN == "!conflict" {
-			continue
-		}
-		locked, e := identityProtected(tx, b)
-		if e != nil {
-			return result, e
-		}
-		if locked {
-			continue
-		}
-		members = append(members, b)
-		seen[other] = true
-		reason = d.Reason
+	if err != nil {
+		return result, err
 	}
-	// Include existing managed members before choosing a work, so a partial author
-	// cannot silently absorb a whole incompatible group through one shared name.
-	for i := 0; i < len(members); i++ {
-		b := members[i]
-		if b.WorkID == 0 {
-			continue
-		}
-		rows, e := tx.Query(`SELECT id FROM books WHERE work_id=? ORDER BY id LIMIT 65`, b.WorkID)
-		if e != nil {
-			return result, e
-		}
-		extra := []int64{}
-		for rows.Next() {
-			var n int64
-			if e = rows.Scan(&n); e != nil {
-				rows.Close()
-				return result, e
-			}
-			extra = append(extra, n)
-		}
-		e = rows.Err()
-		rows.Close()
-		if e != nil {
-			return result, e
-		}
-		for _, n := range extra {
-			if seen[n] {
-				continue
-			}
-			if len(members) >= 64 {
-				result.Reason = "too_many_candidates"
-				return result, nil
-			}
-			next, e := identityBook(tx, n)
-			if e != nil {
-				return result, e
-			}
-			locked, e := identityProtected(tx, next)
-			if e != nil {
-				return result, e
-			}
-			if locked {
-				continue
-			}
-			seen[n] = true
-			members = append(members, next)
+	neighborhood := members
+	reason := "single"
+	for _, b := range members[1:] {
+		if d := bookidentity.Compare(current.Metadata, b.Metadata); d.Work {
+			reason = d.Reason
 		}
 	}
 	metadata := make([]bookidentity.Metadata, 0, len(members))
@@ -463,6 +401,21 @@ func ReconcileBookIdentity(db *sql.DB, id int64, dry bool) (IdentityResult, erro
 		metadata = append(metadata, member.Metadata)
 	}
 	compatible := current.Metadata.ISBN != "!conflict" && bookidentity.GroupCompatible(metadata)
+	if !compatible && current.Metadata.ISBN != "!conflict" {
+		groups := make([]int64, len(members))
+		for i, member := range members {
+			groups[i] = member.WorkID
+		}
+		if subset := bookidentity.CompatibleSubset(metadata, groups, 0); len(subset) > 1 {
+			selected := make([]IdentityBook, 0, len(subset))
+			for _, i := range subset {
+				selected = append(selected, members[i])
+			}
+			members = selected
+			compatible = true
+			reason = "compatible_subset"
+		}
+	}
 	if !compatible {
 		members = []IdentityBook{current}
 		reason = "conflicting_candidates"
@@ -483,6 +436,18 @@ func ReconcileBookIdentity(db *sql.DB, id int64, dry bool) (IdentityResult, erro
 			managed = 0
 			if _, err = tx.Exec(`UPDATE books SET work_id=NULL WHERE id=?`, id); err != nil {
 				return result, err
+			}
+			// Detaching an ambiguous old member can unblock neighbors already
+			// processed while that automatic group was still an atomic unit.
+			// Version the follow-up events inside this transaction so an older
+			// worker acknowledgement cannot consume them. Unmanaged ambiguous
+			// records do not requeue themselves indefinitely.
+			if current.WorkID > 0 {
+				for _, neighbor := range neighborhood {
+					if _, err = tx.Exec(`INSERT INTO book_identity_queue(book_id) VALUES(?) ON CONFLICT(book_id) DO UPDATE SET version=version+1,next_at=0`, neighbor.ID); err != nil {
+						return result, err
+					}
+				}
 			}
 		}
 		if err = saveIdentityKey(tx, current, managed, reason); err != nil {
