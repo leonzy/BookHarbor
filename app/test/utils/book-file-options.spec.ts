@@ -10,6 +10,7 @@ describe('version file actions', () => {
         expect(choices.map(c => c.key)).toEqual(['7:EPUB', '8:EPUB', '8:MOBI']);
         expect(choices.map(c => c.readerPath)).toEqual(['/read/7?format=epub', '/read/8?format=epub', '/read/8?format=mobi']);
         expect(choices[0].title).toContain('2.0 KiB');
+        expect(choices.map(c => c.href)).toEqual(['/api/book/7.EPUB', '/api/book/8.EPUB', '/api/book/8.MOBI']);
     });
     it('excludes unsupported reading formats without hiding them from sending', () => {
         const choices = bookFileOptions({ id: 1, files: [{ format: 'DJVU' }, { format: 'TXT' }] });

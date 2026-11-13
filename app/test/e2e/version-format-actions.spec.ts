@@ -40,6 +40,13 @@ for (const [width, theme] of [[1280, 'light'], [320, 'light'], [320, 'dark']] as
         });
         await context.route('**/read/**', route => route.fulfill({ contentType: 'text/plain', body: 'isolated reader destination' }));
         await page.goto(origin + '/book/1');
+        await expect(page.getByTestId('book-format-epub')).toHaveCount(2);
+        await expect(page.getByTestId('book-format-mobi')).toHaveAttribute('aria-label', /#455745/);
+        await page.getByTestId('book-format-mobi').click();
+        const downloads = page.getByTestId('book-download-dialog');
+        await expect(downloads.locator('a')).toHaveCount(3);
+        await expect(downloads.locator('a[href="/api/book/455745.MOBI"]')).toContainText('#455745');
+        await downloads.getByRole('button', { name: '关闭', exact: true }).click();
         const read = page.getByTestId('open-online-reader');
         await expect(read).toBeVisible();
         await read.focus(); await page.keyboard.press('Enter');

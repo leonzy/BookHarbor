@@ -536,14 +536,14 @@ func (w *bookWiring) bookReadBook(ctx *Context, bookID int64) (map[string]any, e
 	w.countDownload(ctx, bookID)
 
 	if requested := strings.ToLower(ctx.Query("format")); requested != "" {
-		if _, ok := readerFormatMIME[requested]; !ok || !has[requested] {
+		_, native := readerFormatMIME[requested]
+		if (!native && requested != "pdf" && requested != "txt") || !has[requested] {
 			http.Error(ctx.Writer, "请求的阅读格式不存在", http.StatusUnsupportedMediaType)
 			return nil, nil
 		}
-		if requested != "epub" {
-			w.redirectReadest(ctx, bookID, requested)
-			return nil, nil
-		}
+		// Restrict selection, not the reader: PDF and TXT retain their dedicated
+		// viewers even when another format (such as EPUB) exists on this book.
+		has = map[string]bool{requested: true}
 	}
 	if has["epub"] {
 		// 阅读器选择，对齐 Python BookRead.get：

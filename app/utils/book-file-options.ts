@@ -14,6 +14,7 @@ export function bookFileOptions(book: any) {
             const reader = readerPathForBook({ ...version, files: [file] });
             return [{
                 key, bookId, format, size: file.size,
+                href: file.href || `/api/book/${bookId}.${format}`,
                 title: `${format} · ${formatFileSize(file.size)} · #${bookId}`,
                 bookTitle: version.title || book.title || '',
                 readerPath: reader ? `${reader}?format=${encodeURIComponent(format.toLowerCase())}` : '',

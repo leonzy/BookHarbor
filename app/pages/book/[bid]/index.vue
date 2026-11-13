@@ -141,17 +141,19 @@
                 <v-dialog
                     v-model="dialog_download"
                     persistent
-                    width="300"
+                    max-width="560"
+                    scrollable
                 >
-                    <v-card data-testid="book-download-dialog">
+                    <v-card class="book-download-dialog" data-testid="book-download-dialog">
                         <v-card-title>{{ t('book.download') }}</v-card-title>
                         <v-card-text>
-                            <v-list v-if="book.files && book.files.length > 0">
+                            <v-list v-if="fileOptions.length > 0">
                                 <v-list-item
-                                    v-for="file in book.files"
-                                    :key="'file-'+file.format"
+                                    v-for="file in fileOptions"
+                                    :key="file.key"
                                     target="_blank"
-                                    :href="file.href"
+                                    :href="withBasePath(file.href)"
+                                    rel="noopener noreferrer"
                                 >
                                     <template #prepend>
                                         <v-avatar color="primary">
@@ -160,13 +162,8 @@
                                             </v-icon>
                                         </v-avatar>
                                     </template>
-                                    <v-list-item-title>{{ file.format }}</v-list-item-title>
-                                    <v-list-item-subtitle v-if="file.size>=1048576">
-                                        {{ parseInt(file.size / 1048576) }}MB
-                                    </v-list-item-subtitle>
-                                    <v-list-item-subtitle v-else>
-                                        {{ parseInt(file.size / 1024) }}KB
-                                    </v-list-item-subtitle>
+                                    <v-list-item-title>{{ file.title }}</v-list-item-title>
+                                    <v-list-item-subtitle>{{ file.bookTitle }}</v-list-item-subtitle>
                                 </v-list-item>
                             </v-list>
                             <p v-else>
@@ -659,19 +656,20 @@
                                         <dd>{{ book.isbn }}</dd>
                                     </div>
                                     <div
-                                        v-if="book.files && book.files.length > 0"
+                                        v-if="fileOptions.length > 0"
                                         class="book-facts__row"
                                     >
                                         <dt>{{ t('book.format') }}</dt>
                                         <dd class="book-format-list">
                                             <v-chip
-                                                v-for="file in book.files"
-                                                :key="file.format"
+                                                v-for="file in fileOptions"
+                                                :key="file.key"
                                                 size="small"
                                                 color="blue-grey"
                                                 variant="tonal"
                                                 role="button"
-                                                :aria-label="`${t('common.download')} ${file.format}`"
+                                                :aria-label="`${t('common.download')} ${file.title}`"
+                                                :title="file.title"
                                                 :data-testid="`book-format-${file.format.toLowerCase()}`"
                                                 @click="dialog_download = true"
                                             >
@@ -1685,6 +1683,11 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.book-download-dialog :deep(.v-list-item-title) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .book-file-select :deep(.v-select__selection-text),
 :global(.book-file-options .v-list-item-title) {
     white-space: normal;
