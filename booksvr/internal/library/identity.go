@@ -101,6 +101,19 @@ func EnsureIdentitySchema(db *sql.DB) error {
 	}
 	// Author rename is uncommon; this bounded index lookup enqueues affected books.
 	triggers = append(triggers, `CREATE TRIGGER IF NOT EXISTS identity_author_update AFTER UPDATE OF name ON authors BEGIN INSERT INTO book_identity_queue(book_id,version,priority) SELECT book,1,10 FROM books_authors_link WHERE author=NEW.id AND true ON CONFLICT(book_id) DO UPDATE SET version=version+1,priority=max(priority,10),next_at=0; END`)
+	var hasFormats bool
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='book_formats' AND type='table')`).Scan(&hasFormats); err != nil {
+		return err
+	}
+	if hasFormats {
+		if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS source_sync_format_path ON book_formats(path)`); err != nil {
+			return err
+		}
+		triggers = append(triggers,
+			`CREATE TRIGGER IF NOT EXISTS identity_format_insert AFTER INSERT ON book_formats BEGIN `+enqueue("NEW.book_id")+` END`,
+			`CREATE TRIGGER IF NOT EXISTS identity_format_update AFTER UPDATE OF path,format,book_id ON book_formats BEGIN `+enqueue("NEW.book_id")+enqueue("OLD.book_id")+` END`,
+			`CREATE TRIGGER IF NOT EXISTS identity_format_delete AFTER DELETE ON book_formats BEGIN `+enqueue("OLD.book_id")+` END`)
+	}
 	for _, q := range triggers {
 		if _, err := db.Exec(q); err != nil {
 			return err
@@ -179,10 +192,14 @@ func identityBook(q identityReader, id int64) (IdentityBook, error) {
 			return b, err
 		}
 	}
-	return b, nil
+	b.Metadata.SourceFamilies, err = identitySourceFamilies(q, id)
+	return b, err
 }
 func identitySignature(m bookidentity.Metadata) string {
-	data, _ := json.Marshal(m)
+	data, _ := json.Marshal(struct {
+		Metadata bookidentity.Metadata
+		Sources  []string
+	}{m, m.SourceFamilies})
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
@@ -595,6 +612,10 @@ func RunIdentityBatch(ctx context.Context, db *sql.DB, owner string, limit int) 
 		return 0, err
 	}
 	if err = refreshIdentityAuthors(tx); err != nil {
+		tx.Rollback()
+		return 0, err
+	}
+	if err = refreshIdentitySources(tx); err != nil {
 		tx.Rollback()
 		return 0, err
 	}

@@ -18,6 +18,8 @@ type Metadata struct {
 	Publisher string   `json:"publisher"`
 	Pubdate   string   `json:"pubdate"`
 	Language  string   `json:"language"`
+	// SourceFamilies is trusted local storage evidence, never provider input.
+	SourceFamilies []string `json:"-"`
 }
 type Keys struct{ ISBN, Title, Authors, Version string }
 type Decision struct {
@@ -164,11 +166,15 @@ func Compare(a, b Metadata) Decision {
 			return Decision{Reason: "author_conflict"}
 		}
 	} else if len(aa) == 0 || len(bb) == 0 || x.Authors != y.Authors {
-		return Decision{Reason: "author_insufficient"}
+		if (len(aa) > 0 && len(bb) > 0) || !sharedSourceFamily(a, b) || (x.ISBN != "" && y.ISBN != "" && x.ISBN != y.ISBN) {
+			return Decision{Reason: "author_insufficient"}
+		}
 	}
 	d := Decision{Work: true, Edition: true, Reason: "title_authors"}
 	if sameISBN {
 		d.Reason = "isbn"
+	} else if len(aa) == 0 || len(bb) == 0 {
+		d.Reason = "source_family"
 	}
 	if x.Version != y.Version {
 		d.Edition = false
@@ -195,6 +201,17 @@ func Compare(a, b Metadata) Decision {
 		d.Reason = "publication_conflict"
 	}
 	return d
+}
+
+func sharedSourceFamily(a, b Metadata) bool {
+	for _, x := range a.SourceFamilies {
+		for _, y := range b.SourceFamilies {
+			if x != "" && x == y {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Strong identifiers may corroborate a missing subtitle, never two different
@@ -231,11 +248,23 @@ func GroupCompatible(members []Metadata) bool {
 	}
 	for _, witness := range members {
 		isbn := ISBN(witness.ISBN)
-		if isbn == "" {
-			continue
-		}
 		authors := authorKeys(witness.Authors)
 		if len(authors) == 0 {
+			continue
+		}
+		if isbn == "" {
+			// A real author-bearing companion can also explain editions from
+			// elsewhere. Require direct evidence for every member; anonymous
+			// file-path chains cannot manufacture an author witness.
+			ok, source := true, false
+			for _, other := range members {
+				d := Compare(witness, other)
+				ok = ok && d.Work
+				source = source || d.Reason == "source_family"
+			}
+			if ok && source {
+				return true
+			}
 			continue
 		}
 		covers := true

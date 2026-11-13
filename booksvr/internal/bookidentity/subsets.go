@@ -38,7 +38,7 @@ func CompatibleSubset(members []Metadata, groups []int64, root int) []int {
 	}
 	for i := range members {
 		people := authors[i]
-		if len(people) == 0 {
+		if len(people) == 0 && len(members[i].SourceFamilies) == 0 {
 			continue
 		}
 		var supported uint64

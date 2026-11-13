@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Talebook 内部方案模板：用于记录原始诉求、目标边界、实现方案、风险与测试结果。" />
+    <link rel="icon" href="data:," />
+    <title>无作者书籍的源文件配套归组 — BookHarbor</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #1f2937;
+        --muted: #5a6475;
+        --line: #d7dfeb;
+        --accent: #df6d16;
+        --accent-soft: #fff3e7;
+        --blue-soft: #eef5ff;
+        --green: #1f7a53;
+        --green-soft: #e7f5ee;
+        --warn-soft: #fff8eb;
+        --red: #a43d3d;
+        --red-soft: #fdecec;
+        --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: radial-gradient(circle at top right, rgba(223, 109, 22, .10), transparent 25%), linear-gradient(180deg, #fbfcff 0%, var(--bg) 100%);
+        font-family: var(--sans);
+        line-height: 1.68;
+      }
+      a { color: #315f91; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+      code, .mono { font-family: var(--mono); font-size: .9em; }
+      code { padding: .1em .34em; border-radius: 4px; background: #f0f3f8; overflow-wrap: anywhere; }
+      .skip-link { position: fixed; z-index: 20; top: 8px; left: 8px; padding: 8px 12px; color: #fff; background: var(--ink); transform: translateY(-160%); }
+      .skip-link:focus { transform: translateY(0); }
+
+      .page { width: min(1160px, calc(100vw - 32px)); margin: 0 auto; padding: 24px 0 56px; }
+      .hero, .card { background: var(--panel); border: 1px solid rgba(215, 223, 235, .95); border-radius: 20px; box-shadow: var(--shadow); }
+      .hero { position: relative; margin-bottom: 18px; padding: 32px 34px; overflow: hidden; }
+      .hero::after { position: absolute; right: -46px; bottom: -56px; width: 240px; height: 240px; background: radial-gradient(circle, rgba(223, 109, 22, .18), rgba(223, 109, 22, 0)); content: ""; pointer-events: none; }
+      h1 { position: relative; z-index: 1; max-width: 1060px; margin: 0 0 10px; font-size: clamp(30px, 4vw, 48px); line-height: 1.12; letter-spacing: -.025em; }
+      .sub { position: relative; z-index: 1; max-width: 1060px; margin: 0; color: var(--muted); font-size: 17px; }
+      .chips { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+      .chip { display: inline-flex; align-items: center; min-height: 32px; padding: 5px 11px; border-radius: 999px; color: #536176; background: #eef2f7; font-size: 12px; font-weight: 700; }
+      .chip.wip { color: #9a4d0c; background: var(--accent-soft); }
+      .chip.active { color: var(--green); background: var(--green-soft); }
+      .chip.superseded { color: var(--red); background: var(--red-soft); }
+
+      .content-grid { display: block; }
+      .main-column { min-width: 0; }
+      .card { margin-bottom: 18px; padding: 26px 28px; scroll-margin-top: 18px; }
+      .card:last-child { margin-bottom: 0; }
+      h2 { margin: 0 0 15px; font-size: 23px; line-height: 1.25; }
+      h3 { margin: 22px 0 10px; font-size: 17px; line-height: 1.35; }
+      p { margin: 0 0 13px; }
+      p, li { color: #283548; font-size: 14px; }
+      ul, ol { margin: 10px 0 0 20px; padding: 0; }
+      li + li { margin-top: 6px; }
+
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .choice { padding: 17px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+      .choice h3 { margin-top: 0; }
+      .choice.recommended { border-color: #efbe8c; background: linear-gradient(180deg, #fffaf5 0%, #fff 100%); }
+      .callout { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: #f8fafc; }
+      .callout.warn { border-color: #f0d7a8; background: var(--warn-soft); }
+      .callout.good { border-color: #bddcc4; background: var(--green-soft); }
+      .callout.danger { border-color: #e3b0b0; background: var(--red-soft); }
+      .callout p:last-child, .choice p:last-child { margin-bottom: 0; }
+
+      .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+      .step { position: relative; min-height: 132px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #fafbfd 100%); }
+      .step + .step::before { position: absolute; top: 18px; left: -17px; display: grid; place-items: center; width: 23px; height: 23px; color: var(--accent); background: #fff; border: 1px solid #efbe8c; border-radius: 50%; content: "→"; font-weight: 800; }
+      .step b { display: block; margin-bottom: 6px; font-size: 14px; }
+      .step p { margin: 0; color: var(--muted); font-size: 13px; }
+      .label { display: block; margin-bottom: 7px; color: var(--accent); font: 800 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+
+      .matrix-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+      .matrix-legend span, .matrix-state { display: inline-flex; min-height: 25px; align-items: center; justify-content: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+      .matrix-yes { color: #176443; background: var(--green-soft); }
+      .matrix-conditional { color: #9a4d0c; background: var(--accent-soft); }
+      .matrix-no { color: #526072; background: #eef2f7; }
+      .matrix-note { color: var(--muted); font-size: 12px; }
+
+      .table-wrap { margin-top: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; background: #fff; font-size: 13px; }
+      .feature-matrix { min-width: 1020px; }
+      .feature-matrix .matrix-cell { text-align: center; }
+      th, td { padding: 11px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #556376; background: #f8fafc; font-size: 12px; }
+      th:last-child, td:last-child { border-right: 0; }
+      tr:last-child td { border-bottom: 0; }
+      pre { margin: 14px 0 0; padding: 15px 17px; overflow-x: auto; color: #eef3f8; background: #263244; border-radius: 14px; font: 13px/1.65 var(--mono); }
+      pre code { padding: 0; color: inherit; background: transparent; font: inherit; white-space: pre; }
+      .pending { color: #9a5c09; font-weight: 800; }
+      .verified { color: var(--green); font-weight: 800; }
+
+      .toc-edge { display: none; }
+      .toc-edge a { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px; align-items: center; width: 100%; min-height: 36px; padding: 6px 5px; color: #69778a; border-radius: 9px; text-decoration: none; }
+      .toc-edge a:hover { color: var(--accent); background: var(--accent-soft); }
+      .rail-index { font: 800 10px/1 var(--mono); text-align: center; }
+      .rail-title { min-width: 0; overflow: hidden; font-size: 12px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+      .toc-edge a[aria-current="location"] { color: #fff; background: #9a4d0c; box-shadow: 0 5px 14px rgba(154, 77, 12, .25); }
+
+      .toc-fab { position: fixed; z-index: 18; right: 18px; bottom: 18px; }
+      .toc-fab summary { display: flex; min-height: 46px; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; background: #263244; border-radius: 999px; box-shadow: 0 10px 28px rgba(15, 23, 42, .22); cursor: pointer; font-size: 12px; font-weight: 800; list-style: none; }
+      .toc-fab summary::-webkit-details-marker { display: none; }
+      .toc-fab summary::before { color: #ffad6c; content: "≡"; font-size: 17px; line-height: 1; }
+      .toc-fab[open] summary { background: var(--accent); }
+      .toc-fab nav { position: absolute; right: 0; bottom: 56px; width: min(310px, calc(100vw - 36px)); padding: 10px; background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 16px 42px rgba(15, 23, 42, .20); }
+      .toc-fab strong { display: block; padding: 7px 9px 10px; color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+      .toc-fab a { display: block; padding: 9px 10px; color: #536176; border-radius: 9px; text-decoration: none; font-size: 13px; }
+      .toc-fab a:hover { background: var(--accent-soft); }
+      .toc-fab a[aria-current="location"] { color: #9a4d0c; background: var(--accent-soft); font-weight: 800; }
+      footer { margin-top: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
+      @media (min-width: 1440px) {
+        .toc-edge { position: fixed; z-index: 18; top: 50%; right: max(4px, calc((100vw - 1160px) / 2 - 136px)); display: flex; flex-direction: column; gap: 3px; width: 124px; padding: 8px; background: rgba(255, 255, 255, .96); border: 1px solid rgba(215, 223, 235, .98); border-radius: 16px; box-shadow: 0 10px 28px rgba(15, 23, 42, .13); transform: translateY(-50%); }
+        .toc-fab { display: none; }
+      }
+      @media (max-width: 720px) {
+        .page { width: calc(100vw - 20px); padding-top: 10px; }
+        .hero, .card { border-radius: 16px; }
+        .hero { padding: 24px 20px; }
+        h1 { font-size: clamp(28px, 9vw, 40px); }
+        .sub { font-size: 15px; }
+        .card { padding: 21px 19px; }
+        .grid, .flow { grid-template-columns: 1fr; }
+        .step { min-height: 0; }
+        .step + .step::before { top: -17px; left: 17px; transform: rotate(90deg); }
+        .toc-fab { right: 10px; bottom: 10px; }
+      }
+      @media (max-width: 440px) {
+        .chip { width: fit-content; }
+      }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      @page { margin: 14mm; }
+      @media print {
+        body { background: #fff; }
+        .page { width: 100%; padding: 0; }
+        .hero, .card { box-shadow: none; }
+        .content-grid { display: block; }
+        .toc-edge, .toc-fab, .skip-link { display: none; }
+        h1, h2, h3 { break-after: avoid; }
+        .choice, .callout, .step, .table-wrap, pre { break-inside: avoid; }
+        a { color: inherit; }
+      }
+    </style>
+  </head>
+  <body><main class="page"><h1>无作者书籍的源文件配套归组</h1><p>创建日期：2026-11-13 · 模块：booksvr · 状态：ACTIVE · 来源：用户报告 455744 / 455745 未归组，详情路径不显示。</p><h2>原始诉求与证据</h2><p>《大国重工》EPUB 与 MOBI 都是佚名、无 ISBN；源路径同目录、同 Q047-大国重工 齐橙 文件名，仅扩展名不同。EPUB OPF 无作者，开头是正文，没有可直接提取的署名。旧规则只接受题名加作者或 ISBN，漏掉配套文件证据。admin 登录这两个详情均正常显示存储位置；游客 API 不返回路径，leonfn 与 IP 登录状态不共享。</p><h2>目标与设计决策</h2><ul><li>采用数据库中已登记的普通格式文件路径作为辅助证据：目录及完整文件名主体完全相同，且扩展名与登记格式一致。比较书名仍需相符；已知作者或 ISBN 冲突不允许该回退。</li><li>不按文件名猜作者，不改元数据、书号、阅读记录或原文件。人工归组继续保护。</li><li>来源键只在本次比较中计算，每书最多十六个登记格式，超过上限不采用来源证据；压缩包引用不采用这条规则，避免把整个归档当同一书。来源键不从网络候选接收。</li><li>可靠子集支持实际源文件见证，避免无作者配套对被同名外部候选阻挡；仍采用已有原子自动组、歧义交集及有界邻域。</li><li>格式插入、路径更新和删除按代次入队。新增独立 sources_v2 固定上界游标，每批两百条比较键，只为同题名且缺作者的历史记录重新入队；不重置作者、导入或元数据补全游标，不反复查文件系统。</li><li>路径权限保持原样；不为游客暴露目录。向用户说明需在当前主机地址登录 admin；无前端代码修改。</li></ul><h2>影响范围与风险</h2><p>bookidentity、library 归组与后台维护，spec/书籍.md。来源路径会进入内部签名，但不是公开书籍响应。相同命名仍可能错误，因此明确身份冲突优先；不同目录同名文件不能仅靠来源键相连。原有 OPDS、部署脚本、其他方案保持独立。</p><h2>验证计划</h2><p>待验证：真实同目录配套文件、跨目录反例、作者及 ISBN 冲突、归档引用反例、缺作者与同名外部候选隔离、人工锁、格式移动后事件代次、独立游标续跑与原游标保留、全部 Go 测试、go vet、规格与设计检查、interface-review full、真实登录/游客页面及路径权限、部署与历史回执。保留当前运行程序和原任务状态；测试通过后顺序更新主服务与元数据服务，不重建容器。</p><h2>定向验证</h2><p>新增配套路径、跨目录、作者/ISBN 冲突、网络输入不可注入、同名外部候选、链式来源桥接、路径变化代次、格式证据上限、人工锁与独立游标回归通过。Windows 首次选择 Source 广义正则，连带运行既有 Linux 权限/inode/路径用例而失败；改为精确覆盖本次新用例后 PASS。完整回归在 Linux 以 talebook 用户验证这些平台约束；不修改旧测试来适应 Windows。go vet ./... PASS。完整 Linux 测试及真实库预检待完成。</p><h2>完整作者见证的组合边界</h2><p>补充三条记录边界：A 缺作者、与 B 为同源配套文件；B 有完整作者；C 同题名同完整作者但来自其他目录。A+B 的来源证据与 B+C 的作者证据应该能被真实的完整作者 B 同时解释，不能因 A 与 C 没有直接来源路径相同而整组回退。仅当完整作者见证能逐一直接支持所有成员、且包含实际来源配套证据时，允许该星形集合；全部缺作者的路径链仍不能作为见证。该分支不按多个半名单传递作者，明确冲突仍拒绝。部署中的初版 sources_v1 游标保留，最终规则采用 sources_v2 新游标重核已处理范围，不清队列或重置旧游标。</p><h2>历史发现的实际负载</h2><p>sources_v1 实库约六分钟仅推进至 56902，私有维护批次频繁 SQLITE_BUSY，说明“缺作者且同名”入队过宽。最终 sources_v2 发现阶段先按现有 source_sync_format_path 索引定位来源主体加点号的范围，每次最多 65 条已登记路径，再校验完整主体、扩展名与题名；只有确有另一条配套记录才入队。普通路径索引生产已存在，旧库仅在缺失时幂等补建。不遍历磁盘，不逐书扫描全库格式表，也不排队无路径证据的同名记录。原有临时队列保留正常消费，不清空任务。</p><h2>整套验证与初版实测</h2><p>初版 3d5963dc9d657184589e31c035bf94a8ed618ad97fcc10e228541fade6c11dc5 在隔离 Linux、talebook 用户、无生产挂载下执行 49 个包全部 PASS 后部署；真实库 455744/455745 归到作品 31168，两个源文件 SHA-256、大小和 mtime 不变，佚名原值保留。真实 Playwright 验收两页、admin/游客四种状态：彼此版本可见，admin 当前与其他版本路径可见，游客文件列表不返回 storage；搜索中该配套对汇成一张卡片，整个搜索仍有其他候选（total=3），未冒称所有同名书均已归组。1280px 与 320px 验证，320px 无水平溢出，页面脚本错误 0，metadata worker_active=true。截图 C:/Users/leon/bookharbor-source-family-455744-admin.png 和 -320.png 已检查。路径位于详情“书籍操作”下方“存储位置”。</p><p>完整作者组合见证新增回归先失败，修正后 Identity 与所有本次定向用例 PASS。索引发现用例确认仅实际配套对入队，不给其他目录同名记录入队，EXPLAIN QUERY PLAN 使用 SEARCH book_formats USING INDEX source_sync_format_path 的范围定位。最终程序 SHA-256：6b8cc288ce4315281a8195610967c74e4875f34c228659c33f97ea2e89c28ea8；go vet ./... PASS；最终 49 包整套回归全部 PASS。ESLint quiet PASS；规格 25 篇 PASS。无前端实现改动。</p><h2>interface-review full</h2><p>按照 AGENTS.md 显式使用 interface-review full，交给 better-interface 并应用 accessibility、layout、writing、typography、colors、ui 六个领域规则。范围为 origin/main=07265e58c4b37f0affc32ca9c87b7a65f493c45d 到整个当前工作区：0 个已提交、9 个已跟踪文本差异、8 个未跟踪文本文件，共 17；Dockerfile 只有元数据状态而无文本差异排除。包含原有 OPDS、镜像管理脚本和其他方案；并非只审本任务文件，原有改动不混入本次提交。读取 git diff HEAD 两侧及新文件，没有 fetch、checkout、stash 或 worktree 操作。</p><p>一跳消费者限制五处：BookCards、详情 BookStorageLocations、BookVersions、OPDS、MetadataProgress；分类页面与阅读器内部两类后续消费者不再拓展。此前已读且未变的 OPDS/管理脚本差异沿用本轮全范围检查，不把相关设备客户端作为本次通过项。</p><table><tr><th>领域</th><th>覆盖与证据</th></tr><tr><td>Accessibility</td><td>无控件、语义、焦点属性删除。存储区与其他版本原有标题、aria-label、下载链接保持；访客隐藏路径仍由 API 与页面共同约束。</td></tr><tr><td>Layout</td><td>源文件和版本长路径沿用原布局与断行；两详情页在 1280px/320px 真实渲染，320px 无横向溢出。</td></tr><tr><td>Writing</td><td>缺作者仍显示佚名，不将文件名中的齐橙冒充已确认作者。历史归组核查与全库元数据补全分开，不把源文件游标完成说成联网完成。无新增未翻译界面字符串。</td></tr><tr><td>Typography</td><td>路径仍为可选择代码文本并允许长串换行；同名其他版本沿用原书号标题及格式大小标注。</td></tr><tr><td>Colors</td><td>Not reviewed: no evidence in the change scope。未改颜色/主题，不声称对比度、暗色测试。</td></tr><tr><td>UI</td><td>Not reviewed: no evidence in the change scope。无样式、动效或新控件改动；数据变化由同一现有卡片及版本组件承载。</td></tr></table><h3>Findings</h3><p>No actionable interface findings in this change. 未发现 Introduced/Regression HIGH 或 MEDIUM。索引负载和自动归组正确性由 Go 与数据库验证，不混作界面评判。</p><h3>Considered but Rejected</h3><p>拒绝向游客开放服务器路径来解决显示问题，真实 admin/游客检查证明是登录状态差异。拒绝仅按书名归组或从文件名猜作者。拒绝增加新版本控件：原有版本列表已表达逐文件路径和格式，修正后可直接使用。保留现有语义与布局。</p><h3>Verification</h3><p>git diff HEAD --name-only、git ls-files --others --exclude-standard、git rev-list --count origin/main..HEAD、git diff HEAD；六领域 source review 完成。真实后端与真实 admin/游客 Chromium Playwright 渲染完成初版验收，最终程序部署后复验；当前没有 Chrome DevTools MCP 可用，未改前端实现，使用 Playwright Chromium 替代。200% 缩放、暗色和阅读设备未测试，不列作通过。最终 Verdict: Approve。最终部署复验及数据对账均已通过。</p><h2>最终部署、数据回执与结论</h2><p>最终 6b8cc288ce4315281a8195610967c74e4875f34c228659c33f97ea2e89c28ea8 已部署到现有 bookharbor 容器，主服务 PID 2803、元数据服务 PID 2849；原阅读器、插件、nginx PID/启动时刻保持，容器挂载未改。最终隔离 Linux 全部 49 包 -test.count=1 -test.timeout=600s PASS；go vet ./...、ESLint quiet PASS；镜像管理 pytest tests 127 PASS；25 篇规格 PASS。所有临时测试容器已删除，49 个本地编译测试文件已清理；保留当前与回滚运行程序。</p><p>最终真实后端 Playwright：/book/455744 与 /book/455745，admin 和游客四种状态均通过；当前版及其他版的来源路径仅对 admin/书主可见，游客 API 不含 storage，页面不显示目录。两页在 1280px 与 320px 复验，320px 无横向溢出，脚本错误 0。实际 /search?name=大国重工 页面该配套对只出现一张卡片，含 EPUB/MOBI，整个搜索 total=3，其他同名候选未强行吸收。最终截图 C:/Users/leon/bookharbor-source-family-card.png、C:/Users/leon/bookharbor-source-family-455744-admin.png、C:/Users/leon/bookharbor-source-family-455744-320.png 已核对。两个原文件 hash/size/mtime 与第一轮快照一致，书号、佚名原作者值保持，作品 31168，两个入口 dry preview 均为相同二成员。</p><p>sources_v2 完成游标 458914/458914（书号有空洞），完成时队列 0，最终对账同样为 0。历史核查复用低优先级短租约，写锁等待时保留进度续跑，未暂停原元数据补全来抢占写入。sources_v1 的 128586 游标保留，作者 v5 与常规种子游标均保持 458914，未清队列或重置进度。原限速不变，来源请求在本轮继续增长。</p><p>原子只读快照对账：书籍总数 408242 与全部格式记录数量保持；238 条人工归组和 781 条原字段锁保持；导入控制和扫描历史保持。本轮运行期间净归属变化 1145 条，原未归组新增 934 条，脱离不可靠自动组 57 条，新增/扩展 553 个作品。计数包含并发原补全任务的自然修复，不能全部归因于来源规则；258 个作者键变化来自原后台核查，本功能没有猜写作者。既有同 ISBN 冲突候选基准不覆盖本轮无 ISBN 配套类，其仍有 880 簇，未据此声称消除所有重复。</p><p>全部回执位于 /data/maintenance/20261113-source-family/ ：grouping-before.ndjson.gz、linux-tests-final.json、management-tests.txt、deployment.json、sample-final-verification.json、repair-complete.json、verification.json。index 设计门禁与最终暂存差异检查在提交前执行。界面 full 审查无 Introduced/Regression HIGH、MEDIUM，无 actionable findings，Verdict: Approve。200% 缩放、暗色与阅读设备未测试，未作通过声明。</p></main></body></html>
