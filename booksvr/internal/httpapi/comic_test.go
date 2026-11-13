@@ -863,3 +863,28 @@ func TestCanUserViewBook(t *testing.T) {
 		t.Error("无 items 记录应视为可见")
 	}
 }
+
+func TestComicSelectedFormat(t *testing.T) {
+	db := comicTestDB(t)
+	comicSeed(t, db, 1, "comic", "public", 0)
+	comicSeedReader(t, db, 7, false, true, "")
+	a := comicZip(t, map[string][]byte{"a.png": comicPNG(10, 10)})
+	b := comicZip(t, map[string][]byte{"b.png": comicPNG(20, 20), "c.png": comicPNG(30, 30)})
+	comicSeedFormat(t, db, 1, "CBZ", a)
+	comicSeedFormat(t, db, 1, "ZIP", b)
+	cfg := ComicConfig{CookieSecret: "test", LibraryRoot: filepath.Dir(a)}
+	ctx, _ := comicCtx(t, db, http.MethodGet, "/api/book/1/comic/pages?format=zip", "", 7, "1")
+	response, err := ComicManifestHandler(cfg, comic.NewService())(ctx)
+	if err != nil || response["err"] != "ok" || response["pages_count"] != 2 || response["format"] != "ZIP" {
+		t.Fatalf("%v %v", response, err)
+	}
+	pages := response["pages"].([]map[string]any)
+	if !strings.Contains(pages[0]["url"].(string), "format=zip") {
+		t.Fatal(pages)
+	}
+	ctx, _ = comicCtx(t, db, http.MethodGet, "/api/book/1/comic/pages?format=cbr", "", 7, "1")
+	response, err = ComicManifestHandler(cfg, comic.NewService())(ctx)
+	if err != nil || response["err"] == "ok" {
+		t.Fatalf("unexpected fallback %v %v", response, err)
+	}
+}

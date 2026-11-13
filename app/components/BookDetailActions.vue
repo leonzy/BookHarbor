@@ -16,12 +16,14 @@
         <div class="book-actions__body">
             <div class="book-actions__grid">
                 <v-btn
-                    v-if="book.id > 0 && hasCompatibleFormats"
+                    v-if="book.id > 0 && hasCompatibleFormats && readingOptions.length > 0"
+                    ref="readButton"
                     color="primary"
                     variant="flat"
-                    :href="withBasePath(readerPath)"
+                    :href="readingOptions.length === 1 ? withBasePath(readingOptions[0].readerPath) : undefined"
                     target="_blank"
                     data-testid="open-online-reader"
+                    @click="readingOptions.length > 1 && (chooseReadingFile = true)"
                 >
                     <v-icon start>
                         mdi-book-open-page-variant
@@ -258,15 +260,39 @@
                 </div>
             </div>
         </div>
+        <v-dialog v-model="chooseReadingFile" max-width="560" scrollable :transition="false" aria-labelledby="reading-format-title" @after-leave="readButton?.$el?.focus()">
+            <v-card class="book-file-dialog" data-testid="book-read-format-dialog">
+                <v-card-title id="reading-format-title">{{ t('book.chooseReadingFormat') }}</v-card-title>
+                <v-card-text>
+                    <v-list>
+                        <v-list-item
+                            v-for="option in readingOptions"
+                            :key="option.key"
+                            :href="withBasePath(option.readerPath)"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            :title="option.title"
+                            :subtitle="option.bookTitle"
+                            @click="chooseReadingFile = false"
+                        />
+                    </v-list>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn @click="chooseReadingFile = false">{{ t('common.cancel') }}</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
     </section>
 </template>
 
 <script setup>
 import { withBasePath } from '@/utils/base-path';
-import { nextTick } from 'vue';
+import { computed, nextTick, ref } from 'vue';
+import { bookFileOptions } from '~/utils/book-file-options';
 import { useI18n } from 'vue-i18n';
 
-defineProps({
+const props = defineProps({
     book: { type: Object, required: true },
     readerPath: { type: String, default: '' },
     hasCompatibleFormats: { type: Boolean, default: false },
@@ -275,6 +301,10 @@ defineProps({
     bookToolActions: { type: Array, default: () => [] },
     settingMediaType: { type: Boolean, default: false },
 });
+
+const readingOptions = computed(() => bookFileOptions(props.book).filter(option => option.readerPath));
+const chooseReadingFile = ref(false);
+const readButton = ref(null);
 
 const emit = defineEmits([
     'download',
@@ -330,6 +360,12 @@ function upwardMenuLocationStrategy(data, _props, contentStyles) {
 </script>
 
 <style scoped>
+.book-file-dialog :deep(.v-card-title),
+.book-file-dialog :deep(.v-list-item-title) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .book-actions {
     padding-block: 2px;
 }

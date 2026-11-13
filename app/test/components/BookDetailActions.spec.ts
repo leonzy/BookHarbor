@@ -121,3 +121,21 @@ describe('BookDetailActions.vue', () => {
         expect(wrapper.get('[data-testid="book-action-download"]').exists()).toBe(true);
     });
 });
+
+it('asks for the actual version and format before reading and closes on cancel', async () => {
+    const wrapper = mountActions({ book: { ...ownerBook, files: [{ format: 'EPUB', size: 100 }], versions: [{ id: 2, title: 'Other edition', files: [{ format: 'MOBI', size: 200 }] }] } });
+    expect(wrapper.get('[data-testid="open-online-reader"]').attributes('href')).toBeUndefined();
+    await wrapper.get('[data-testid="open-online-reader"]').trigger('click');
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(document.querySelector('a[href="/read/1?format=epub"]')).not.toBeNull();
+    expect(document.querySelector('a[href="/read/2?format=mobi"]')).not.toBeNull();
+    const cancel = [...document.querySelectorAll('button')].find(b => b.textContent?.includes('common.cancel'));
+    cancel?.click();
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(wrapper.findComponent(components.VDialog).props('modelValue')).toBe(false);
+});
+
+it('reads the sole supported file directly without a dialog', () => {
+    const wrapper = mountActions({ book: { ...ownerBook, files: [{ format: 'AZW3' }] } });
+    expect(wrapper.get('[data-testid="open-online-reader"]').attributes('href')).toBe('/read/1?format=azw3');
+});

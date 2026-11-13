@@ -27,6 +27,10 @@ func (w *bookWiring) bookSendToDevice(ctx *Context, bookID int64, args map[strin
 		return map[string]any{"err": "book.not_found", "msg": "书籍已不存在"}, nil
 	}
 
+	if !w.canView(ctx, bookID) {
+		return map[string]any{"err": "book.not_found", "msg": "书籍已不存在"}, nil
+	}
+
 	if resp := w.checkPushPermission(ctx); resp != nil {
 		return resp, nil
 	}
@@ -53,6 +57,9 @@ func (w *bookWiring) bookSendToDevice(ctx *Context, bookID int64, args map[strin
 	}
 
 	format := strings.ToLower(booktools.PickFormat(book, "EPUB", "MOBI", "AZW3", "PDF", "TXT"))
+	if requested := strings.ToUpper(strings.TrimSpace(stringOf(args["format"]))); requested != "" {
+		format = strings.ToLower(booktools.PickFormat(book, requested))
+	}
 	if format == "" {
 		return map[string]any{"err": "format.not_found", "msg": "书籍没有可推送的格式"}, nil
 	}
@@ -91,6 +98,10 @@ func (w *bookWiring) bookSendToMail(ctx *Context, bookID int64, args map[string]
 		return map[string]any{"err": "book.not_found", "msg": "书籍已不存在"}, nil
 	}
 
+	if !w.canView(ctx, bookID) {
+		return map[string]any{"err": "book.not_found", "msg": "书籍已不存在"}, nil
+	}
+
 	if resp := w.checkPushPermission(ctx); resp != nil {
 		return resp, nil
 	}
@@ -109,6 +120,9 @@ func (w *bookWiring) bookSendToMail(ctx *Context, bookID int64, args map[string]
 	}
 
 	format := strings.ToLower(booktools.PickFormat(book, "EPUB", "MOBI", "AZW3", "PDF", "TXT"))
+	if requested := strings.ToUpper(strings.TrimSpace(stringOf(args["format"]))); requested != "" {
+		format = strings.ToLower(booktools.PickFormat(book, requested))
+	}
 	if format == "" {
 		return map[string]any{"err": "format.not_found", "msg": "书籍没有可推送的格式"}, nil
 	}

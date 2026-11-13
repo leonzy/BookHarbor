@@ -139,8 +139,9 @@
       readerError: page.dataset.msgReaderError,
     };
     const bookUrl = `{{BASE_PATH}}/book/${bookId}`;
-    const manifestUrl = `{{BASE_PATH}}/api/book/${bookId}/comic/pages`;
-    const progressUrl = `{{BASE_PATH}}/api/book/${bookId}/comic/progress`;
+    const formatQuery = new URLSearchParams({ format: new URLSearchParams(location.search).get('format') || '' }).toString();
+    const manifestUrl = `{{BASE_PATH}}/api/book/${bookId}/comic/pages?${formatQuery}`;
+    const progressUrl = `{{BASE_PATH}}/api/book/${bookId}/comic/progress?${formatQuery}`;
 
     let reader;
     let saveTimer;

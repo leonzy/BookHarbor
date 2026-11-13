@@ -189,6 +189,15 @@ func authorizedComic(ctx *Context, cfg ComicConfig, bookID int64, authenticated 
 		return book, ctx.comicArchiveOverride.Path, ctx.comicArchiveOverride.Format, nil
 	}
 
+	if requested := strings.ToLower(strings.TrimSpace(ctx.Query("format"))); requested != "" {
+		if requested != "cbz" && requested != "zip" && requested != "cbr" && requested != "rar" {
+			return nil, "", "", comic.NewError("comic.format_unsupported", "请求的漫画格式不支持", 415)
+		}
+		selected := map[string]any{"media_type": book["media_type"], "fmt_" + requested: book["fmt_"+requested]}
+		path, format, err := comic.SelectContainer(selected)
+		return book, path, format, err
+	}
+
 	archivePath, archiveFormat, err := comic.SelectContainer(book)
 	if err != nil {
 		return nil, "", "", err
@@ -302,7 +311,7 @@ func ComicManifestHandler(cfg ComicConfig, svc *comic.Service) HandlerFunc {
 			if err != nil {
 				return nil, err
 			}
-			data["url"] = data["url"].(string) + "&token=" + url.QueryEscape(token)
+			data["url"] = data["url"].(string) + "&token=" + url.QueryEscape(token) + "&format=" + url.QueryEscape(archiveFormat)
 			pages = append(pages, data)
 		}
 

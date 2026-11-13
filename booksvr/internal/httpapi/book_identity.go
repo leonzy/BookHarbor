@@ -24,7 +24,7 @@ func bookIdentityVersions(cfg BookConfig, ctx *Context, id int64) ([]map[string]
 		if b == nil {
 			continue
 		}
-		out = append(out, map[string]any{"id": b.ID, "title": b.Title, "authors": b.Authors, "href": cfg.CDNURL + "/book/" + strconv.FormatInt(b.ID, 10), "files": bookFileEntries(cfg, ctx, *b)})
+		out = append(out, map[string]any{"id": b.ID, "title": b.Title, "media_type": bookItemFields(cfg, b.ID).mediaType, "authors": b.Authors, "href": cfg.CDNURL + "/book/" + strconv.FormatInt(b.ID, 10), "files": bookFileEntries(cfg, ctx, *b)})
 	}
 	return out, nil
 }

@@ -26,9 +26,19 @@
                             {{ t('book.sendToDevice') }}
                         </v-card-title>
                         <v-card-text>
-                            <p class="mb-4 text-body-2 text-medium-emphasis">
-                                {{ t('messages.willSendFormat', { format: selectedFormat }) }}
-                            </p>
+                            <v-select
+                                v-model="selectedFileKey"
+                                data-testid="send-device-format"
+                                class="book-file-select"
+                                :menu-props="{ contentClass: 'book-file-options' }"
+                                :items="fileOptions"
+                                item-title="title"
+                                item-value="key"
+                                :label="t('book.chooseSendingFormat')"
+                                variant="outlined"
+                                density="compact"
+                                :disabled="sending_to_device"
+                            />
                             <v-alert
                                 v-if="deviceTypes.length === 0"
                                 type="info"
@@ -910,6 +920,7 @@ import BookStorageLocations from '~/components/BookStorageLocations.vue';
 import BookVersions from '~/components/BookVersions.vue';
 import AnnotationPanel from '~/components/AnnotationPanel.vue';
 import { READING_STATE, useBookReadingState } from '~/composables/useBookReadingState';
+import { bookFileOptions } from '~/utils/book-file-options';
 import { readerPathForBook } from '~/utils/comic-reader';
 
 const route = useRoute();
@@ -1091,7 +1102,7 @@ const pub_year = computed(() => {
 });
 
 const readerPath = computed(() => readerPathForBook(book.value));
-const hasCompatibleFormats = computed(() => Boolean(readerPath.value));
+const hasCompatibleFormats = computed(() => bookFileOptions(book.value).some(file => file.readerPath));
 const hasMixedMediaFormats = computed(() => {
     const formats = new Set((book.value.files || []).map(file => String(file.format || '').toLowerCase()));
     const hasComic = ['cbz', 'zip', 'cbr', 'rar'].some(format => formats.has(format));
@@ -1099,15 +1110,14 @@ const hasMixedMediaFormats = computed(() => {
     return hasComic && hasEbook;
 });
 
-const selectedFormat = computed(() => {
-    if (!book.value || !book.value.files) return 'N/A';
-    const formats = book.value.files.map(x => x.format.toLowerCase());
-    const priority = ['epub', 'azw3', 'pdf', 'txt', 'mobi'];
-    for (const fmt of priority) {
-        if (formats.includes(fmt)) return fmt.toUpperCase();
+const fileOptions = computed(() => bookFileOptions(book.value));
+const selectedFileKey = ref('');
+const selectedFile = computed(() => fileOptions.value.find(file => file.key === selectedFileKey.value));
+watch(fileOptions, (options) => {
+    if (!options.some(file => file.key === selectedFileKey.value)) {
+        selectedFileKey.value = options.length === 1 ? options[0].key : '';
     }
-    return formats[0]?.toUpperCase() || 'N/A';
-});
+}, { immediate: true });
 
 const matchingSavedDevices = computed(() => {
     return devices.value
@@ -1129,7 +1139,7 @@ const savedDeviceItems = computed(() => {
 const isKindleDevice = computed(() => selectedDeviceType.value === 'kindle');
 
 const canSendToDevice = computed(() => {
-    if (!selectedDeviceType.value) return false;
+    if (!selectedDeviceType.value || !selectedFile.value) return false;
     if (isKindleDevice.value) return !!deviceTarget.value.mailbox.trim();
     return !!(deviceTarget.value.ip.trim() && String(deviceTarget.value.port).trim());
 });
@@ -1248,7 +1258,8 @@ const sendToDevice = async () => {
             };
         }
 
-        const response = await $backend(`/book/${bookid.value}/send_to_device`, {
+        requestBody.format = selectedFile.value.format;
+        const response = await $backend(`/book/${selectedFile.value.bookId}/send_to_device`, {
             method: 'POST',
             body: JSON.stringify(requestBody),
         });
@@ -1674,6 +1685,12 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.book-file-select :deep(.v-select__selection-text),
+:global(.book-file-options .v-list-item-title) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .book-title-block {
     margin-bottom: clamp(18px, 2vw, 26px);
     padding: clamp(16px, 2vw, 24px) 4px 0;

@@ -150,6 +150,8 @@
     "txt2epubDescription": "Use txt2epub to detect chapters, organize the table of contents, and create an EPUB file",
     "noAvailableConversions": "This book has no formats available for conversion. Supported targets already exist or no usable source file is available.",
     "startConversion": "Start conversion",
+    "chooseReadingFormat": "Choose reading version and format",
+    "chooseSendingFormat": "Version and format to send",
     "sendToDevice": "Send to Device",
     "selectDevice": "Select Device",
     "noDevices": "No devices configured yet",
