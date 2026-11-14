@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Search 执行 Calibre 风格的查询，返回匹配的书籍 id。
@@ -13,7 +15,8 @@ import (
 // 支持的语法：
 //   - 字段限定：title:/author:/tag:/publisher:/series:/rating:/format:/search:
 //   - 比较符：`:` 等于、`:=` 等于、`:<` 小于、`:>` 大于
-//   - 布尔运算：and / or / not（大小写不敏感）
+//   - 布尔运算：and / or / not（大小写不敏感），相邻条件默认 and
+//   - 单引号或双引号包围的裸短语；Unicode 空白分隔关键词
 //   - 括号分组
 //   - 空查询返回全部
 //
@@ -100,8 +103,15 @@ func lex(s string) ([]token, error) {
 	for i < len(s) {
 		c := s[i]
 		switch {
-		case c == ' ' || c == '\t' || c == '\n':
-			i++
+		case searchSpaceWidth(s, i) > 0:
+			i += searchSpaceWidth(s, i)
+		case c == '\'' || c == '"':
+			val, next, err := lexValue(s, i)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, token{kind: tokField, text: "search"}, token{kind: tokOp, text: ":"}, token{kind: tokValue, text: val})
+			i = next
 		case c == '(':
 			out = append(out, token{kind: tokLParen, text: "("})
 			i++
@@ -111,7 +121,7 @@ func lex(s string) ([]token, error) {
 		default:
 			// 读一个「词」：字段名或裸词。
 			start := i
-			for i < len(s) && !strings.ContainsRune(" \t\n():=<>", rune(s[i])) {
+			for i < len(s) && searchSpaceWidth(s, i) == 0 && !strings.ContainsRune("():=<>", rune(s[i])) {
 				i++
 			}
 			word := s[start:i]
@@ -158,6 +168,15 @@ func lex(s string) ([]token, error) {
 	return out, nil
 }
 
+// searchSpaceWidth returns a complete whitespace rune's byte width.
+func searchSpaceWidth(s string, i int) int {
+	r, width := utf8.DecodeRuneInString(s[i:])
+	if unicode.IsSpace(r) {
+		return width
+	}
+	return 0
+}
+
 // lexOp 读取比较符，返回符号与新的位置。
 func lexOp(s string, i int) (string, int, error) {
 	if i >= len(s) {
@@ -202,7 +221,7 @@ func lexValue(s string, i int) (string, int, error) {
 		return val, i, nil
 	}
 	start := i
-	for i < len(s) && !strings.ContainsRune(" \t\n()", rune(s[i])) {
+	for i < len(s) && searchSpaceWidth(s, i) == 0 && !strings.ContainsRune("()", rune(s[i])) {
 		i++
 	}
 	val := s[start:i]
@@ -247,8 +266,11 @@ func (p *parser) parseAnd() (node, error) {
 	if err != nil {
 		return nil, err
 	}
-	for p.peek(tokAnd) {
-		p.next()
+	for p.peek(tokAnd) || p.peek(tokField) || p.peek(tokNot) || p.peek(tokLParen) {
+		// Adjacent terms imply AND, at the same precedence as explicit AND.
+		if p.peek(tokAnd) {
+			p.next()
+		}
 		right, err := p.parseUnary()
 		if err != nil {
 			return nil, err

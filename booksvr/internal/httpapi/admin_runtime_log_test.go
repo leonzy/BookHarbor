@@ -6,8 +6,10 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -52,5 +54,24 @@ func TestHTTPHandlerErrorsReachSystemLog(t *testing.T) {
 	text := output.String()
 	if !strings.Contains(text, "ERROR") || !strings.Contains(text, "test failure") || !strings.Contains(text, "/api/test-log") || strings.Contains(text, "DO_NOT_LOG") {
 		t.Fatalf("bad log %q", text)
+	}
+}
+
+func TestSearchFailureLogIncludesOnlyQuotedQuery(t *testing.T) {
+	var output bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&output)
+	defer log.SetOutput(old)
+	srv, err := NewServer([]RouteSpec{{Pattern: "/api/search", Handler: func(*Context) (map[string]any, error) { return nil, errors.New("invalid search") }}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := "三体\nII\r\nforged log"
+	req := httptest.NewRequest("GET", "/api/search?name="+url.QueryEscape(query)+"&password=DO_NOT_LOG", nil)
+	req.Header.Set("Authorization", "Bearer SECRET_TOKEN")
+	srv.ServeHTTP(httptest.NewRecorder(), req)
+	got := output.String()
+	if !strings.Contains(got, "query="+strconv.Quote(query)) || strings.Count(got, "\n") != 1 || strings.Contains(got, "DO_NOT_LOG") || strings.Contains(got, "SECRET_TOKEN") {
+		t.Fatalf("unsafe or incomplete log: %q", got)
 	}
 }

@@ -127,6 +127,8 @@ func TestAccessBrowsePermissionsBeforeFilterCountPageAndSize(t *testing.T) {
 		{"author", AccessBrowseQuery{BrowseQuery: BrowseQuery{Size: 10, Filters: map[string]string{"author": "刘"}}}, []int64{2, 1}, 2},
 		{"no candidates", AccessBrowseQuery{BrowseQuery: BrowseQuery{Size: 10, Candidates: []int64{3}}}, []int64{}, 0},
 		{"search OR respects scope", AccessBrowseQuery{BrowseQuery: BrowseQuery{Size: 10}, Search: "title:'三体' or title:'活着'"}, []int64{1}, 1},
+		{"multiple keywords remain scoped", AccessBrowseQuery{BrowseQuery: BrowseQuery{Size: 10}, Search: "三体 format:EPUB"}, []int64{2, 1}, 2},
+		{"multiple keywords cannot reveal hidden format", AccessBrowseQuery{BrowseQuery: BrowseQuery{Size: 10}, Search: "三体 format:MOBI"}, []int64{}, 0},
 		{"search hidden format", AccessBrowseQuery{BrowseQuery: BrowseQuery{Size: 10}, Search: "format:MOBI"}, []int64{}, 0},
 		{"alias remains scoped", AccessBrowseQuery{BrowseQuery: BrowseQuery{Size: 10}, Search: "no-such-title", SearchAliasIDs: []int64{1, 3}}, []int64{1}, 1},
 		{"search relevance remains scoped", AccessBrowseQuery{BrowseQuery: BrowseQuery{Size: 10}, Search: "no-such-title", SearchAliasIDs: []int64{1, 3}, SearchRelevance: true}, []int64{1}, 1},
