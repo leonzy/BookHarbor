@@ -16,6 +16,8 @@ docker/status_page.html 各自维护一份固定白名单。
 import datetime
 import json
 import os
+import socket
+import time
 import subprocess
 import sys
 
@@ -172,7 +174,19 @@ def start_booksvr(secret=None):
     # is not inherited by the program being started. The supervised entrypoint reads
     # the same settings file and exports BOOKSVR_COOKIE_SECRET immediately before
     # exec'ing booksvr.
-    return run(["supervisorctl", "start", "talebook:booksvr"])
+    if not run(["supervisorctl", "start", "talebook:booksvr"]):
+        return False
+    # Supervisor reports RUNNING after startsecs even while migrations wait for SQLite.
+    while True:
+        try:
+            with socket.create_connection(("127.0.0.1", 8000), timeout=1):
+                return True
+        except OSError:
+            status = subprocess.run(["supervisorctl", "status", "talebook:booksvr"],
+                                    capture_output=True, text=True).stdout.split()
+            if len(status) < 2 or status[1] not in ("STARTING", "RUNNING", "BACKOFF"):
+                return False
+            time.sleep(1)
 
 
 def run_bootstrap(checks=CHECKS, start_booksvr_fn=start_booksvr):

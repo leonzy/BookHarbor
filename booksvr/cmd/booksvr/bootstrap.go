@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"io"
+	"os"
+	"os/signal"
+	"syscall"
 	"talebook/booksvr/internal/httpapi"
 )
 
@@ -14,5 +18,7 @@ func runBootstrap(args []string, out io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	return httpapi.Bootstrap(*db, *settings)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	return retryStartup(ctx, out, func() error { return httpapi.Bootstrap(*db, *settings) })
 }

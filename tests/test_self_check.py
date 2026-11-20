@@ -202,6 +202,20 @@ class TestRunBootstrap(unittest.TestCase):
         self.assertEqual(doc["steps"][0], {"name": "a", "status": "failed", "code": "permission_denied"})
         self.assertEqual(doc["steps"][1]["status"], "pending")
 
+    @mock.patch("docker.self_check.time.sleep")
+    @mock.patch("docker.self_check.subprocess.run")
+    @mock.patch("docker.self_check.socket.create_connection")
+    @mock.patch("docker.self_check.run", return_value=True)
+    def test_waits_for_listening_service(self, start, connect, status, sleep):
+        connect.side_effect = [ConnectionRefusedError(), mock.MagicMock()]
+        status.return_value.stdout = "talebook:booksvr RUNNING pid 123"
+        self.assertTrue(self_check.start_booksvr("test"))
+        start.assert_called_once()
+        sleep.assert_called_once()
+        connect.side_effect = ConnectionRefusedError()
+        status.return_value.stdout = "talebook:booksvr FATAL"
+        self.assertFalse(self_check.start_booksvr("test"))
+
     def test_tornado_is_retired(self):
         # Tornado 已下线：self_check 不再有 start_tornado。
         self.assertFalse(hasattr(self_check, "start_tornado"))

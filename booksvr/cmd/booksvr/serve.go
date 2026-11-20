@@ -291,7 +291,7 @@ func runServe(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return httpapi.Serve(ctx, httpapi.ServeOptions{
+	options := httpapi.ServeOptions{
 		FullSourceSyncExecutable: executable,
 		PersistentScan:           true,
 		ReaderOnly:               opts.ReaderOnly,
@@ -339,5 +339,8 @@ func runServe(args []string, out io.Writer) error {
 		SettingsPath:       opts.SettingsFile,
 		ServiceFactory:     wiring,
 		Out:                out,
+	}
+	return retryStartup(ctx, out, func() error {
+		return httpapi.Serve(ctx, options)
 	})
 }
