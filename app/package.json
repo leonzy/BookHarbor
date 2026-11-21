@@ -19,7 +19,7 @@
     "@nuxtjs/i18n": "^10.6.0",
     "@pinia/nuxt": "^0.11.3",
     "@talebook/candle-reader": "26.10.9",
-    "entities": "^7.0.1",
+    "entities": "^9.0.0",
     "marked": "^15.0.0",
     "node-forge": "^1.3.3",
     "nuxt": "^4.6.4",
