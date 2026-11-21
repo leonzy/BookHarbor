@@ -106,7 +106,7 @@ jobs:
         run: npm run generate
       - name: Generate build artifact
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nuxt-build
           path: |
@@ -137,7 +137,7 @@ jobs:
         run: npx playwright test -c playwright.library.config.ts
       - name: Upload browser results and failure traces
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: library-browser-results
           path: app/test-results
