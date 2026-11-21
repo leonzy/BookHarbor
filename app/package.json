@@ -28,7 +28,7 @@
     "ultrahtml": "^1.6.0",
     "vue": "^3.5.27",
     "vue-router": "^4.6.4",
-    "vuetify-nuxt-module": "^0.19.3"
+    "vuetify-nuxt-module": "^0.19.5"
   },
   "devDependencies": {
     "@nuxt/test-utils": "^4.4.0",
