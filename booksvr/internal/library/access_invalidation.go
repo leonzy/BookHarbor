@@ -8,13 +8,14 @@ import (
 
 // Invalidation is transactional with the source mutation. The unconfigured
 // fast path only evaluates a small singleton/indexed-state predicate; it does
-// not enqueue work or walk any book/profile tables.
+// not enqueue work or walk any book/profile tables. The file count must start
+// from book_id: the file table's primary key can only narrow it to a profile.
 func accessInvalidationSQL(id string) string {
 	return `UPDATE acl_state SET source_watermark=source_watermark+1 WHERE id=1;
 		UPDATE acl_dirty SET version=(SELECT source_watermark FROM acl_state WHERE id=1) WHERE book_id=` + id + `;
 		INSERT INTO acl_dirty(book_id,version) SELECT ` + id + `,source_watermark FROM acl_state WHERE id=1 AND NOT EXISTS(SELECT 1 FROM acl_dirty WHERE book_id=` + id + `);
 		UPDATE acl_profile SET epoch=epoch+1 WHERE EXISTS(SELECT 1 FROM acl_profile_book p WHERE p.book_id=` + id + ` AND p.revision=acl_profile.revision AND p.profile=acl_profile.profile);
-		UPDATE acl_profile_count SET books=books-(SELECT count(*) FROM acl_profile_book p WHERE p.book_id=` + id + ` AND p.revision=acl_profile_count.revision AND p.profile=acl_profile_count.profile AND p.owner=acl_profile_count.owner),files=files-(SELECT count(*) FROM acl_profile_file f WHERE f.book_id=` + id + ` AND f.revision=acl_profile_count.revision AND f.profile=acl_profile_count.profile AND f.owner=acl_profile_count.owner) WHERE EXISTS(SELECT 1 FROM acl_profile_book p WHERE p.book_id=` + id + ` AND p.revision=acl_profile_count.revision AND p.profile=acl_profile_count.profile AND p.owner=acl_profile_count.owner);
+		UPDATE acl_profile_count SET books=books-(SELECT count(*) FROM acl_profile_book p WHERE p.book_id=` + id + ` AND p.revision=acl_profile_count.revision AND p.profile=acl_profile_count.profile AND p.owner=acl_profile_count.owner),files=files-(SELECT count(*) FROM acl_profile_file f INDEXED BY acl_profile_file_invalidate WHERE f.book_id=` + id + ` AND f.revision=acl_profile_count.revision AND f.profile=acl_profile_count.profile AND f.owner=acl_profile_count.owner) WHERE EXISTS(SELECT 1 FROM acl_profile_book p WHERE p.book_id=` + id + ` AND p.revision=acl_profile_count.revision AND p.profile=acl_profile_count.profile AND p.owner=acl_profile_count.owner);
 		DELETE FROM acl_profile_file WHERE book_id=` + id + `;
 		DELETE FROM acl_profile_book WHERE book_id=` + id + `;`
 }
@@ -59,7 +60,21 @@ func migrateAccessInvalidation(tx *sql.Tx) error {
 		if exists == 0 {
 			continue
 		}
-		stmt := `CREATE TRIGGER IF NOT EXISTS acl_invalidate_` + t.name + ` AFTER ` + t.event + ` ON ` + t.table + ` WHEN (` + t.condition + `) AND ((SELECT active_revision FROM acl_state WHERE id=1)>0 OR EXISTS(SELECT 1 FROM acl_revision WHERE status IN ('preparing','ready'))) BEGIN ` + t.body + ` END`
+		name := "acl_invalidate_" + t.name
+		stmt := `CREATE TRIGGER ` + name + ` AFTER ` + t.event + ` ON ` + t.table + ` WHEN (` + t.condition + `) AND ((SELECT active_revision FROM acl_state WHERE id=1)>0 OR EXISTS(SELECT 1 FROM acl_revision WHERE status IN ('preparing','ready'))) BEGIN ` + t.body + ` END`
+		var installed string
+		err := tx.QueryRow(`SELECT sql FROM sqlite_master WHERE name=? AND type='trigger'`, name).Scan(&installed)
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		if installed == stmt {
+			continue
+		}
+		if installed != "" {
+			if _, err := tx.Exec("DROP TRIGGER " + name); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.Exec(stmt); err != nil {
 			return fmt.Errorf("ACL invalidation %s: %w", t.name, err)
 		}

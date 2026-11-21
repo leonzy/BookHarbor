@@ -158,3 +158,20 @@ func TestSourceBaselineOnlyOnActualHealthRecoveryOrEvents(t *testing.T) {
 		})
 	}
 }
+
+func TestSourceRetryRetainsIncrementalPathsAndDefersBaseline(t *testing.T) {
+	now := time.Unix(1000, 0)
+	p := sourceSyncPending{
+		paths: map[string]struct{}{"/books/old.epub": {}, "/books/new.epub": {}},
+		moves: []library.SourceMove{{From: "/books/old.epub", To: "/books/new.epub"}},
+	}
+	p.deferRetry(now)
+	if p.baseline || len(p.paths) != 2 || len(p.moves) != 1 || p.retryAt.Sub(now) != 30*time.Second {
+		t.Fatalf("incremental write failure must preserve its own scope: %+v", p)
+	}
+	p.baseline = true
+	p.deferRetry(now)
+	if !p.baseline || p.retryAt.Sub(now) != 15*time.Minute {
+		t.Fatalf("a required baseline must survive failure without immediate retries: %+v", p)
+	}
+}

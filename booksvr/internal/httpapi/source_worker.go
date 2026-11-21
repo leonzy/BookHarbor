@@ -59,30 +59,52 @@ func attachSourceWorker(parent context.Context, opts ServeOptions, books, users 
 		var lastRoots []string
 		var lastHealth map[string]string
 		var lastFull time.Time
-		var retry bool
+		var pending sourceSyncPending
 		run := func() {
 			started := time.Now()
 			dir := LiveImportDir(opts.ImportDir, opts.SettingsPath)
 			roots := importdir.ConfiguredAllowedRoots(dir)
 			health, err := library.CheckSourceRoots(ctx, books, roots)
-			var changed []string
-			var moves []library.SourceMove
 			overflow := false
 			if watcher != nil {
-				changed = watcher.Changes()
+				for _, path := range watcher.Changes() {
+					if pending.paths == nil {
+						pending.paths = make(map[string]struct{})
+					}
+					pending.paths[path] = struct{}{}
+				}
 				overflow = watcher.Overflowed()
 				for _, m := range watcher.Moves() {
-					moves = append(moves, library.SourceMove{From: m.From, To: m.To})
+					pending.moves = append(pending.moves, library.SourceMove{From: m.From, To: m.To})
 				}
 			}
 			wasInitialized := initialized
-			full := retry || sourceNeedsBaseline(initialized, !reflect.DeepEqual(roots, lastRoots), overflow, len(changed) > 0, lastHealth, health)
+			pending.overflow = pending.overflow || overflow
+			pending.baseline = pending.baseline || sourceNeedsBaseline(initialized, !reflect.DeepEqual(roots, lastRoots), pending.overflow, len(pending.paths) > 0, lastHealth, health)
 			// Failed event monitoring is visible and falls back at a bounded
 			// interval, rather than repeatedly loading the whole library.
 			if (watcher == nil || watchErr != nil) && time.Since(lastFull) >= 15*time.Minute {
-				full = true
+				pending.baseline = true
 			}
-			if full {
+			if len(pending.paths)+len(pending.moves) > 32768 {
+				// An exhausted event buffer is equivalent to watcher overflow.
+				pending.baseline = true
+				pending.overflow = true
+				pending.paths, pending.moves = nil, nil
+			}
+			if err == nil {
+				lastHealth = health
+			}
+			if started.Before(pending.retryAt) {
+				return
+			}
+			full := pending.baseline
+			changed := make([]string, 0, len(pending.paths))
+			for path := range pending.paths {
+				changed = append(changed, path)
+			}
+			moves := pending.moves
+			if err == nil && full {
 				moves = nil
 				// A watch can still refer to the underlying directory after a
 				// mount is restored. Reinstall during baseline discovery.
@@ -176,29 +198,17 @@ func attachSourceWorker(parent context.Context, opts ServeOptions, books, users 
 							health[root] = "ok"
 						}
 					}
+					if opts.QueueSourcePaths != nil {
+						opts.QueueSourcePaths(sourceImportHints(changed, roots), pending.overflow || full && wasInitialized)
+					}
+					pending = sourceSyncPending{}
 				}
-
+				if err != nil {
+					pending.deferRetry(time.Now())
+				}
 			}
 			if err == nil {
 				err = flushSourceChanges(books, users)
-			}
-			// Queue events even when deletion synchronization is protected:
-			// discovery itself never deletes anything. Reject out-of-root
-			// and health-marker noise before the import worker sees it.
-			if err == nil && opts.QueueSourcePaths != nil {
-				var paths []string
-				for _, p := range changed {
-					if strings.HasPrefix(filepath.Base(p), ".") {
-						continue
-					}
-					for _, root := range roots {
-						if importdir.IsWithin(p, root) {
-							paths = append(paths, p)
-							break
-						}
-					}
-				}
-				opts.QueueSourcePaths(paths, overflow || full && wasInitialized)
 			}
 			if watcher != nil {
 				var dirs []string
@@ -208,8 +218,6 @@ func attachSourceWorker(parent context.Context, opts ServeOptions, books, users 
 				dirs = append(dirs, roots...)
 				watchErr = watcher.SetDirectories(dirs)
 			}
-			retry = err != nil
-			lastHealth = health
 			mu.Lock()
 			// These private fields are not serialized. Retaining them here pins
 			// an entire discovery snapshot until the next worker tick.
@@ -238,7 +246,7 @@ func attachSourceWorker(parent context.Context, opts ServeOptions, books, users 
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		var debounce *time.Timer
-		var pending <-chan time.Time
+		var eventDue <-chan time.Time
 		for {
 			select {
 			case <-ctx.Done():
@@ -249,11 +257,11 @@ func attachSourceWorker(parent context.Context, opts ServeOptions, books, users 
 			case <-events:
 				if debounce == nil {
 					debounce = time.NewTimer(time.Second)
-					pending = debounce.C
+					eventDue = debounce.C
 				}
-			case <-pending:
+			case <-eventDue:
 				debounce = nil
-				pending = nil
+				eventDue = nil
 				run()
 			case <-ticker.C:
 				run()
@@ -267,6 +275,40 @@ func sourceStatusResult(result library.SourceSyncResult) library.SourceSyncResul
 	result.Files = nil
 	result.Directories = nil
 	return result
+}
+
+type sourceSyncPending struct {
+	paths    map[string]struct{}
+	moves    []library.SourceMove
+	baseline bool
+	overflow bool
+	retryAt  time.Time
+}
+
+func (p *sourceSyncPending) deferRetry(now time.Time) {
+	delay := 30 * time.Second
+	if p.baseline {
+		delay = 15 * time.Minute
+	}
+	p.retryAt = now.Add(delay)
+}
+
+// New-file discovery can accept events from a protected root without making
+// a deletion decision. Ignore health marker events and paths outside the roots.
+func sourceImportHints(changed, roots []string) []string {
+	var paths []string
+	for _, path := range changed {
+		if strings.HasPrefix(filepath.Base(path), ".") {
+			continue
+		}
+		for _, root := range roots {
+			if importdir.IsWithin(path, root) {
+				paths = append(paths, path)
+				break
+			}
+		}
+	}
+	return paths
 }
 
 func flushSourceChanges(books, users *sql.DB) error {

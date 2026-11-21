@@ -3,10 +3,65 @@ package library
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"talebook/booksvr/internal/access"
 )
+
+func TestAccessInvalidationUpgradesExistingTriggerAndUsesBookIndex(t *testing.T) {
+	s, _ := accessTestStore(t)
+	if _, err := s.DB.Exec(`CREATE TABLE books(id INTEGER PRIMARY KEY,title TEXT,timestamp TEXT,path TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateAccess(s.DB); err != nil {
+		t.Fatal(err)
+	}
+	const trigger = "acl_invalidate_book_path"
+	var installed string
+	readTrigger := func() {
+		t.Helper()
+		if err := s.DB.QueryRow(`SELECT sql FROM sqlite_master WHERE name=?`, trigger).Scan(&installed); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readTrigger()
+	previous := strings.ReplaceAll(installed, " INDEXED BY acl_profile_file_invalidate", "")
+	if _, err := s.DB.Exec("DROP TRIGGER " + trigger + "; " + previous); err != nil {
+		t.Fatal(err)
+	}
+	if err := MigrateAccess(s.DB); err != nil {
+		t.Fatal(err)
+	}
+	readTrigger()
+	if installed == previous {
+		t.Fatal("deployed trigger retained the old query")
+	}
+	for _, stmt := range strings.Split(accessInvalidationSQL("42"), ";") {
+		if !strings.Contains(stmt, "UPDATE acl_profile_count") {
+			continue
+		}
+		rows, err := s.DB.Query("EXPLAIN QUERY PLAN " + stmt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id, parent, unused int
+			var detail string
+			if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(detail, "acl_profile_file_invalidate (book_id=?") {
+				return
+			}
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Fatal("file count does not seek to the book ID")
+}
 
 func TestAccessInvalidationIsAtomicAndIgnoresMetadataOnlyChanges(t *testing.T) {
 	s, actor := accessTestStore(t)
