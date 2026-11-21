@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.6
 # ----------------------------------------
 # 第一阶段，拉取 node 基础镜像并安装依赖，执行构建
-FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:26-alpine AS builder
 ARG BUILD_COUNTRY=""
 ARG TARGETARCH
 
