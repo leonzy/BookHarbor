@@ -57,6 +57,7 @@ vi.mock('@/utils/builtin-themes', () => ({
 }));
 
 mockNuxtImport('useRoute', () => () => routeState);
+mockNuxtImport('useRouter', () => () => ({ afterEach: vi.fn(), beforeResolve: vi.fn() }));
 
 import ThemeRuntimeProvider from '@/components/ThemeRuntimeProvider.vue';
 import { useThemeRuntime } from '@/composables/useThemeRuntime';

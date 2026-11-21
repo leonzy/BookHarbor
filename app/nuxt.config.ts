@@ -212,6 +212,6 @@ export default defineNuxtConfig({
         },
         
         // Vue I18n 配置
-        vueI18n: './i18n.config.ts'
+        vueI18n: '../i18n.config.ts'
     }
 });

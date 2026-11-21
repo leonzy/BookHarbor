@@ -1,5 +1,7 @@
 # TB-234 接入预审修复验证
 
+> **历史 QA 证据，不是当前开发或测试指南。** 本目录保留旧 Talebook PR、固定提交和 Python 探针，供审计与离线回归使用。当前有声书行为见 `spec/有声书.md`，Go 实现位于 `booksvr/internal/httpapi/` 和 `booksvr/internal/userdb/`。
+
 以下保留 e0e2220 阶段的前后证据与验证结果；当前 9cb3633 / 3316bae6 的独立验收、54 项事务用例、失败限制及交付收尾见 [独立 QA 验收与交付收尾](qa-acceptance/README.md)。
 
 修复前 Talebook：`b02a2e15f8bc278a7f0f5f305053253b65787630` / Voicebook `f3109d00d191066d887b3a76c19d60460bc5b253`。修复版为包含本记录的 PR #1071 提交；交付评论记录完整 SHA。最终固定并实际验证 Voicebook `3316bae6a7372e82d7037d31b9ffb32633ef2aa4`（0.8.0）：生成侧独立复审通过后，Mika 在 `21cbc5a9-cb52-45fb-b57c-2566c2b29bda` 要求并入本轮。v2 契约、CLI 参数和默认值未变化。实际安装模块的 21 个 Python 源文件与该提交逐字节一致。

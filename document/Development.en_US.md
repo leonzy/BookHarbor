@@ -1,187 +1,133 @@
+# BookHarbor Developer Guide
 
-This article is intended for developers, introducing how to set up the talebook local development environment and modify code.
+[中文](Development.zh_CN.md) | English
 
-## Project Structure
+This guide describes the current Go + Nuxt repository. The legacy `webserver/` Python/Tornado HTTP service has been removed. If a local `webserver/` directory remains, it contains only stale empty directories or caches; it is not a backend entry point and must not receive new backend code.
 
+## Project layout
+
+```text
+BookHarbor/
+  app/          # Nuxt 4 + Vue 3 + Vuetify + Pinia
+  booksvr/      # The only Go HTTP backend and maintenance CLI
+  tests/        # Image management, startup and signed-upgrade script tests
+  conf/         # Nginx, Supervisor and upgrade trust configuration
+  docker/       # Container startup, self-checks and status page
+  resources/    # Reader templates, built-in sources and runtime assets
+  scripts/      # Engineering, deployment, migration and reader tools
+  spec/         # Current product rules
+  design/       # Internal proposals and historical decisions
+  document/     # User and developer documentation
 ```
-talebook/
-  app/          # Frontend: Nuxt 4 + Vue 3 + Vuetify 3
-  webserver/    # Backend: Tornado + Calibre (Python)
-  tests/        # Backend unit tests
-  conf/         # Nginx / Supervisor configuration templates
-  docker/       # Container startup scripts and preset books
-```
 
----
+See [CODE_WIKI](../CODE_WIKI.md) for the code map and [CONTRIBUTING](../CONTRIBUTING.md) for contribution and release rules.
 
-## Local Development (Recommended Way)
+## Recommended environment
 
-### Architecture
+- Linux or a working Docker Desktop setup;
+- Docker Compose;
+- Node.js 24;
+- Go as declared in `booksvr/go.mod`;
+- Python 3.11+ for image and engineering scripts only.
 
-The recommended local development approach:
+### 1. Start the real backend
 
-- **Backend**: `make dev` —— Run the backend in a Docker container, while mounting the `webserver/` directory into the container. The Python code will auto-restart the service after modifications.
-- **Frontend**: `cd app && npm run dev` —— Start the Nuxt development server locally (default `http://localhost:3000`). The `routeRules` in `nuxt.config.ts` has configured reverse proxy for `/api/**`, `/get/**`, `/read/**`, and `/read-comic/**` to the backend container (default `http://127.0.0.1:8080`).
-
-This combination: frontend hot reload, backend auto-restart, no manual Nginx configuration needed.
-
-### Startup Steps
-
-**Step 1: Start the backend container**
+From the repository root:
 
 ```bash
 make dev
+curl --fail --silent http://127.0.0.1:8080/api/welcome
 ```
 
-The container listens on port `8080`, and logs are written to `/tmp/demo/log/talebook.log`:
+`make dev` builds and starts the development image. The Compose file mounts the frontend directory, but Go source is not hot-reloaded. Rebuild and restart the development image after changing `booksvr/`; the old Python auto-restart instructions no longer apply.
 
-```bash
-tail -f /tmp/demo/log/talebook.log
-```
+Development data defaults to `/tmp/talebook-dev`. Do not point this isolated environment at your only production library.
 
-**Step 2: Start the frontend development server**
-
-```bash
-cd app
-npm install   # Install dependencies on first run
-npm run dev
-```
-
-Visit `http://localhost:3000`, and API requests will automatically proxy to the backend container.
-
-### Code Modifications
-
-- **Modify Python backend**: Directly edit files under `webserver/`, and the Tornado in the container will automatically detect and restart. No need to re-run `make dev`.
-- **Modify frontend**: Directly edit files under `app/`, and the Nuxt development server will hot reload.
-
-### Backend Testing and Checking
-
-```bash
-make lint-py-fix  # black + isort auto formatting (must execute after development)
-make lint-py      # flake8 checking (must pass before commit)
-make pytest       # Run backend unit tests
-```
-
-### Frontend Testing and Checking
+### 2. Start Nuxt
 
 ```bash
 cd app
-npm run lint            # eslint checking
-npm run lint:fix        # eslint auto fix
-npx vitest run test/components/   # Component unit tests
-npx playwright test               # E2E tests (need to start mock server first)
+npm ci
+API_URL=http://127.0.0.1:8080 npm run dev -- --port 3000 --host 127.0.0.1
 ```
 
----
+Open `http://127.0.0.1:3000/`. Confirm the real backend is available before starting Nuxt. A mock API is not an acceptable local product experience or real-data verification substitute.
 
-## Manual Setup (Without Docker)
+If file watching fails, stop the server and investigate native filesystem events. Do not enable `CHOKIDAR_USEPOLLING`.
 
-If you want to completely run without Docker, here are the complete manual setup steps. **It is recommended to perform this in a Linux environment**. Mac / Windows have not been fully tested.
-
-As the version updates, some commands may not be updated in time; when encountering issues, you can refer to [calibre-docker/Dockerfile](https://github.com/talebook/calibre-docker/blob/master/Dockerfile) and [this repository's Dockerfile](../Dockerfile).
-
-### Prepare Directories
+## Backend-only development
 
 ```bash
-mkdir -p /data/log/nginx/
-mkdir -p /var/www/talebook/
-mkdir -p /data/books/{library,extract,upload,convert,progress,settings}
+make build-go
+make test-go
+make lint-go
 ```
 
-### Pull Code
+The binary is written to `booksvr/bin/booksvr`. Running `serve` directly requires an existing Calibre `metadata.db`, a user database, a cookie secret and other paths. The supported production assembly is defined by `Dockerfile`, `docker/start.sh` and Supervisor configuration. Legacy `server.py --syncdb` and `webserver/main.py` commands do not initialize the current application.
+
+## Tests and quality gates
+
+### Go
 
 ```bash
-cd /var/www/
-git clone https://github.com/talebook/talebook.git
-cd talebook
+make test-go
+make lint-go
 ```
 
-### Install Calibre Base Environment
+Add `_test.go` coverage in the corresponding `booksvr/internal/<package>/` for every behavior change.
 
-Refer to [calibre-docker/Dockerfile](https://github.com/talebook/calibre-docker/blob/master/Dockerfile):
+### Python image scripts
 
 ```bash
-apt-get install -y tzdata
-apt-get install -y --no-install-recommends python3-pip unzip supervisor sqlite3 git nginx python-setuptools curl
-apt-get install -y calibre
+python3 -m pytest tests -q
+make lint-py
 ```
 
-### Install Python Dependencies
+The signed-upgrade executor requires root-owned trust configuration. Run its complete suite in a Linux root or project CI environment. A Windows collection error caused by missing `fcntl` is not evidence that the Linux suite passed.
+
+### Frontend
 
 ```bash
-# Chinese mirror (optional)
-# pip3 config set global.index-url https://mirrors.tencent.com/pypi/simple/
-
-pip3 install -r /var/www/talebook/requirements.txt
-pip3 install flake8 pytest
+cd app
+npm ci
+npm run lint
+npx vitest run test/components test/composables test/plugins test/stores test/utils
+npx vitest run -c test/upgrade.vitest.config.ts
+npm run build
+npx playwright install chromium
+npx playwright test -c playwright.library.config.ts
 ```
 
-### Install Node.js
+Special Playwright configs cover audiobooks, covers and other pages. Most use short-lived mock APIs for isolated UI regression. Real login, files, permissions and reading still require Docker-backed verification.
 
-It is recommended to install the LTS version:
+### Documentation
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
-apt-get install -y nodejs
+make check-spec
+make check-design
+make check-i18n
 ```
 
-### Build Frontend
+Update `spec/` with every product behavior change. Material changes require one WIP single-file HTML proposal; record actual results before marking it ACTIVE. Historical proposals, research and commit-specific acceptance reports must not be rewritten as if they were current guides.
 
-```bash
-# Chinese mirror (optional)
-# npm config set registry http://mirrors.tencent.com/npm/
+## Development boundaries
 
-cd /var/www/talebook/app/
-npm install
-npm run generate   # Output static files to dist/
-```
-
-### Initialize Library and Database
-
-```bash
-# Create library with preset books
-calibredb add --library-path=/data/books/library/ -r /var/www/talebook/docker/book/
-
-# Create program DB
-python /var/www/talebook/server.py --syncdb
-
-touch /data/books/settings/auto.py
-```
-
-### Configure and Start Services
-
-```bash
-cp conf/nginx/talebook.conf /etc/nginx/conf.d/
-cp conf/supervisor/talebook.conf /etc/supervisor/conf.d/
-
-service nginx restart
-service supervisor restart
-```
-
-Visit `http://127.0.0.1/` to verify if it works normally.
-
----
+- Route frontend API calls through `app/plugins/talebook.js`.
+- Keep Calibre library and BookHarbor user database handles distinct.
+- Apply resource visibility checks to every new book, cover, download, media, OPDS or WebDAV entry point.
+- Parse `auto.py` / `manual.py` as configuration data; no Python HTTP service executes them.
+- Preserve `/data`, legacy API URLs, the Go module name, cookies, `TALEBOOK_*` variables and plugin protocol identifiers.
+- Keep source, version, license and synchronization records for third-party reader assets.
 
 ## Troubleshooting
 
-### supervisord Startup Failed
-
-After adjusting the configuration, you must execute `sudo supervisorctl reload all` to make the configuration take effect.
-
-If it prompts `talebook:tornado-8000: ERROR(spawn error)`, it means the environment is not configured correctly. Check the logs:
+Startup state is exposed through `/status.json` and the status page. Useful commands:
 
 ```bash
-tail -100 /data/log/talebook.log
+docker compose -f docker-compose.dev.yml logs
+docker compose -f docker-compose.dev.yml ps
 ```
 
-Focus on the error message after `Traceback (most recent call last)`.
+Check `/data` permissions, PUID/PGID, Nginx configuration, database initialization/migration and `/data/log/talebook.log`. Do not look for the legacy `talebook:tornado-8000` process; the application process is Go `booksvr` plus explicit auxiliary workers.
 
-### Website Can Open, but Prompts `500: internal server error`
-
-Common reasons: incorrect directory permissions, database not created, code bug.
-
-```bash
-tail -100 /data/log/talebook.log
-```
-
-Check the latest Traceback, confirm the error reason, and submit an issue to contact the developer.
+When opening an issue, include the version/commit, deployment method, relevant startup state and redacted logs. Never attach production databases, secrets or private books.

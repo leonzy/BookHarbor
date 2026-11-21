@@ -1,99 +1,95 @@
-
-User Guide
-===========
+# BookHarbor User Guide
 
 [中文](README.zh_CN.md) | English
 
-This article mainly introduces the usage instructions of the talebook program and common issues. For manual installation or submitting PRs, please refer to the [Developer Guide](./Development.en_US.md).
+BookHarbor is a self-hosted ebook library for individuals and families. This guide covers common configuration and troubleshooting. The [domain specifications](../spec/索引.md) define complete product behavior; see the [developer guide](Development.en_US.md) for local development.
 
+## Installation and first use
 
-Common Configuration Guide
-===========
-This article mainly introduces the usage instructions of the talebook program and common issues. For manual installation or submitting PRs, please refer to the [Developer Guide](./Development.en_US.md).
+Docker Compose is the recommended installation method:
 
-### Configure Kindle Push Function
-Taking QQ Mail push as an example, go to [QQ Mail website](http://service.mail.qq.com/cgi-bin/help?subtype=1&amp;&amp;no=1001256&amp;&amp;id=28), apply for an SMTP account, and then configure it in the admin interface.
+```bash
+git clone https://github.com/leonzy/BookHarbor.git
+cd BookHarbor
+docker compose up -d
+```
 
-Please note that the username must include the email suffix (e.g., `@qq.com`), such as `demo@gmail.com`
+Open `http://localhost:8080` and complete administrator setup. Compose mounts `./data` at `/data`, including the library, user database, settings, logs and application-upgrade state.
 
-### Configure User Login Function
-This program supports user registration and social platform login functions. According to the instructions in the admin configuration interface, you can configure user capabilities that meet your needs.
+Existing installations must reuse their original `/data` directory. Back up databases and settings before upgrading, and never run two containers against the same writable data directory. The rolling image is `ghcr.io/leonzy/bookharbor:main`; production deployments should prefer a verified release tag.
 
-Here we focus on the API account application addresses for common social platforms:
- - [Weibo Developer Website](http://open.weibo.com/developers)
- - [QQ Connect Login Website](https://connect.qq.com/)
- - [Github]() To be supplemented
+## Importing books
 
-### Configure Single-account Demo Mode
+Configure source directories in the administration import settings. Host directories must be mounted explicitly, for example:
 
-A public demo site can enable single-account read-only mode in `/data/books/settings/auto.py`. Add the following settings and restart Talebook:
+```yaml
+services:
+  talebook:
+    volumes:
+      - "${TALEBOOK_DATA_DIR:-./data}:/data"
+      - "/srv/books:/books:ro"
+      - "/srv/more-books:/books1:ro"
+```
+
+Enter `/books` and `/books1` in the import settings, not the host paths. Index mode registers original files without copying them. Copy and move imports are separate modes; understand their file effects and back up data before enabling them.
+
+Scanning validates file and container structure and retains failure/skip reasons. A disconnected source mount must not cause books to be removed from an incomplete scan. Deleting a book in BookHarbor and deleting a source file are different operations; see the [library specification](../spec/书库.md) for trash and source synchronization rules.
+
+## Users, private books and access scopes
+
+- Account capabilities control reading, uploading, editing and administration.
+- Private books are visible only to their collector and administrators; public books remain subject to guest policy and directory scopes.
+- Administrators can limit browsing by directory, permission class, user and group.
+- Covers, downloads, online reading, OPDS and WebDAV use the same resource authorization. Internal file paths are not a sharing mechanism.
+
+After changing permissions, verify lists, details and downloads as an administrator, a regular user and a guest where applicable.
+
+## Reading and devices
+
+Readable formats depend on actual files, media type and backend reader capabilities. EPUB, MOBI/AZW/AZW3, PDF, TXT and comic containers open through their supported readers. Multiple editions and formats of a work can be selected on the detail page.
+
+Kindle and other device delivery require a configured plugin/device connection. SMTP usernames are commonly full email addresses, and providers may require an application-specific password. Conversion and delivery run as background tasks; inspect task details and redacted logs after failures instead of submitting many duplicate jobs.
+
+OPDS is available at `/opds/` and WebDAV at `/books/`. Add the configured prefix for subpath deployments. Login, account capabilities and book scopes still apply. The built-in MCP plugin lets authorized agents search and recommend books, read history, and confirm delivery or imports. See [`document/MCP.md`](MCP.md) for connection credentials, HTTP and stdio setup.
+
+## Demo mode
+
+Preserve the other values in `/data/books/settings/auto.py` and set the following in its `settings` data:
 
 ```python
-settings = {
-    # Keep the other existing settings in this file.
-    "DEMO_MODE": True,
-    "DEMO_USERNAME": "demo",
-}
+"DEMO_MODE": True,
+"DEMO_USERNAME": "demo",
 ```
 
-Once enabled, only the configured account can sign in. Its existing role still controls which pages are visible, while the server rejects registration, upload, edit, delete, push, administration settings, and WebDAV writes. Login IPs, access times, reading history, and access counters are not stored. Demo mode cannot be disabled in the administration UI; set `DEMO_MODE` to `False` manually and restart the service.
+After restart, only the configured demo account can sign in and the server rejects writes. The default demo password is `talebook`; protect any public deployment and use available configuration to change it. Demo mode cannot be disabled from the administration UI; update the configuration and restart to disable it.
 
-There is no need to pre-create the demo account: it is created automatically the first time someone signs in with `DEMO_USERNAME` (default `demo`) and password `talebook`. The demo account can open the "Admin Settings" page, but the content shown is the factory defaults from `webserver/settings.py`, not the site's real configuration; clicking save reports success but writes nothing, so it only demonstrates the interaction flow.
+Defaults now come from the Go backend, not the removed `webserver/settings.py` module.
 
-### Logo (Applicable to v3.5.9 and later versions)
+## Site title and logo
 
-The favicon and QR code logo in the navigation menu are placed in the data directory ```/data/books/logo/```, which can be directly overwritten with new images.
+Administrators can customize the site title, header and sidebar HTML. Put custom sidebar images in `books/logo/` inside the persistent data directory, or `/data/books/logo/` in the container, and reference them as `/logo/filename`.
 
+Do not follow old instructions that mount images into `/var/www/talebook/app/dist/img/`; that is not the current persistent logo interface.
 
-### Logo (Applicable to v3.5.8 and older versions)
+## Uploads and reverse proxies
 
-The favicon and QR code logo in the navigation menu are already built into the code directory ```/var/www/talebook/app/dist/img/```.
- - favicon.ico: Website icon file
- - link.png: QR code image
+The bundled Nginx configuration permits large uploads, and the frontend can use configurable chunked uploads. For HTTP `413`, inspect request-size limits and timeouts in an outer Nginx, Caddy, CDN or WAF.
 
-If you need to customize these two files, please directly overwrite them with new files.
+A subpath deployment requires `TALEBOOK_BASE_PATH` at image build time; setting it only at runtime is insufficient. See the [reverse-proxy guide](reverse-proxy.md).
 
-If using docker to start, you need to mount these two directories when starting docker. For example:
-```
-docker run -d --name talebook -p 80:80 -v /data/calibre:/data -v /data/logo:/var/www/talebook/app/dist/img/ talebook/talebook
-```
+## Metadata and external services
 
-### Upload File Size
-If you find that uploading large files fails, there may be two reasons:
+Built-in plugins provide metadata, network libraries, annotations and device integrations. Enabled, configured and healthy are separate states. Enable the plugin, configure its connection, test it and only then run production tasks.
 
-1. If the program throws an exception (e.g., issue#61), it is because the tornado framework in this project has a default limit of 100M. Please go to the admin configuration to increase the corresponding configuration.
+Administrators deploy any required external proxy, such as a Douban API proxy, and enter a URL reachable from the container. Never publish upstream cookies, account tokens or secrets in an issue. Plugin integration does not change the copyright or usage terms of external metadata and book files.
 
-1. If it clearly prompts a `413` error code, it is generally because nginx limits the upload size. The nginx included in this project has been configured with `client_max_body_size 0`, which means no upload size limit;
-Therefore, it is recommended that users check if there are other nginx proxy forwarding configured outside this project and adjust the configuration accordingly.
+## Troubleshooting
 
-### How to configure Douban plugin?
-You need to deploy the [cxfksword/douban-api-rs](https://github.com/cxfksword/douban-api-rs) service yourself, and then enter a URL reachable from the Talebook container (e.g., `http://10.0.0.1:8080`) in the advanced configuration.
+1. Open `/status_page.html` or read `/status.json` to identify the startup phase and failed step.
+2. Check the `/data` mount, free space, PUID/PGID and directory permissions.
+3. Inspect `docker compose logs` and `/data/log/talebook.log`. The application process is Go `booksvr`, not the legacy `talebook:tornado-8000`.
+4. If the page loads but APIs return 502, use startup state to determine whether the backend is still starting instead of repeatedly refreshing.
+5. If a reader does not load, check format, permissions and the browser console, then temporarily disable extensions that may block same-origin scripts or resources.
+6. Include the version/full commit, deployment method, reproduction steps and redacted logs in issues. Never attach production databases, passwords, cookies, secrets or private books.
 
-The built-in `docker-compose.yml` no longer bundles this service. If you add the Douban proxy to the same Compose network yourself, use its custom service name and port as the URL; otherwise, enter the proxy address that the Talebook container can actually reach.
-
-Common Issue Troubleshooting
-===============
-### supervisord startup failed
-
-If you have adjusted the configuration in supervisord (e.g., port, directory), be sure to execute ```sudo supervisorctl reload all``` to re-read the configuration, otherwise it will not take effect and may cause startup failure.
-
-If it prompts ```talebook:tornado-8000: ERROR(spawn error)```, it means the environment is not configured correctly.
-Please open the log file ```/data/log/talebook.log``` to check the reason, focusing on the last Traceback error, paying attention to the error reason prompted by ```Traceback (most recent call last)```.
-
-### The website can be opened, but it prompts ```500: internal server error```
-
-In this case, it is generally an exception during service operation. Common reasons include incorrect directory permissions, database not created properly, or triggering a code bug.
-
-**Generally it's because the data directory permissions are not set correctly, leading to startup exception**, you can check more about username, UID, directory permissions, etc.
-
-Please open the log file ```/data/log/talebook.log``` to check the reason, focusing on the last Traceback error, paying attention to the error reason prompted by ```Traceback (most recent call last)```, and submit an issue to contact the developer for troubleshooting.
-
-### Accessing the library in the "Moon+ Reader" APP fails, what should I do?
-
-This is because the Moon+ Reader APP does not support cookies, causing login to fail. In the latest version of the system (v2.0.0-87-gf6d8f06), the program logic has been adjusted to allow normal browsing without login, only checking permissions when downloading. To avoid login prompts, please configure:
- - Turn off "Private Library" mode.
- - Turn on "Allow arbitrary downloads" (visitors don't need to register or login)
-
-### The reader page is stuck and doesn't load the book, what should I do?
-
- This is because the browser's ad blocking plugin has blocked some JS, causing abnormal page loading. Please turn off related plugins and try again, such as uBlock Origin
+See [application upgrades](application-upgrade.md) for signed in-place upgrades, persistence, rollback and trust configuration.

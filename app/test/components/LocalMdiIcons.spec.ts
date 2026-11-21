@@ -11,7 +11,7 @@ function sourceFiles(path: string): string[] {
     return readdirSync(path, { withFileTypes: true }).flatMap((entry) => {
         const child = `${path}/${entry.name}`;
         if (entry.isDirectory()) return sourceFiles(child);
-        return /\.(?:js|ts|vue|py)$/.test(entry.name) ? [child] : [];
+        return /\.(?:go|js|ts|vue)$/.test(entry.name) ? [child] : [];
     });
 }
 
@@ -35,7 +35,7 @@ describe('local MDI icons', () => {
 
     it('registers every mdi icon name used by production source', () => {
         // Built-in tools send icon names through the API, not Vue templates.
-        const roots = ['app.vue', 'components', 'layouts', 'pages', '../webserver/plugins/tool'];
+        const roots = ['app.vue', 'components', 'layouts', 'pages', '../booksvr/internal/pluginbuiltin'];
         const used = new Set<string>();
 
         for (const root of roots) {

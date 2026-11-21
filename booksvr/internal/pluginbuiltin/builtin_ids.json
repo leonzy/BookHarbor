@@ -1,6 +1,7 @@
 [
   "talebook.combo.weread",
   "talebook.combo.open-library",
+  "talebook.combo.mcp",
   "talebook.source.opds",
   "talebook.source.legado",
   "talebook.source.kavita",

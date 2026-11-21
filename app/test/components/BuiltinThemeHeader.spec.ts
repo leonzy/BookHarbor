@@ -48,7 +48,7 @@ vi.mock('@/stores/main', () => ({
 }));
 
 mockNuxtImport('useRouter', () => {
-    return () => ({ push: pushMock });
+    return () => ({ push: pushMock, afterEach: vi.fn(), beforeResolve: vi.fn() });
 });
 
 mockNuxtImport('useRoute', () => {

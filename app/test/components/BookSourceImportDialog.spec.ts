@@ -1,6 +1,7 @@
 // @vitest-environment nuxt
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
+import { useNuxtApp } from 'nuxt/app';
 import { mockNuxtImport } from '@nuxt/test-utils/runtime';
 import { createVuetify } from 'vuetify';
 import * as components from 'vuetify/components';
@@ -15,8 +16,8 @@ const { backendMock, alertMock } = vi.hoisted(() => ({
     alertMock: vi.fn(),
 }));
 
-mockNuxtImport('useNuxtApp', () => {
-    return () => ({ $backend: backendMock, $alert: alertMock });
+mockNuxtImport('useRouter', () => {
+    return () => ({ push: vi.fn(), afterEach: vi.fn(), beforeResolve: vi.fn() });
 });
 
 const vuetify = createVuetify({ components, directives });
@@ -44,6 +45,7 @@ type DialogVm = {
 function mountDialog() {
     backendMock.mockReset();
     alertMock.mockReset();
+    Object.assign(useNuxtApp(), { $backend: backendMock, $alert: alertMock });
     return mount(BookSourceImportDialog, {
         global: { plugins: [vuetify], mocks: { $t: (k: string) => k } },
         attachTo: document.body,

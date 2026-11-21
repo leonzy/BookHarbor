@@ -1,14 +1,47 @@
-# 只跟踪内置阅读器 candle-reader：它以 npm 包 @talebook/candle-reader 发布，
-# 有新版本时自动提 PR 升级 app/package.json 与 package-lock.json。
+# 跟踪应用、运行时和 CI 依赖；阅读器仍由 npm 精确版本与同步测试约束。
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /app
     schedule:
-      interval: daily
-    allow:
-      - dependency-name: "@talebook/candle-reader"
+      interval: weekly
     commit-message:
-      prefix: "chore"
+      prefix: chore
+    labels:
+      - dependencies
+
+  - package-ecosystem: gomod
+    directory: /booksvr
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+    labels:
+      - dependencies
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+    labels:
+      - dependencies
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+    labels:
+      - dependencies
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
     labels:
       - dependencies

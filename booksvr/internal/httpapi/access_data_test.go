@@ -2,12 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 
 	"talebook/booksvr/internal/access"
 	"talebook/booksvr/internal/library"
+	"talebook/booksvr/internal/mcp"
 )
 
 func TestAccessBookDetailUsesOnlyAuthorizedFormats(t *testing.T) {
@@ -79,6 +81,25 @@ func TestAccessBookDetailUsesOnlyAuthorizedFormats(t *testing.T) {
 	files := b["files"].([]map[string]any)
 	if len(files) != 1 || files[0]["format"] != "EPUB" || files[0]["size"] != int64(10) {
 		t.Fatal("hidden format or unscoped size exposed", files)
+	}
+	// MCP must use the same authorized per-format projection as the web APIs.
+	service := mcp.NewService(f.DB, f.DB, nil, nil)
+	principal := mcp.Principal{UserID: 1, Access: &scope, Scopes: []string{"books.read"}}
+	for _, tc := range []struct {
+		name         string
+		args         map[string]any
+		want, reject string
+	}{
+		{"book_detail", map[string]any{"book_id": 10}, "EPUB", "MOBI"},
+		{"book_search", map[string]any{"query": "format:EPUB"}, "Visible EPUB", "MOBI"},
+		{"book_search", map[string]any{"query": "format:MOBI"}, `"total":0`, "Visible EPUB"},
+	} {
+		params, _ := json.Marshal(map[string]any{"name": tc.name, "arguments": tc.args})
+		rsp := service.Handle(c, principal, mcp.Request{JSONRPC: "2.0", ID: json.RawMessage("1"), Method: "tools/call", Params: params})
+		payload, _ := json.Marshal(rsp)
+		if !strings.Contains(string(payload), tc.want) || strings.Contains(string(payload), tc.reject) || rsp.Error != nil {
+			t.Fatalf("%s gave %s", tc.name, payload)
+		}
 	}
 	ctx.Params = []string{"20"}
 	resp, err = BookDetailHandler(f.Cfg)(ctx)

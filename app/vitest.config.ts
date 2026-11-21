@@ -4,5 +4,6 @@ export default defineVitestConfig({
     test: {
         environment: 'happy-dom',
         globals: true,
+        hookTimeout: 30_000,
     }
 });

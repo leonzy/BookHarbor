@@ -4,7 +4,13 @@
 
 ## 本地验证
 
-遵循根目录 `AGENTS.md` 和各目录规范。后端执行 `make test-go lint-go`；镜像管理脚本测试在 Linux root 环境运行，例如 `sudo .venv/bin/python -m pytest tests -q`，与升级执行器要求信任配置由 root 持有的实际环境一致。前端在 `app` 执行 `npm ci`、`npm run lint`、`npm run generate` 及相应 Vitest / Playwright 用例。行为变化同步更新 `spec`；重要改动先建立 WIP 方案，实际验证后转 ACTIVE。
+遵循根目录 `AGENTS.md` 和各目录规范。后端执行 `make test-go lint-go`；镜像管理脚本测试在 Linux root 环境运行，例如 `sudo .venv/bin/python -m pytest tests -q`，与升级执行器要求信任配置由 root 持有的实际环境一致。Python 静态检查执行 `make lint-py`。前端在 `app` 执行 `npm ci`、`npm run lint`、全部常规 Vitest 用例、独立升级组件配置、`npm run build` 及相应 Playwright 用例；SPA 相关改动还应执行 `npm run generate`。行为变化同步更新 `spec`；重要改动先建立 WIP 方案，实际验证后转 ACTIVE。
+
+## CI 验证
+
+`ci.yml` 负责规格/方案、Go、Python、前端单测、Nuxt 构建、浏览器回归和依赖风险检查；`build.yml` 负责 SPA/SSR/dev 镜像、多架构发布和真实容器入口冒烟。前端 mock 浏览器测试不能替代真实后端验收。
+
+修改任何 workflow 后，必须遵循 `.github/workflows/AGENTS.md`：准备匹配触发类型的最小事件 JSON，使用 `act -W <真实workflow> -j <受影响job>` 逐一执行，并记录 act 版本、实际通过步骤和无法本地模拟的 GitHub 外部边界。actionlint、YAML 解析或静态文本测试不能替代真实 workflow 运行；环境无法执行 act 时必须把它列为合并阻断项。
 
 ## 吸收上游
 

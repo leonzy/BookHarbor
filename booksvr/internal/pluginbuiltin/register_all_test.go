@@ -6,12 +6,12 @@ import (
 	"talebook/booksvr/internal/pluginruntime"
 )
 
-// expectedBuiltinIDs 是 Python webserver/plugins/register.py 的 40 个内置插件 ID
-// （按 PROVIDER_GROUPS 顺序硬编码，防止 Go 侧清单漂移）。
+// expectedBuiltinIDs 硬编码全部内置插件 ID，防止注册清单漂移。
 var expectedBuiltinIDs = []string{
-	// combo (2)
+	// combo (3)
 	"talebook.combo.weread",
 	"talebook.combo.open-library",
+	"talebook.combo.mcp",
 	// source (12)
 	"talebook.source.opds",
 	"talebook.source.legado",
@@ -58,7 +58,7 @@ var expectedBuiltinIDs = []string{
 	"talebook.push.purelibro",
 }
 
-// TestRegisterAllBuiltins 断言 40 个内置插件全部注册且 ID 与 Python 清单一致。
+// TestRegisterAllBuiltins 断言全部内置插件注册且 ID 与清单一致。
 func TestRegisterAllBuiltins(t *testing.T) {
 	reg := pluginruntime.NewPluginRegistry()
 	if err := Register(reg); err != nil {

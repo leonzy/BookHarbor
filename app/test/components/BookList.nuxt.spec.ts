@@ -1,5 +1,6 @@
 // @vitest-environment nuxt
 import { flushPromises, mount } from '@vue/test-utils';
+import { useNuxtApp } from 'nuxt/app';
 import { createVuetify } from 'vuetify';
 import * as components from 'vuetify/components';
 import * as directives from 'vuetify/directives';
@@ -19,17 +20,28 @@ const { asyncDataState, backendMock, pushMock, setNavbarMock } = vi.hoisted(() =
     setNavbarMock: vi.fn(),
 }));
 
-vi.mock('nuxt/app', () => ({
-    useAsyncData: vi.fn(() => ({ data: asyncDataState })),
-    useNuxtApp: () => ({ $backend: backendMock }),
+vi.mock('vue-i18n', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('vue-i18n')>()),
+    useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('vue-router', () => ({
+vi.mock('nuxt/app', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('nuxt/app')>()),
+    useAsyncData: vi.fn(() => ({ data: asyncDataState })),
+}));
+
+vi.mock('vue-router', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('vue-router')>()),
     useRoute: () => ({
         fullPath: '/author/Jane%20Austen',
         query: {},
     }),
-    useRouter: () => ({ push: pushMock }),
+    useRouter: () => ({ push: pushMock, afterEach: vi.fn(), beforeResolve: vi.fn() }),
+}));
+
+vi.mock('#app/composables/router', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('#app/composables/router')>()),
+    useRouter: () => ({ push: pushMock, afterEach: vi.fn(), beforeResolve: vi.fn() }),
 }));
 
 vi.mock('@/stores/main', () => ({
@@ -46,6 +58,7 @@ describe('BookList.vue', () => {
         backendMock.mockReset();
         pushMock.mockReset();
         setNavbarMock.mockReset();
+        Object.assign(useNuxtApp(), { $backend: backendMock });
         asyncDataState.value = {
             err: 'ok',
             title: '"Jane Austen"编著的书籍',
@@ -60,7 +73,7 @@ describe('BookList.vue', () => {
     it('renders author books restored from the SSR payload without repeating the request', async () => {
         const wrapper = mount(
             { components: { BookList }, template: '<v-app><BookList /></v-app>' },
-            { global: { plugins: [vuetify] } },
+            { global: { plugins: [vuetify], mocks: { $t: (key: string) => key } } },
         );
         await flushPromises();
 

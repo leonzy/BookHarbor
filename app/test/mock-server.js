@@ -190,7 +190,7 @@ router.post('/_test/reset', eventHandler(async (event) => {
   booksourceCheckPolls = 0;
   pluginRuns = [];
   opdsServiceEnabled = true;
-  pluginInstallations = pluginInstallations.map(item => ({ ...item, enabled: true }));
+  pluginInstallations = pluginInstallations.map(item => ({ ...item, enabled: item.plugin_key !== 'talebook.combo.mcp' }));
   pluginConnections = pluginInstallations
     .filter(item => item.definition.connection_owners.includes('instance'))
     .map(installation => mockPluginConnection(installation));
@@ -2008,6 +2008,22 @@ const pluginDefinitions = [
     ui: { icon: 'mdi-book-open-page-variant', brand_icon: '/images/plugin-icons/weread.png', manage_route: '/plugins/weread' },
   },
   {
+    id: 41,
+    plugin_key: 'talebook.combo.mcp',
+    name: 'BookHarbor MCP',
+    description: '让获授权的 Agent 查书、推荐阅读、查询阅读记录，并在确认后推送或导入书籍。',
+    version: '1.0.0',
+    runtime_kind: 'builtin',
+    categories: ['integrations'],
+    capabilities: ['integrations.mcp'],
+    actions: ['test'],
+    auth_schema: { type: 'object', required: ['access_token'], properties: { access_token: { type: 'string', format: 'password', writeOnly: true } } },
+    config_schema: { type: 'object', properties: { allow_remote: { type: 'boolean', default: false }, allow_write: { type: 'boolean', default: false }, user_id: { type: 'integer', minimum: 1 } } },
+    permissions: ['books.read', 'reading.read', 'books.write', 'tasks.read'],
+    connection_owners: ['instance', 'user'],
+    ui: { icon: 'mdi-robot-outline', configuration_mode: 'connection', primary_action: 'configure' },
+  },
+  {
     id: 7,
     plugin_key: 'talebook.meta.calibre',
     name: 'Calibre 元数据',
@@ -2099,7 +2115,7 @@ let pluginInstallations = pluginDefinitions.map((definition, index) => ({
   id: index + 1,
   plugin_key: definition.plugin_key,
   version: definition.version,
-  enabled: true,
+  enabled: definition.plugin_key !== 'talebook.combo.mcp',
   status: 'active',
   definition,
 }));
@@ -2122,6 +2138,19 @@ let pluginConnections = pluginInstallations
 let opdsServiceEnabled = true;
 let pluginMetadataPreferences = { auto_fill_meta: false, auto_fill_keep_cover: false };
 let globalPluginDevices = [];
+
+router.get('/api/admin/metadata/enrichment', eventHandler(() => ({
+  err: 'ok',
+  files_checked: 0,
+  total_books: 0,
+  counts: {},
+  worker_active: false,
+  network_enabled: false,
+  network_max_concurrency: 0,
+  sources: [],
+  lecture_recheck: null,
+  last_activity_at: null,
+})));
 
 router.get('/api/admin/plugins', eventHandler(() => ({
   err: 'ok',

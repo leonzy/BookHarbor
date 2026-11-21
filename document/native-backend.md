@@ -1,6 +1,6 @@
 # Go 原生后端
 
-本分支由 `booksvr` 提供全部应用 HTTP 接口，Nginx 提供前端静态页面。旧的 Python HTTP 服务、ORM 模型和对应应用测试已删除。Calibre 的格式处理工具、镜像启动自检、签名升级执行器和离线工程校验仍使用 Python，不需要启动 Tornado。
+BookHarbor 由 `booksvr` 提供全部应用 HTTP 接口，Nginx 提供前端静态页面。旧的 Python HTTP 服务、ORM 模型和对应应用测试已删除。Calibre 的格式处理工具、镜像启动自检、签名升级执行器和离线工程校验仍使用 Python，不需要启动 Tornado。
 
 ## 构建和测试
 

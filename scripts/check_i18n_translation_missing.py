@@ -1,93 +1,89 @@
+#!/usr/bin/env python3
+"""Validate locale JSON/compiler safety and report translation coverage."""
+
 import json
-import os
 import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+APP_DIR = ROOT / "app"
+LOCALES_DIR = APP_DIR / "i18n" / "locales"
+DEFAULT_LOCALE = "zh-CN"
+EXCLUDED_DIRS = {"node_modules", ".nuxt", ".output", ".git", "coverage", "dist", "public", "test"}
+KEY_PATTERN = re.compile(r"(?<![\w$])(?:\$t|t)\(\s*(['\"`])([a-zA-Z0-9_.]+)\1")
+KEYPATH_PATTERN = re.compile(r"keypath\s*=\s*(['\"])([a-zA-Z0-9_.]+)\1")
 
 
-def load_json(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def flatten_json(y):
+def flatten(value, prefix=""):
     out = {}
-
-    def flatten(x, name=""):
-        if type(x) is dict:
-            for a in x:
-                flatten(x[a], name + a + ".")
-        else:
-            out[name[:-1]] = x
-
-    flatten(y)
+    if isinstance(value, dict):
+        for key, item in value.items():
+            path = f"{prefix}.{key}" if prefix else key
+            out.update(flatten(item, path))
+    else:
+        out[prefix] = value
     return out
 
 
-def scan_files(root_dir):
+def load_locales():
+    locales = {}
+    for path in sorted(LOCALES_DIR.glob("*.json")):
+        with path.open(encoding="utf-8") as handle:
+            locales[path.stem] = flatten(json.load(handle))
+    return locales
+
+
+def collect_code_keys():
     keys = set()
-    # Regex to match $t('key') or t('key') or "key" inside t()
-    # Matches: t('a.b'), $t('a.b'), i18n.t('a.b')
-    # We look for [^a-zA-Z0-9_]t\(['"]... or ^t\(['"]...
-    pattern = re.compile(r"(?:[^a-zA-Z0-9_]t|\$t)\(['\"]([a-zA-Z0-9_.]+)['\"]\)")
-
-    for root, dirs, files in os.walk(root_dir):
-        # Exclude directories
-        dirs[:] = [d for d in dirs if d not in ["node_modules", ".nuxt", "dist", ".git", "coverage", ".output"]]
-
-        for file in files:
-            if file.endswith(".vue") or file.endswith(".js") or file.endswith(".ts"):
-                path = os.path.join(root, file)
-                try:
-                    with open(path, "r", encoding="utf-8") as f:
-                        content = f.read()
-                        matches = pattern.findall(content)
-                        for match in matches:
-                            keys.add(match)
-                            if match == "actions.bulkDelete":
-                                print(f"Found actions.bulkDelete in {path}")
-                except Exception as e:
-                    print(f"Error reading {path}: {e}")
+    for path in APP_DIR.rglob("*"):
+        if not path.is_file() or path.suffix not in {".vue", ".js", ".ts"}:
+            continue
+        if any(part in EXCLUDED_DIRS for part in path.relative_to(APP_DIR).parts):
+            continue
+        text = path.read_text(encoding="utf-8")
+        for pattern in (KEY_PATTERN, KEYPATH_PATTERN):
+            keys.update(match.group(2) for match in pattern.finditer(text))
     return keys
 
 
+def validate(locales, code_keys):
+    problems = []
+    if DEFAULT_LOCALE not in locales:
+        return [f"missing default locale: {DEFAULT_LOCALE}.json"]
+
+    for locale, values in sorted(locales.items()):
+        for key, value in values.items():
+            if isinstance(value, str):
+                unescaped = value.replace("{'@'}", "")
+                if "@" in unescaped or "<" in unescaped:
+                    problems.append(f"{locale}: {key} contains a raw @ or < character")
+    return problems
+
+
 def main():
-    base_dir = "/Users/bytedance/code/talebook"
-    app_dir = os.path.join(base_dir, "app")
-    locales_dir = os.path.join(base_dir, "app/i18n/locales")
-
-    print(f"Scanning files in {app_dir}...")
-    code_keys = scan_files(app_dir)
-    print(f"Found {len(code_keys)} unique keys used in code.")
-
-    if not os.path.exists(locales_dir):
-        print(f"Error: {locales_dir} not found")
-        return
-
-    # Scan all json files in locales_dir
-    json_files = [f for f in os.listdir(locales_dir) if f.endswith(".json")]
-
-    for json_file in sorted(json_files):
-        json_path = os.path.join(locales_dir, json_file)
-        print(f"\nChecking {json_file}...")
-
-        try:
-            json_data = load_json(json_path)
-            json_keys = flatten_json(json_data)
-        except Exception as e:
-            print(f"Error loading {json_file}: {e}")
-            continue
-
-        missing = []
-        for key in code_keys:
-            if key not in json_keys:
-                missing.append(key)
-
-        if missing:
-            print(f"Found {len(missing)} missing keys in {json_file}:")
-            for key in sorted(missing):
-                print(f"  - {key}")
-        else:
-            print(f"All keys found in {json_file}.")
+    locales = load_locales()
+    code_keys = collect_code_keys()
+    problems = validate(locales, code_keys)
+    if problems:
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        print(f"i18n check failed with {len(problems)} problem(s)", file=sys.stderr)
+        return 1
+    default_keys = set(locales[DEFAULT_LOCALE])
+    missing_references = sorted(code_keys - default_keys)
+    if missing_references:
+        print(f"Review: {len(missing_references)} static code reference(s) have no default key; dynamic keys may be included")
+    for locale, values in sorted(locales.items()):
+        fallback_count = len(default_keys - set(values))
+        if fallback_count:
+            print(f"Review: {locale} uses fallback for {fallback_count} default key(s)")
+    print(
+        f"i18n JSON/compiler safety check passed: {len(locales)} locales, "
+        f"{len(default_keys)} default keys, {len(code_keys)} static references"
+    )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -163,7 +163,7 @@
                                             {{ t('pluginManagement.enable') }}
                                         </v-btn>
                                         <v-btn
-                                            v-else-if="hasConfigurationUi(plugin)"
+                                            v-else-if="plugin.plugin_key !== 'talebook.combo.mcp' && hasConfigurationUi(plugin)"
                                             size="small"
                                             variant="text"
                                             @click="openConfiguration(plugin)"
@@ -177,6 +177,15 @@
                                             @click="experiencePlugin(plugin)"
                                         >
                                             {{ t('pluginManagement.experience') }}
+                                        </v-btn>
+                                        <v-btn
+                                            v-if="plugin.plugin_key === 'talebook.combo.mcp'"
+                                            size="small"
+                                            variant="text"
+                                            prepend-icon="mdi-book-open-variant-outline"
+                                            @click="mcpGuideOpen = true"
+                                        >
+                                            {{ t('pluginManagement.mcpPersonalSettings') }}
                                         </v-btn>
                                         <v-btn
                                             size="small"
@@ -495,6 +504,7 @@
             </v-card>
         </v-dialog>
 
+        <McpGuideDialog v-model="mcpGuideOpen" />
         <OpdsImportDialog ref="opdsDialog" />
         <MetadataAutomationSettings ref="metadataSettings" />
         <GlobalDeviceSettings
@@ -511,6 +521,7 @@ import { useI18n } from 'vue-i18n';
 import GlobalDeviceSettings from '~/components/GlobalDeviceSettings.vue';
 import MetadataAutomationSettings from '~/components/MetadataAutomationSettings.vue';
 import MetadataProgress from '~/components/MetadataProgress.vue';
+import McpGuideDialog from '~/components/McpGuideDialog.vue';
 import OpdsImportDialog from '~/components/OpdsImportDialog.vue';
 import PluginCapabilityTester from '~/components/PluginCapabilityTester.vue';
 import RoutePageToolbar from '@/components/RoutePageToolbar.vue';
@@ -590,6 +601,7 @@ const connectionFormOpen = ref(false);
 const connectionConfig = ref({});
 const connectionCredentials = ref({});
 const opdsDialog = ref(null);
+const mcpGuideOpen = ref(false);
 const metadataSettings = ref(null);
 const globalDeviceSettings = ref(null);
 const selectedPluginKey = ref(typeof route.query.plugin === 'string' ? route.query.plugin : '');
@@ -680,7 +692,7 @@ function configurationActionLabel(plugin) {
 }
 
 function pluginNeedsConfiguration(plugin) {
-    return supportsInstanceConnection(plugin) && plugin?.ui?.configuration_mode === 'form';
+    return plugin?.plugin_key !== 'talebook.combo.mcp' && supportsInstanceConnection(plugin) && ['form', 'connection'].includes(plugin?.ui?.configuration_mode);
 }
 
 function hasConfigurationUi(plugin) {

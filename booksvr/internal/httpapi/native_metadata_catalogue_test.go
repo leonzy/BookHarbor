@@ -44,7 +44,7 @@ func TestMetadataOnlyCatalogueUsesNativeSourcesAndProtectsControls(t *testing.T)
 	for _, v := range result.Definitions {
 		keys[v.Key] = true
 	}
-	if len(keys) != 40 || !keys["bookharbor.meta.google-books"] || !keys["bookharbor.meta.amazon"] || keys["talebook.meta.calibre"] {
+	if len(keys) != 41 || !keys["bookharbor.meta.google-books"] || !keys["bookharbor.meta.amazon"] || !keys["talebook.combo.mcp"] || keys["talebook.meta.calibre"] {
 		t.Fatalf("native catalogue %v", keys)
 	}
 }

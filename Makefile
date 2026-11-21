@@ -1,4 +1,4 @@
-.PHONY: all build test check-design check-spec build-go test-go lint-go
+.PHONY: all build test check-design check-spec check-i18n build-go test-go lint-go
 
 VER = $(shell git branch --show-current | tr '/' '-')
 IMAGE = ghcr.io/leonzy/bookharbor:$(VER)
@@ -36,20 +36,19 @@ test:
 	docker run --rm --name=talebook-docker-test -v "$$PWD":"$$PWD" -w "$$PWD/booksvr" bookharbor/test go test ./...
 
 lint-ui:
-	npm ci
-	cd app && npm run lint
+	cd app && npm ci && npm run lint
 
 lint-py:
 	ruff check ./docker ./scripts/upgrade --no-cache
-	ruff format --diff ./docker ./scripts/upgrade --output-format concise --no-cache
+	ruff format --check ./docker ./scripts/upgrade --no-cache
 
 lint-py-fix:
 	ruff check ./docker ./scripts/upgrade --fix
 	ruff format ./docker ./scripts/upgrade
 
 check-i18n:
-	uv run check_i18n_translation_missing.py
-	uv run check_i18n_translation_useless.py
+	python3 scripts/check_i18n_translation_missing.py
+	python3 scripts/check_i18n_translation_useless.py
 
 check-design:
 	python3 scripts/check_design_docs.py

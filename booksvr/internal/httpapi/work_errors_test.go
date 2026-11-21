@@ -326,6 +326,7 @@ func TestNewRoutesHaveCorrectMethods(t *testing.T) {
 		"/api/work/([0-9]+)":          "GET",
 		"/api/book/([0-9]+)/versions": "GET",
 		"/api/book/([0-9]+)/merge":    "POST",
+		"/mcp":                        "POST",
 	}
 	for _, r := range NewRoutes() {
 		if r.Pattern == rImportTask {

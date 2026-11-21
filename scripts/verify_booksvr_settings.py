@@ -2,6 +2,7 @@
 
 import http.cookiejar
 import json
+import secrets
 import sqlite3
 import sys
 import time
@@ -17,6 +18,13 @@ if not Path("/data/.talebook-config-audit").exists():
 jar = http.cookiejar.CookieJar()
 client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 checks = []
+credentials_path = Path("/data/.audit-admin.json")
+if credentials_path.exists():
+    admin = json.loads(credentials_path.read_text(encoding="utf-8"))
+else:
+    admin = {"username": "auditadmin", "password": secrets.token_urlsafe(24)}
+    credentials_path.write_text(json.dumps(admin), encoding="utf-8")
+    credentials_path.chmod(0o600)
 
 
 def api(path, data=None, guest=False):
@@ -75,7 +83,7 @@ def epub(path, title):
 
 
 def login():
-    ok("/api/user/sign_in", {"username": "auditadmin", "password": "AuditOnly2026"})
+    ok("/api/user/sign_in", {"username": "auditadmin", "password": admin["password"]})
 
 
 if len(sys.argv) > 1 and sys.argv[1] == "postrestart":
@@ -97,7 +105,7 @@ if state.get("err") != "installed":
         "/api/admin/install",
         {
             "username": "auditadmin",
-            "password": "AuditOnly2026",
+            "password": admin["password"],
             "email": "audit@example.invalid",
             "title": "配置验证书库",
             "invite": "false",

@@ -4,7 +4,7 @@
 
 ## 能力
 
-在 Talebook 现有“书源管理”中配置并启用“番茄小说下载器”，随后在联网搜索中选择此源。可以搜索书名，也可以输入数字书籍 ID 或 `https://fanqienovel.com/page/书籍ID`。打开结果详情，选择“保存到本地”，完成后在本地书库阅读。
+在 BookHarbor 现有“书源管理”中配置并启用“番茄小说下载器”，随后在联网搜索中选择此源。可以搜索书名，也可以输入数字书籍 ID 或 `https://fanqienovel.com/page/书籍ID`。打开结果详情，选择“保存到本地”，完成后在本地书库阅读。
 
 提供搜索、书籍详情和完整 **EPUB（默认）或 TXT** 下载入库。管理员在书源连接的“下载格式”中选择 `epub` 或 `txt`；保存到本地使用该配置。EPUB 直接由上游生成，保留其目录与排版，不经过 TXT 转换。没有在线逐章阅读、封面代理、分页搜索、段评或有声书功能。详情中的临时鉴权封面地址不会交给浏览器。相同书名及作者沿用已有入库去重规则。
 
@@ -14,7 +14,7 @@
 
 Linux amd64 / arm64 镜像在构建时安装固定版本下载器，默认路径为 `/opt/tomato/downloader`。使用静态 musl 发行文件，不依赖 glibc 版本，也不要求 Rust、Node 或 Wine。其他架构不包含此下载器。自定义运行环境或需要单独挂载下载器时使用下列步骤。
 
-在 Talebook 仓库目录执行（Docker Desktop 用户按 **容器** 架构选择）：
+在 BookHarbor 仓库目录执行（Docker Desktop 用户按 **容器** 架构选择）：
 
 ```sh
 python3 scripts/install_tomato_downloader.py --directory ./tomato-runtime --arch amd64
@@ -23,7 +23,7 @@ python3 scripts/install_tomato_downloader.py --directory ./tomato-runtime --arch
 
 脚本仅从固定 GitHub Release 下载，通过固定 SHA-256 后才原子替换文件，保留 LICENSE 和 NOTICE.md；失败会移除临时下载，不执行下载的文件。不使用上游滚动安装器或 latest 链接。
 
-给现有 Talebook 容器增加只读挂载后重建该容器（按实际 Compose 服务名配置）：
+给现有 BookHarbor 容器增加只读挂载后重建该容器（按实际 Compose 服务名配置）：
 
 ```yaml
 services:
@@ -83,7 +83,7 @@ services:
 | `downloader --download 7274791759849196579 --data-dir DATA_DIR` | 退出码 1：CLI 已禁用新建下载，请先使用 Web UI / TUI |
 | `downloader --update 7274791759849196579 --data-dir DATA_DIR` | 退出码 1：没有该书本地下载记录，要求先完成首次下载 |
 
-因此“支持命令行”与“可用命令行首次下载任意书籍”有区别。`--download` 是隐藏参数；`--update` 用于已有记录的增量更新。上述空目录探测不代表更新功能不可用，也未验证已有记录的更新成功路径。Talebook 通过 `--server` 启动下载器，以其本地 `/api/jobs` 完成首次下载；`novel_format=epub` 或 `txt` 控制原生输出。当前每次下载独立清理，不保留更新记录，也不提供自动追更。
+因此“支持命令行”与“可用命令行首次下载任意书籍”有区别。`--download` 是隐藏参数；`--update` 用于已有记录的增量更新。上述空目录探测不代表更新功能不可用，也未验证已有记录的更新成功路径。BookHarbor 通过 `--server` 启动下载器，以其本地 `/api/jobs` 完成首次下载；`novel_format=epub` 或 `txt` 控制原生输出。当前每次下载独立清理，不保留更新记录，也不提供自动追更。
 
 ## 版本完整性与许可
 
@@ -96,19 +96,20 @@ services:
 
 上游 LICENSE 为 MIT，`Copyright (c) 2025 zhongbai2333`。完整原文保留于 [MIT 许可](licenses/tomato-novel-downloader-MIT.txt)，来源与审计边界见 [NOTICE](licenses/tomato-novel-downloader-NOTICE.md)。安装脚本把二者放在二进制旁。
 
-没有新增 Python 第三方依赖；沿用 requests（Apache-2.0）和标准库。上游公开的 Cargo 锁文件并不是发行二进制的完整 SBOM；缺失的私有 crate 及其依赖许可未能独立核实。Talebook 不把此二进制捆绑进默认镜像，也不把 MIT 扩张为对其全部内嵌依赖的许可保证。
+没有新增 Python 应用运行时依赖；适配器由 Go 实现，可选安装脚本只使用 Python 标准库。上游公开的 Cargo 锁文件并不是发行二进制的完整 SBOM；缺失的私有 crate 及其依赖许可未能独立核实。BookHarbor 在 Linux amd64/arm64 默认镜像中安装固定版本二进制，其他架构不包含；MIT 声明不扩张为对其全部内嵌依赖的许可保证。
 
 ## 验证
 
-真实 Linux amd64 musl 发行版，在宿主机和 Talebook 测试容器中均完成搜索《西游记》（19 条结果）、读取书 ID `7274791759849196579` 的详情、下载完整原生 EPUB 与 TXT。宿主 EPUB 为 2,804,405 字节，容器再次下载为 2,804,379 字节（独立生成的 EPUB 字节可变化）；TXT 为 2,190,078 字节。两种格式均通过本次下载历史的完整性检查，EPUB 通过结构及 ZIP 校验。联网测试将每种格式经既有导入方法写入独立 Calibre 书库，逐次校验书名与导入前后完整字节一致，并确认导入临时文件已清理：2 passed。网络结果随上游变化；该记录不保证未来可用。
+真实 Linux amd64 musl 发行版，在宿主机和 BookHarbor 测试容器中均完成搜索《西游记》（19 条结果）、读取书 ID `7274791759849196579` 的详情、下载完整原生 EPUB 与 TXT。宿主 EPUB 为 2,804,405 字节，容器再次下载为 2,804,379 字节（独立生成的 EPUB 字节可变化）；TXT 为 2,190,078 字节。两种格式均通过本次下载历史的完整性检查，EPUB 通过结构及 ZIP 校验。联网测试将每种格式经既有导入方法写入独立 Calibre 书库，逐次校验书名与导入前后完整字节一致，并确认导入临时文件已清理：2 passed。网络结果随上游变化；该记录不保证未来可用。
 
-隔离测试覆盖默认 EPUB 与显式 TXT、损坏 EPUB 与缺失阅读文件拒绝、解压大小限制、插件契约、ID 校验、完整下载、缺章拒绝、错误脱敏、哈希失败不执行、进程回收、临时文件清理和下载预算。真实联网回归可显式运行：
+真实联网复验需要使用固定版本二进制和隔离书库，并显式审查 `booksvr/internal/pluginbuiltin/` 中相关 Go 测试的环境开关；常规 CI 不访问小说服务。当前基础回归：
 
 ```sh
-TOMATO_TEST_BINARY=/opt/tomato/downloader pytest -q tests/test_tomato_downloader_source.py
+cd booksvr
+go test ./internal/pluginbuiltin
 ```
 
-未设置该变量时自动跳过联网用例；正常 CI 无须下载二进制或访问小说服务。
+上述 2026-09-06 的搜索结果、文件字节和联网入库记录是固定版本的历史验收证据，不保证当前上游可用，也不要再执行已删除的 `tests/test_tomato_downloader_source.py`。隔离自动化应覆盖默认 EPUB 与显式 TXT、损坏文件拒绝、资源限制、插件契约、ID 校验、缺章拒绝、错误脱敏、哈希失败不执行、进程回收和临时文件清理。
 
 前端配置表单数字类型、EPUB/TXT 格式下拉框（默认 EPUB、键盘展开选择 TXT、提交配置）、浅色/深色与仅搜索书源的浏览入口经过回归：Playwright 3 passed。中英文标签通过 locale 编译；英文完整交互未验证。界面截图来自隔离 mock API 自动化环境，仅用于界面验证，不代表真实网络下载验收：
 

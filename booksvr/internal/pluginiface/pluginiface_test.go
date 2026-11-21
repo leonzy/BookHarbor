@@ -302,8 +302,8 @@ func TestPluginContextAsDictNilMaps(t *testing.T) {
 
 // TestCapabilityInterfaces 覆盖能力到接口的映射。
 func TestCapabilityInterfaces(t *testing.T) {
-	if len(CapabilityInterfaces) != 19 {
-		t.Errorf("映射数 = %d, want 19", len(CapabilityInterfaces))
+	if len(CapabilityInterfaces) != 20 {
+		t.Errorf("映射数 = %d, want 20", len(CapabilityInterfaces))
 	}
 	want := map[string]string{
 		"metadata.lookup":              "MetadataProvider",
@@ -319,6 +319,7 @@ func TestCapabilityInterfaces(t *testing.T) {
 		"sources.acquire":              "SourceProvider",
 		"integrations.tool":            "TransformProvider",
 		"integrations.push":            "PushProvider",
+		"integrations.mcp":             "MCPProvider",
 		"integrations.search":          "ExtraFeatureProvider",
 		"integrations.books":           "ExtraFeatureProvider",
 		"integrations.shelf":           "ExtraFeatureProvider",

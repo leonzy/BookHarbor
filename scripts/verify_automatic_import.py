@@ -3,6 +3,7 @@
 import http.cookiejar
 import io
 import json
+import secrets
 import sqlite3
 import sys
 import time
@@ -15,6 +16,13 @@ if not Path("/data/.talebook-automatic-import-audit").is_file():
     raise SystemExit("Requires a marked disposable fullscan audit volume")
 
 client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+credentials_path = Path("/data/.audit-admin.json")
+if credentials_path.exists():
+    admin = json.loads(credentials_path.read_text(encoding="utf-8"))
+else:
+    admin = {"username": "auditadmin", "password": secrets.token_urlsafe(24)}
+    credentials_path.write_text(json.dumps(admin), encoding="utf-8")
+    credentials_path.chmod(0o600)
 
 
 def api(path, data=None):
@@ -57,13 +65,13 @@ if api("/api/admin/install").get("err") != "installed":
         "/api/admin/install",
         {
             "username": "auditadmin",
-            "password": "AuditOnly2026",
+            "password": admin["password"],
             "email": "audit@example.invalid",
             "title": "全量扫描验证书库",
             "invite": "false",
         },
     )
-ok("/api/user/sign_in", {"username": "auditadmin", "password": "AuditOnly2026"})
+ok("/api/user/sign_in", {"username": "auditadmin", "password": admin["password"]})
 
 if stage == "setup":
     for number in range(3):

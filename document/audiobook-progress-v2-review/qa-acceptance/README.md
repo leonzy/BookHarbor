@@ -1,5 +1,7 @@
 # 独立 QA 验收与交付收尾
 
+> **历史 QA 证据。** 本文记录固定 Talebook/Voicebook 提交的独立验收，不描述当前 Go 后端的测试范围。当前产品行为见 `spec/有声书.md`，现行复验命令见 `document/audiobook-progress-v2.md`。
+
 QA 在 TB-234 评论 `c5cab4c9-7334-4342-8f69-8401e1a18354` 确认独立复审及离线功能验收通过，无新增阻断项。实际被审版本为 Talebook `9cb3633be8fd1bb8f7b9ef782ceabd11a84a05a3` / Voicebook `3316bae6a7372e82d7037d31b9ffb32633ef2aa4`。
 
 本目录的七份 QA JSON 是附件 `qa-review-9cb3633-3316bae.zip` 的原样副本；附件 ID、完整 SHA256、各副本和方案内嵌 QA 截图的哈希见 `provenance.json`。完整探针、日志、失败截图与 trace 留在该 issue 附件。`transactions-54.json` 列出收尾时从未改变的事务测试文件实际收集的 54 个 nodeid；执行通过的结论来自 QA 的 118 项核心验证，不把本次收集称为重新执行。

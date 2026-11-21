@@ -88,6 +88,12 @@ func executeLegacy(p any, context map[string]any) (any, error) {
 // 未实现的方法返回 plugin.provider_contract，与 Python 的 AttributeError 等价。
 func dispatchCapability(p any, method string, args []any, context map[string]any) (any, error) {
 	switch method {
+	case "invoke":
+		provider, ok := p.(pluginiface.MCPProvider)
+		if !ok {
+			return nil, contractError(method)
+		}
+		return provider.Invoke(method, args, context)
 	case "search_books":
 		provider, ok := p.(pluginiface.MetadataProvider)
 		if !ok {

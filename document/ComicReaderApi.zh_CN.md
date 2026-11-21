@@ -1,14 +1,14 @@
 # 漫画阅读器接入契约
 
-Talebook 后端直接处理 `/read-comic/:bookId`，渲染 `webserver/resources/book/comic-reader.html` 并通过本契约驱动独立的 `komga-reader`。Reader 只接触页面 manifest、同源图片 URL 和阅读进度；它不会读取 Calibre 路径、Talebook 数据库、可下载归档或归档条目名。
+BookHarbor 后端直接处理 `/read-comic/:bookId`，渲染 `resources/book/comic-reader.html` 并通过本契约驱动独立的 `komga-reader`。Reader 只接触页面 manifest、同源图片 URL 和阅读进度；它不会读取 Calibre 路径、BookHarbor 数据库、可下载归档或归档条目名。
 
 ## 前端分发
 
-Reader 沿用 Candle Reader 的静态 JavaScript 模式，不作为 Talebook 的 npm 依赖参与 Nuxt/Docker 安装：
+Reader 沿用 Candle Reader 的静态 JavaScript 模式，不作为 BookHarbor 的 npm 依赖参与 Nuxt/Docker 安装：
 
 - 上游 `komga-reader` 构建自包含的 ESM、UMD 和 CSS；浏览器 bundle 内含隔离的 Vue runtime，不依赖全局 `Vue`、裸模块解析或 CDN；
-- Talebook 将不可变上游 commit 的产物、许可证和版本记录固定在 `app/public/static/komga-reader/`；
-- `/read-comic/:bookId` 是 Tornado 路由，由后端先完成登录、权限、书籍媒体类型和容器选择校验，再渲染轻量 HTML host；Nginx 的 dev、SPA、SSR 配置及 Nuxt 本地开发代理均将该路径直接转发给 Tornado，不能通过前端 `$backend` 添加 `/api` 前缀；
+- BookHarbor 将不可变上游 commit 的产物、许可证和版本记录固定在 `app/public/static/komga-reader/`；
+- `/read-comic/:bookId` 是 Go `booksvr` 路由，由后端先完成登录、权限、书籍媒体类型和容器选择校验，再渲染轻量 HTML host；Nginx 的 dev、SPA、SSR 配置及 Nuxt 本地开发代理均将该路径直接转发给 `booksvr`，不能通过前端 `$backend` 添加 `/api` 前缀；
 - 后端模板从同源版本 URL 动态加载 ESM，并在刷新或离页时调用 `destroy()`；Nuxt 中不存在 `app/pages/read-comic` 页面，也不承担 Reader 生命周期或 API 适配；
 - 当前固定版本见仓库根目录 `komga-reader-version.txt`，后端版本常量与静态模块 URL 使用相同值完成缓存失效。
 
@@ -70,7 +70,7 @@ GET /api/book/:bookId/comic/pages
 
 `index` 是自然排序后的连续零基序号。`id` 在同一容器修订内稳定，适合保存进度；客户端仍应保存 `pageIndex` 作为修订变化后的回退。`revision` 是不包含路径信息的内容目录摘要。
 
-逻辑错误沿用 Talebook JSON 信封，HTTP 状态为 200；客户端必须检查 `err`。稳定错误码包括：
+逻辑错误沿用 BookHarbor 兼容 JSON 信封，HTTP 状态为 200；客户端必须检查 `err`。稳定错误码包括：
 
 - `user.need_login`；
 - `comic.book_not_found`；
@@ -127,7 +127,7 @@ POST 请求：
 }
 ```
 
-服务端要求 `pageId` 与当前 manifest 的 `pageIndex` 一致，并根据当前总页数重新计算 `percent` 和 `completed`。陈旧页面 ID 返回 `comic.progress_stale`，非法或超过 2 KiB 的负载返回 `comic.progress_invalid`。数据复用 Talebook 的 `ReadingState.progress` 列，但契约与通用 EPUB/其他阅读器相互独立。
+服务端要求 `pageId` 与当前 manifest 的 `pageIndex` 一致，并根据当前总页数重新计算 `percent` 和 `completed`。陈旧页面 ID 返回 `comic.progress_stale`，非法或超过 2 KiB 的负载返回 `comic.progress_invalid`。数据复用 BookHarbor 的 `ReadingState.progress` 列，但契约与通用 EPUB/其他阅读器相互独立。
 
 ## 安全与资源预算
 

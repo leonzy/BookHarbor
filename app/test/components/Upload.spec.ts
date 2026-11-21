@@ -1,5 +1,6 @@
 // @vitest-environment nuxt
 import { flushPromises, mount } from '@vue/test-utils';
+import { useNuxtApp } from 'nuxt/app';
 import { mockNuxtImport } from '@nuxt/test-utils/runtime';
 import { createVuetify } from 'vuetify';
 import * as components from 'vuetify/components';
@@ -25,12 +26,8 @@ const { alertMock, backendMock, pushMock, storeState } = vi.hoisted(() => ({
     },
 }));
 
-mockNuxtImport('useNuxtApp', () => {
-    return () => ({ $backend: backendMock, $alert: alertMock });
-});
-
 mockNuxtImport('useRouter', () => {
-    return () => ({ push: pushMock });
+    return () => ({ push: pushMock, afterEach: vi.fn(), beforeResolve: vi.fn() });
 });
 
 vi.mock('@/stores/main', () => ({
@@ -76,6 +73,7 @@ function mountUpload() {
         chunk_threshold: 8 * 1024 * 1024,
         chunk_size: 4 * 1024 * 1024,
     };
+    Object.assign(useNuxtApp(), { $backend: backendMock, $alert: alertMock });
     return mount(Upload, {
         global: {
             plugins: [vuetify],

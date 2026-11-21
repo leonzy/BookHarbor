@@ -25,7 +25,7 @@ make lint-go
 make test    # Docker 内运行 Go 测试
 make build   # 测试通过后构建生产镜像
 make up      # docker compose up
-make dev     # 挂载 booksvr/ 进容器，用于 Go 后端开发调试
+make dev     # 构建并启动 Go 后端开发容器；修改 Go 源码后需重建镜像
 ```
 
 前端命令见 `app/CLAUDE.md` 。
@@ -164,13 +164,14 @@ python3 -m pytest tests # 容器管理脚本测试（Linux）
 make test-go       # Go 后端：所有测试必须通过
 make check-design  # 内部方案：路径、状态、HTML 与资源约束必须通过
 make check-spec    # 领域规格：结构、术语表、互链、实现对照与插件覆盖度必须通过
+make check-i18n    # 语言 JSON、编译敏感字符与翻译覆盖报告
 cd app && npm run lint   # 前端：eslint 必须通过
 ```
 
 ### 代码风格
 
-- Python 行宽上限 120 字符（见 `pyproject.toml` black 配置）。
-- 后端新增 JSON 接口默认使用 `@js` + `@auth` 装饰器，返回 `{"err": "ok", ...}`，禁止直接抛出 HTTP 异常。与公开阅读能力绑定的只读 JSON 可以不加 `@auth`，但必须逐资源调用 `can_view_book()` 或等价权限校验，并补游客、私有资源和所有者测试。媒体流、Podcast、OPDS 等非 JSON 协议可以使用标准 HTTP 状态码，但不得绕过资源权限。
+- Python 行宽上限为 127 字符（见 `pyproject.toml` Ruff 配置）。
+- Go 新增 JSON 接口必须在路由与 `RouteSpec` 中显式声明方法及 `Auth` / `Admin` 要求，返回 `{"err": "ok", ...}` 和既有错误信封，不要绕过统一处理器直接写非约定 JSON。与公开阅读能力绑定的只读 JSON 可以不要求登录，但必须逐资源调用 `can_view_book()` 或当前等价的访问范围校验，并补游客、私有资源和所有者测试。媒体流、Podcast、OPDS、WebDAV 等非 JSON 协议可以使用标准 HTTP 状态码，但不得绕过资源权限。
 - 前端 API 调用统一使用 `plugins/talebook.js` 的 `backend()` 函数，禁止直接使用 `fetch`。
 - 前端 i18n 文案（`app/i18n/locales/*.json` ）中**禁止出现字面量 `@` 和 `<`**：vue-i18n 把 `@`（如 `@js:`）当链接消息语法（报 `Invalid linked format`）、把 `<`（如 `<js>`）当 HTML（报 `Detected HTML`），任一出现都会让**整个 locale 编译失败**——页面所有文案显示为原始 key、dev server 返回 500，而 `JSON.parse` 与 eslint 均不报错（只有 dev server 日志里有 `[unplugin-vue-i18n]` 错误）。文案应改写绕开这两个符号，必须保留时用字面插值 `{'@'}`。新增 key 后 HMR 常不热更，需重启 `nuxt dev`。
 

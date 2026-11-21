@@ -5,21 +5,21 @@ import { describe, expect, it } from 'vitest';
 const appRoot = process.cwd();
 const repositoryRoot = resolve(appRoot, '..');
 const staticRoot = resolve(appRoot, 'public/static/komga-reader');
-const backendTemplatePath = resolve(repositoryRoot, 'webserver/resources/book/comic-reader.html');
+const backendTemplatePath = resolve(repositoryRoot, 'resources/book/comic-reader.html');
 
 describe('comic reader static distribution', () => {
     it('pins the backend host page cache key to the recorded immutable upstream commit', () => {
         const version = readFileSync(resolve(repositoryRoot, 'komga-reader-version.txt'), 'utf8').trim();
-        const handler = readFileSync(resolve(repositoryRoot, 'webserver/handlers/comic.py'), 'utf8');
+        const handler = readFileSync(resolve(repositoryRoot, 'booksvr/internal/httpapi/comic.go'), 'utf8');
         const template = readFileSync(backendTemplatePath, 'utf8');
 
         expect(version).toMatch(/^[0-9a-f]{40}$/);
-        expect(handler).toContain(`KOMGA_READER_VERSION = "${version}"`);
+        expect(handler).toContain(`komgaReaderVersion = "${version}"`);
         expect(template).toContain('komga-reader.es.js?v=${readerVersion}');
         expect(existsSync(resolve(appRoot, 'pages/read-comic'))).toBe(false);
     });
 
-    it('routes read-comic through Tornado in production and local Nuxt development', () => {
+    it('routes read-comic through Go booksvr in production and local Nuxt development', () => {
         for (const name of ['dev.conf', 'talebook.conf', 'server-side-render.conf']) {
             const config = readFileSync(resolve(repositoryRoot, 'conf/nginx', name), 'utf8');
             expect(config).toMatch(/location ~ \^\/\([^\n]*read-comic[^\n]*\)\//);

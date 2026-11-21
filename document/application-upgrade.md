@@ -1,15 +1,15 @@
 # 容器内应用升级与资源分发
 
-此功能替换 Python 应用和已编译 SPA，重启应用进程，容器本身不重建。服务会短暂中断，阅读、下载和管理请求可能需要重试。
+此功能替换 Go `booksvr` 二进制、已编译 SPA 和运行时资源，重启应用进程，容器本身不重建。服务会短暂中断，阅读、下载和管理请求可能需要重试。
 
-历史镜像不含可信加载器，**首次启用必须升级一次容器镜像**。目前尚未发布官方升级签名公钥、渠道或国内域名；代码合并不代表这些资源已经上线。没有可信密钥时安装功能默认关闭。
+历史镜像不含可信加载器，**首次启用必须升级一次容器镜像**。BookHarbor 公开信任配置见 `conf/bookharbor-upgrade.json`；部署时仍需通过可信渠道核对公钥，并以 root 持有、应用账号不可写的方式挂载。签名私钥不进入源码、镜像或 Release。没有可信密钥时安装功能默认关闭。
 
 ## 支持范围
 
 - 生产 SPA，非零 `PUID`，默认 `/data/books/library` 书库和 `sqlite:////data/books/calibre-webserver.db` 数据库。自动导入目录监听须关闭，升级期间不得有容器外的程序写入书库。
 - SSR、开发模式、外部数据库、自定义书库路径不支持应用内安装，使用镜像更新。
 - Python、Calibre、系统软件包、实际安装的 Python distributions、CPU 架构、加载器和启动配置共同决定 runtime 指纹。依赖或启动协议改变必须更新镜像；不会在后台执行 pip、apt 或 git pull。
-- 数据库 `models.py` / `migrate_db.py` 指纹必须相同，清单必须声明 `migration: none`。数据库结构变动走备份与镜像迁移流程。签名发布者仍须审查其他代码是否包含隐式数据迁移；指纹不能替代迁移评审。
+- 数据库指纹由 `schema/user.sql` 与 `schema/bootstrap.go` 的实际字节生成，镜像证明和签名清单必须一致，且清单必须声明 `migration: none`。数据库结构变动走备份与镜像迁移流程。签名发布者仍须审查其他代码是否包含隐式数据迁移；指纹不能替代迁移评审。
 - 发布工作流分别构建 amd64、arm64、armv7 包。清单架构必须匹配；首轮本地真实容器验证以 amd64 为范围，不代表其他架构已经实测。
 
 ## 首次部署
@@ -24,7 +24,7 @@
     "release-2026": "由可信发布者提供的 Ed25519 原始32字节公钥的Base64"
   },
   "sources": [
-    "https://github.com/talebook/talebook/releases/download"
+    "https://github.com/leonzy/BookHarbor/releases/download"
   ]
 }
 ```
@@ -80,7 +80,7 @@ docker compose up -d talebook
 
 检查会验证所有配置源，选择最高签名序号，持久化防回放水位。同一序号内容冲突会报错。镜像落后会显示诊断，不能静默降级。下载回退必须得到相同提交、相同哈希的包。
 
-安装流程：下载 → 校验/安全解包 → 维护闸门 → 等待 HTTP 请求、后台队列、有声书及插件任务结束 → 停止 Tornado 和子进程 → SQLite 一致性备份 → 原子切换整套前后端 → 重启与健康检查。维护期间后台暂时不可达，现有页面自动重连；新版本启动后，旧标签页请求携带的前端版本若与后端不一致，会在业务处理前返回 409 并自动刷新；也可使用按钮手动刷新页面以加载新的前端。
+安装流程：下载 → 校验/安全解包 → 维护闸门 → 等待 HTTP 请求、后台队列、有声书及插件任务结束 → 停止 Go `booksvr` 和子进程 → SQLite 一致性备份 → 原子切换整套前后端与资源 → 重启与健康检查。维护期间后台暂时不可达，现有页面自动重连；新版本启动后，旧标签页请求携带的前端版本若与后端不一致，会在业务处理前返回 409 并自动刷新；也可使用按钮手动刷新页面以加载新的前端。
 
 `/data/updates/state.json` 是持久化结果；`/data/log/upgrade.log` 保存执行器日志并轮转。操作具有全局互斥，同一版本的重复安装请求返回已有状态。启动器在进程崩溃或容器重启后处理未完成事务；下载/校验中断保持现有版本，切换阶段中断恢复记录的上一版本。
 
@@ -104,16 +104,16 @@ docker compose up -d talebook
 
 ## 发布、轮换与国内同步
 
-`.github/workflows/application-upgrade.yml` 在发布正式 `v*` GitHub Release（`published` 事件、非草稿、非预发布）后自动构建并上传应用更新资源。先把 tag 解析为固定 commit，并确认属于 `master` 历史；签名和发布分别经过受保护环境。`app-COMMIT` 与 `app-stable` 属于资源预发布，不会递归触发。
+`.github/workflows/application-upgrade.yml` 在发布正式 `v*` GitHub Release（`published` 事件、非草稿、非预发布）后自动构建并上传应用更新资源。先把 tag 解析为固定 commit，并确认属于 `main` 历史；签名和发布分别经过受保护环境。`app-COMMIT` 与 `app-stable` 属于资源预发布，不会递归触发。
 
-保留手动入口：输入完整已审查的 `master` 提交和版本，默认 `publish=false` 仅上传 Actions 构建产物，不修改 Releases 或渠道；选择 `publish=true` 后才上传客户端资源。可选 `release_tag` 指定已有正式 Release，须与版本名及 commit 完全一致；留空仅发布 `app-COMMIT` / `app-stable`。请为以下环境设置人工审核和受保护分支/tag：
+保留手动入口：输入完整已审查的 `main` 提交和版本，默认 `publish=false` 仅上传 Actions 构建产物，不修改 Releases 或渠道；选择 `publish=true` 后才上传客户端资源。可选 `release_tag` 指定已有正式 Release，须与版本名及 commit 完全一致；留空仅发布 `app-COMMIT` / `app-stable`。请为以下环境设置人工审核和受保护分支/tag：
 
 - `application-upgrade`：secret `UPGRADE_SIGNING_KEY`，Ed25519 PKCS8 PEM 私钥；variable `UPGRADE_KEY_ID`。
 - `application-upgrade-publish`：variable `UPGRADE_TRUSTED_KEYS`（key_id 到原始公钥 Base64 的 JSON）；仓库 `GITHUB_TOKEN` 仅此 job 授予 contents:write。
 
 ### 第一次让客户端获取升级包
 
-PR 合并前这些工作流还没有进入默认分支；当前已有历史 Release 不会因合并而自动补包。此处说明操作流程，本次开发没有生成正式私钥、修改仓库 secrets 或发布版本。
+BookHarbor 已在 `conf/bookharbor-upgrade.json` 发布客户端信任配置，并为签名和发布分别保留受保护环境。正式 Release 不会自动为旧提交补包；新增版本仍需完成构建、签名和发布审批后才能推进稳定渠道。维护私钥只保存在签名环境，不进入仓库或镜像。
 
 1. 在可信发布管理机离线生成一次 Ed25519 密钥，私钥只交给签名环境，不上传 Release，也不放入容器。以下命令只打印公钥 JSON；私钥文件权限为 600：
 
@@ -130,7 +130,7 @@ PR 合并前这些工作流还没有进入默认分支；当前已有历史 Rele
    Path('upgrade-keys.json').write_text(json.dumps(keys))
    Path('talebook-upgrade.json').write_text(json.dumps({
        'keys': keys,
-       'sources': ['https://github.com/talebook/talebook/releases/download']
+       'sources': ['https://github.com/leonzy/BookHarbor/releases/download']
    }, indent=2))
    print(json.dumps(keys))
    PY
@@ -147,13 +147,13 @@ PR 合并前这些工作流还没有进入默认分支；当前已有历史 Rele
          - "/srv/talebook/talebook-upgrade.json:/etc/talebook-upgrade.json:ro"
    ```
 
-4. 对包含本功能的已审查 `master` 提交发布正式 `v*` Release。在 Actions 完成签名与发布环境审核后，该 Release 附上 `package-amd64.tar.gz`、`package-arm64.tar.gz`、`package-armv7.tar.gz` 及对应三个 `stable-架构.json` 签名清单；同时创建客户端需要的固定资源路径，并最后更新渠道。
+4. 对包含本功能的已审查 `main` 提交发布正式 `v*` Release。在 Actions 完成签名与发布环境审核后，该 Release 附上 `package-amd64.tar.gz`、`package-arm64.tar.gz`、`package-armv7.tar.gz` 及对应三个 `stable-架构.json` 签名清单；同时创建客户端需要的固定资源路径，并最后更新渠道。
 5. 如需为**已有且包含本功能的 Release**补包，在 Actions 手动运行本工作流，填写对应完整 commit、相同 version 和 `release_tag`，勾选 `publish`。由其他 workflow 的 `GITHUB_TOKEN` 创建的 Release 通常不会触发第二个 workflow，亦使用此手动入口；仅推送 tag、仅保存草稿或预发布不会自动推进稳定渠道。更早的提交没有加载器/打包脚本，不能直接补出可安装包。
 6. 在后台点击“检查版本”。以 amd64 为例，客户端实际读取以下地址，而不是 GitHub 自动生成的 Source code 压缩包：
 
    ```text
-   https://github.com/talebook/talebook/releases/download/app-stable/stable-amd64.json
-   https://github.com/talebook/talebook/releases/download/app-完整40位提交/package-amd64.tar.gz
+   https://github.com/leonzy/BookHarbor/releases/download/app-stable/stable-amd64.json
+   https://github.com/leonzy/BookHarbor/releases/download/app-完整40位提交/package-amd64.tar.gz
    ```
 
    普通版本 Release 中的附件是同一份字节的可见入口，不能只上传附件就省略 `app-stable`。无新版本时显示当前版本是正常结果；包必须比当前序号新且运行时/数据库兼容才能安装。新依赖、Calibre 或启动布局变化仍需镜像升级；自动发布附件不等于强制允许不兼容安装。GitHub 访问受限时按后文配置国内源。
@@ -185,26 +185,16 @@ python scripts/upgrade/mirror.py --provider oss --directory output --keys keys.j
 
 ## 本地验证工具
 
-`pytest tests/test_application_upgrade.py` 可独立验证协议和恢复状态机；`tests/test_upgrade_api.py` 需要 Calibre 测试环境。前端运行 `npx vitest run --config test/upgrade.vitest.config.ts`。
-
-`scripts/upgrade/smoke_container.py --work <专用空目录> --frontend app/.output/public` 构造一次性测试镜像，基于本机已有可信运行时和真实后端。它生成隔离 HTTPS 签名资源，**仅测试 fixture 的公共 IP 连接检查被替换为 loopback TLS**；生产下载器不提供此开关。必须在报告中注明该边界，不能把它说成公网/大陆源可用性验证。测试用密钥、Cookie 和账号文件不得交付，测试结束后停止并删除专用容器。
-
-`tests/test_upgrade_recreation.py` 提供显式启用的真实 Docker 重建回归：先复制一份已完成升级的隔离测试数据，再启动容器、验证登录和版本、停止并删除容器，分别用同一镜像和兼容镜像重建。检查容器 ID 已改变、前后端版本及书目保持、应用文件/书库文件/配置/插件文件哈希保持。不会改写原始 fixture；禁止提供生产数据。
+镜像管理协议与恢复状态机测试：
 
 ```sh
-TALEBOOK_RECREATE_FIXTURE=/path/to/disposable-upgraded-fixture \
-TALEBOOK_RECREATE_IMAGE=talebook:tb213-smoke \
-TALEBOOK_RECREATE_COMPATIBLE_IMAGE=talebook:tb213-compatible \
-python3 -m pytest tests/test_upgrade_recreation.py -v -s --tb=short
+python3 -m pytest tests/test_application_upgrade.py -q
+cd booksvr && go test ./internal/httpapi -run Upgrade
+cd ../app && npx vitest run --config test/upgrade.vitest.config.ts
 ```
 
-fixture 目录须包含 `data/updates/active.json`、已安装包和真实书库，以及 `fixture/config.json`、`fixture/credentials.json`。测试镜像须与该包运行时兼容。未配置 fixture 时跳过这两项，不算完成容器验收。主机磁盘不足时可将 pytest 的 `--basetemp` 和 `TMPDIR` 指向足够大的 tmpfs，并设置 `TALEBOOK_RECREATE_COPY_APP=1`：每次从对应镜像重新复制内置应用到临时目录再挂载，避免启动时 chown 触发磁盘 copy-up。这个测试适配不改生产加载器，且不会把前一个容器的内置应用带到重建容器；应在报告注明未验证默认磁盘 overlay 的限制。
+完整 Python 测试要求 Linux root 持有的信任配置。Go HTTP 用例覆盖升级接口，但不等于完成真实容器切换验收。
 
+`scripts/upgrade/smoke_container.py --work <专用空目录> --frontend app/.output/public` 构造一次性测试镜像，基于本机已有可信运行时和真实 Go 后端。它生成隔离 HTTPS 签名资源，**仅测试 fixture 的公共 IP 连接检查被替换为 loopback TLS**；生产下载器不提供此开关。必须在报告中注明该边界，不能把它说成公网或地区网络可用性验证。测试用密钥、Cookie 和账号文件不得交付，测试结束后停止并删除专用容器。
 
-`tests/test_upgrade_version_management.py` 是显式启用的版本管理容器验收。fixture 需包含隔离的书库/账号及 smoke_container.py 生成的 v2、v3、v4 签名包（相同 runtime/database，序号分别 2、3、4）。测试只操作数据和资源副本，完成后删除专用容器；不得指定生产数据。启用浏览器参数后同时运行真实页面的列表、重复开关弹窗、输入校验和窄屏回归。
-
-```sh
-TALEBOOK_VERSION_FIXTURE=/path/to/disposable-version-fixture \
-TALEBOOK_VERSION_BROWSER=1 \
-python3 -m pytest tests/test_upgrade_version_management.py -v -s --tb=short
-```
+真实重建、版本管理和数据库快照验收应使用 `tests/test_application_upgrade.py` 当前提供的 fixture 与 `scripts/upgrade/` 工具构造隔离场景。仓库中已不存在旧 `tests/test_upgrade_recreation.py`、`tests/test_upgrade_version_management.py` 和 `tests/test_upgrade_api.py`，不要再按历史文档执行这些路径。

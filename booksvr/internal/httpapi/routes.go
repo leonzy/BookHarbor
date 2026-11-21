@@ -14,6 +14,7 @@ var newRoutes = []Route{
 	{Pattern: "/api/work/([0-9]+)", Handler: "WorkDetail", Source: "booksvr/internal/httpapi/work.go", Methods: []string{"GET"}},
 	{Pattern: "/api/book/([0-9]+)/versions", Handler: "BookVersions", Source: "booksvr/internal/httpapi/work.go", Methods: []string{"GET"}},
 	{Pattern: "/api/book/([0-9]+)/merge", Handler: "MergeBooks", Source: "booksvr/internal/httpapi/work.go", Methods: []string{"POST"}},
+	{Pattern: "/mcp", Handler: "MCP", Source: "booksvr/internal/httpapi/mcp.go", Methods: []string{"POST"}},
 }
 
 // registeredRoutes 是 Python 版全部路由的逐条镜像。

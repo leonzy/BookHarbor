@@ -30,6 +30,7 @@ func ImplementedPatterns() []string {
 	specs = append(specs, AudioRouteSpecs(AudioConfig{})...)
 	specs = append(specs, BookRouteSpecs(BookConfig{})...)
 	specs = append(specs, WebDAVRouteSpecs(WebDAVConfig{})...)
+	specs = append(specs, MCPRouteSpecs(MCPConfig{})...)
 
 	seen := map[string]bool{}
 	out := make([]string, 0, len(specs))

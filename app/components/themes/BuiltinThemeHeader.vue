@@ -158,6 +158,11 @@
                         prepend-icon="mdi-power-plug-outline"
                     />
                     <v-list-item
+                        :to="{ path: '/me/plugins', query: { configure: 'mcp' } }"
+                        :title="t('pluginManagement.mcpPersonalSettings')"
+                        prepend-icon="mdi-robot-outline"
+                    />
+                    <v-list-item
                         v-if="store.user.is_admin"
                         to="/admin/settings"
                         :title="t('messages.adminEntry')"

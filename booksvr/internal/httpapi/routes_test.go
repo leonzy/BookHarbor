@@ -24,15 +24,15 @@ func TestLegacyRouteCountIs215(t *testing.T) {
 	}
 }
 
-func TestNewRouteCountIs5(t *testing.T) {
-	if got := len(NewRoutes()); got != 5 {
-		t.Fatalf("NewRoutes() 数 = %d, want 5", got)
+func TestNewRouteCountIs6(t *testing.T) {
+	if got := len(NewRoutes()); got != 6 {
+		t.Fatalf("NewRoutes() 数 = %d, want 6", got)
 	}
 }
 
-func TestTotalRouteCountIs220(t *testing.T) {
-	if got := RouteCount(); got != 220 {
-		t.Fatalf("RouteCount() = %d, want 220（215 既有 + 5 新增）", got)
+func TestTotalRouteCountIs221(t *testing.T) {
+	if got := RouteCount(); got != 221 {
+		t.Fatalf("RouteCount() = %d, want 221（215 既有 + 6 新增）", got)
 	}
 }
 
@@ -57,7 +57,7 @@ func TestNoDuplicatePatterns(t *testing.T) {
 	}
 }
 
-// TestNewRoutesDoNotCollideWithLegacy 断言新增 4 条不与既有 215 条撞路径。
+// TestNewRoutesDoNotCollideWithLegacy 断言新增 6 条不与既有 215 条撞路径。
 func TestNewRoutesDoNotCollideWithLegacy(t *testing.T) {
 	legacy := map[string]bool{}
 	for _, r := range LegacyRoutes() {

@@ -117,6 +117,11 @@ type ExtraFeatureProvider interface {
 	ExecuteFeature(action string, params map[string]any, context map[string]any) (map[string]any, error)
 }
 
+// MCPProvider 是 Model Context Protocol 的类型化传输边界。
+type MCPProvider interface {
+	Invoke(method string, args []any, context map[string]any) (any, error)
+}
+
 // PushProvider 复刻 PushProvider 协议。
 type PushProvider interface {
 	DefaultPort() int
@@ -141,6 +146,7 @@ var CapabilityInterfaces = map[string]string{
 	"sources.acquire":              "SourceProvider",
 	"integrations.tool":            "TransformProvider",
 	"integrations.push":            "PushProvider",
+	"integrations.mcp":             "MCPProvider",
 	"integrations.search":          "ExtraFeatureProvider",
 	"integrations.books":           "ExtraFeatureProvider",
 	"integrations.shelf":           "ExtraFeatureProvider",

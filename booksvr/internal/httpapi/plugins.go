@@ -1425,6 +1425,9 @@ func (cfg PluginConfig) pluginActiveUserInstallation(ctx *Context, pluginKey str
 func UserPluginStateHandler(cfg PluginConfig) HandlerFunc {
 	return func(ctx *Context) (map[string]any, error) {
 		pluginKey := ctx.Param(0)
+		if pluginKey == "talebook.combo.mcp" && ctx.Query("personal_token") == "1" {
+			return mcpPersonalToken(cfg, ctx)
+		}
 		provider, err := cfg.pluginRegistry().Get(pluginKey)
 		if err != nil {
 			return pluginErrorOr(err), nil

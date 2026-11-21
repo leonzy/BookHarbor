@@ -548,6 +548,7 @@ func TestNewWorkRoutesAreRegistered(t *testing.T) {
 		"/api/work/([0-9]+)",
 		"/api/book/([0-9]+)/versions",
 		"/api/book/([0-9]+)/merge",
+		"/mcp",
 	} {
 		if !patterns[p] {
 			t.Errorf("缺少新增路由 %q", p)
@@ -555,8 +556,8 @@ func TestNewWorkRoutesAreRegistered(t *testing.T) {
 	}
 }
 
-func TestRouteCountIs220AfterNewRoutes(t *testing.T) {
-	if got := RouteCount(); got != 220 {
-		t.Errorf("RouteCount() = %d, want 220（215 既有 + 5 新增）", got)
+func TestRouteCountIs221AfterNewRoutes(t *testing.T) {
+	if got := RouteCount(); got != 221 {
+		t.Errorf("RouteCount() = %d, want 221（220 既有 + MCP）", got)
 	}
 }

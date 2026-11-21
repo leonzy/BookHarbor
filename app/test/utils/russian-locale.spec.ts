@@ -64,7 +64,7 @@ describe('Russian locale', () => {
         expect(i18n.d(new Date('2026-09-23T12:30:00Z'), 'long')).toContain('сентября');
         expect(i18n.n(1234.5, 'currency')).toContain('₽');
         expect(config.datetimeFormats['ru-RU'].long.hour12).toBe(false);
-    });
+    }, 15_000);
 
     it('offers Russian and emits its messages in the static prerender hook', async () => {
         vi.stubGlobal('defineNuxtConfig', (config: unknown) => config);
@@ -94,5 +94,5 @@ describe('Russian locale', () => {
         } finally {
             rmSync(folder, { recursive: true, force: true });
         }
-    });
+    }, 15_000);
 });

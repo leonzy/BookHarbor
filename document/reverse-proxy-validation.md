@@ -1,5 +1,7 @@
 # 子路径反代验证记录
 
+> **历史验收证据，不是当前部署指南。** 本文保留 2026-09-07 前后 Talebook PR、固定提交和当时测试命令，用于审计原改动。当前 BookHarbor 的部署方法见 `document/reverse-proxy.md`，当前后端为 Go `booksvr`，不要执行本文中的旧 Python 测试命令。
+
 通用功能基线：master `db8688429c55ed5a5d1a40a227725b83d54ca3a9`。Readest 单独在 PR #977 的 `f3fc6d0234b834e0e332e52dae4a17a924420088` 上做集成，未混入主干功能。
 
 ## 当前合并验收（2026-09-07）

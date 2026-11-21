@@ -1,10 +1,10 @@
 """Bake deployment redirects into the image; requests arrive without the prefix."""
 
+import os
+import re
 import sys
 from pathlib import Path
 
-import os
-import re
 
 def normalize_base_path(value):
     if value in ("", "/"):
@@ -12,6 +12,7 @@ def normalize_base_path(value):
     if not isinstance(value, str) or not re.fullmatch(r"(?:/[A-Za-z0-9_-]+)+/?", value):
         raise ValueError("TALEBOOK_BASE_PATH must be empty or /path[/path] using letters, digits, _ and -")
     return value.rstrip("/")
+
 
 BASE_PATH = normalize_base_path(os.environ.get("TALEBOOK_BASE_PATH", ""))
 

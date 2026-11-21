@@ -14,6 +14,7 @@ const { alertMock, backendMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('nuxt/app', () => ({
+    defineNuxtPlugin: (plugin: unknown) => plugin,
     useNuxtApp: () => ({ $backend: backendMock, $alert: alertMock }),
 }));
 

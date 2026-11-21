@@ -62,6 +62,7 @@ def test_metadata_deployment_preserves_main_and_rolls_back_on_nginx_failure(tmp_
                 old_route = "    # File-first metadata and protected edits, independent from running imports.\n    location ~ ^/api/(?:book/[0-9]+/(?:edit|refer)|admin/metadata/enrichment)$ {\n        proxy_pass http://127.0.0.1:8004;\n    }\n"
                 if existing_route == "sources":
                     old_route = old_route.replace("admin/metadata/enrichment)", "admin/metadata/enrichment(?:/sources/[0-9]+)?)")
+                    old_route += "    location ^~ /opds/ {\n        proxy_set_header Host $http_host;\n        proxy_pass http://127.0.0.1:8004;\n    }\n"
                 site.write_text(old_route + site.read_text())
             site.chmod(0o600)
             adapted = code.replace('/etc/nginx/conf.d/talebook.conf', site.as_posix())
@@ -76,7 +77,9 @@ def test_metadata_deployment_preserves_main_and_rolls_back_on_nginx_failure(tmp_
             assert 'book/[0-9]+(?:/(?:edit|refer))?' in site.read_text()
             assert 'location = /get/pcover {' in site.read_text()
             assert 'admin/metadata/enrichment(?:/sources/[0-9]+|/review)?' in site.read_text()
-            assert 'location ^~ /opds/ {' in site.read_text()
+            assert site.read_text().count('location ^~ /opds/ {') == 1
+            assert 'location ^~ /opds/ {\n        expires -1s;' in site.read_text()
+            assert 'proxy_set_header X-Scheme $req_scheme;' in site.read_text()
             assert site.read_text().count('location = /opds {') == 1
             assert 'return 302 /opds/;' in site.read_text()
             assert 'expires off;' in site.read_text()

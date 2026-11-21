@@ -6,7 +6,7 @@
 
 BookHarbor is a self-hosted ebook library with a Go HTTP backend and Nuxt 4 / Vue 3 frontend. It is independently maintained from [Talebook](https://github.com/talebook/talebook), preserving its commit history, copyright notices and BSD-2-Clause license.
 
-Features include multiple source directories, indexing without copying books by default, background imports and ZIP support, source rename/move/delete synchronization with mount protection, directory browsing, file-size sorting, online reading, shelves, reading history, OPDS and device connectors. The interface supports Chinese, English and Russian, with light and dark themes.
+Features include multiple source directories, indexing without copying books by default, background imports and ZIP support, source rename/move/delete synchronization with mount protection, directory browsing, file-size sorting, online reading, shelves, reading history, OPDS and device connectors. The built-in MCP plugin lets authorized agents search and recommend books, read history, manage devices, and confirm edits, delivery or imports. The interface supports Chinese, English and Russian, with light and dark themes.
 
 ## Run with Docker
 
@@ -27,6 +27,15 @@ New installations use the BookHarbor name and logo. Administrators can edit the 
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). `origin` is BookHarbor; configure `https://github.com/talebook/talebook.git` as `upstream` for selective updates. Calibre remains an external format tool; Python is used for image management and Calibre tools, not as an HTTP backend.
+
+## Documentation
+
+- [User guide](document/README.en_US.md): imports, permissions, reading, devices and troubleshooting.
+- [MCP guide](document/MCP.md): personal tokens, agent configuration, stdio and write confirmation.
+- [Developer guide](document/Development.en_US.md): real Docker backend, Nuxt, tests and quality gates.
+- [Code architecture](CODE_WIKI.md): current Go/Nuxt code map.
+- [Domain specifications](spec/索引.md): authoritative current product behavior.
+- [Security policy](SECURITY.md): supported versions and private vulnerability reporting.
 
 [Issues](https://github.com/leonzy/BookHarbor/issues) · [Releases](https://github.com/leonzy/BookHarbor/releases) · [Container images](https://github.com/leonzy/BookHarbor/pkgs/container/bookharbor)
 

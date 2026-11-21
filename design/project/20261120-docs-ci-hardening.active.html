@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="BookHarbor 现行文档更新与 CI 完整性改进方案。" />
+    <link rel="icon" href="data:," />
+    <title>现行文档与 CI 完整性治理 · ACTIVE</title>
+    <style>
+      :root { color-scheme: light; --bg: #f5f7fb; --panel: #fff; --ink: #1e2b3c; --muted: #58677a; --line: #d8e0eb; --accent: #16697a; --soft: #e9f5f6; --warn: #fff6df; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: var(--ink); background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; line-height: 1.65; }
+      a { color: #16697a; text-underline-offset: 3px; }
+      a:focus-visible, [tabindex="0"]:focus-visible { outline: 3px solid #d97706; outline-offset: 3px; }
+      code { padding: .1em .3em; border-radius: 4px; background: #edf1f5; overflow-wrap: anywhere; }
+      .page { width: min(1080px, calc(100vw - 28px)); margin: auto; padding: 24px 0 48px; }
+      .hero, section { border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
+      .hero { padding: 28px; margin-bottom: 16px; }
+      h1 { margin: 0 0 8px; font-size: clamp(28px, 5vw, 42px); }
+      .sub, p, li { color: #2c3b4f; }
+      .sub { margin: 0; color: var(--muted); }
+      .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+      .chip { padding: 4px 10px; border-radius: 999px; background: #eef2f6; font-size: 12px; font-weight: 700; }
+      .wip { color: #8a4b09; background: #ffedcf; }
+      section { padding: 22px 26px; margin-bottom: 16px; }
+      h2 { margin: 0 0 12px; font-size: 22px; }
+      .callout { padding: 12px 15px; border-left: 4px solid var(--accent); border-radius: 8px; background: var(--soft); }
+      .warn { border-left-color: #c77c13; background: var(--warn); }
+      .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+      table { width: 100%; min-width: 680px; border-collapse: collapse; font-size: 13px; }
+      th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { background: #f5f8fa; }
+      tr:last-child td { border-bottom: 0; }
+      .pending { color: #9a5b08; font-weight: 800; }
+      footer { color: var(--muted); text-align: center; font-size: 12px; }
+      @media (max-width: 600px) { .hero, section { padding: 20px 18px; border-radius: 14px; } }
+      @media print { body { background: #fff; } .page { width: 100%; } .hero, section { box-shadow: none; break-inside: avoid; } }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <h1>现行文档与 CI 完整性治理</h1>
+        <p class="sub">把现行文档统一到 Go 后端与 BookHarbor 发布边界，并让 CI 覆盖完整单测、静态检查、依赖风险和真实容器启动。</p>
+        <div class="chips" aria-label="方案元信息">
+          <span class="chip">状态：ACTIVE</span>
+          <span class="chip">创建日期：2026-11-20</span>
+          <span class="chip">所属模块：project</span>
+          <span class="chip">影响范围：根目录文档、document、app、booksvr/docs、.github/workflows、Dependabot</span>
+          <span class="chip">需求来源：用户要求“把文档全部更新一下，过时的改掉或者删除。ci也给我完善了”</span>
+        </div>
+      </header>
+      <main>
+        <section id="request">
+          <h2>1. 原始诉求</h2>
+          <div class="callout">“把文档全部更新一下，过时的改掉或者删除。ci也给我完善了”</div>
+          <p>现行文档仍包含旧 Python/Tornado 后端、 Talebook 发布地址和默认 Nuxt 模板内容；CI 只执行部分前端单测，缺少 Python lint、依赖风险与真实容器业务入口验证。</p>
+        </section>
+        <section id="goals">
+          <h2>2. 目标与边界</h2>
+          <ul>
+            <li>现行安装、使用、开发、插件、安全和架构文档必须描述当前 Go + Nuxt 实现及 BookHarbor 仓库。</li>
+            <li>带固定提交、PR 或验收日期的材料明确标记为历史记录；不改写其历史结论。</li>
+            <li>CI 运行全部适用 Vitest 单测、现有浏览器回归、Go/Python 检查、依赖审查和本地镜像冒烟。</li>
+            <li>不改变产品 API、数据库、页面交互和部署数据目录，不处理用户已有无关改动。</li>
+          </ul>
+        </section>
+        <section id="evidence">
+          <h2>3. 现状与证据</h2>
+          <div class="table-wrap" role="region" aria-label="现状证据" tabindex="0">
+            <table>
+              <thead><tr><th>观察</th><th>证据</th><th>处理</th></tr></thead>
+              <tbody>
+                <tr><td>开发指南仍指导修改 Python/Tornado</td><td><code>document/Development.zh_CN.md</code> 与英文版</td><td>按当前 Docker、Go 和 Nuxt 命令重写</td></tr>
+                <tr><td>插件指南链接到已删除的 webserver 文件</td><td><code>document/PluginGuide.md</code></td><td>改为 Go 包、接口、注册和测试入口</td></tr>
+                <tr><td>安全策略指向上游 master 和邮箱</td><td><code>SECURITY.md</code></td><td>改为 BookHarbor main 与 GitHub 私密漏洞报告</td></tr>
+                <tr><td>前端说明仍是 Nuxt Minimal Starter</td><td><code>app/README.md</code></td><td>补齐真实后端约束、命令和测试配置</td></tr>
+                <tr><td>CI 仅执行精选 Vitest</td><td><code>.github/workflows/ci.yml</code></td><td>全量适用单测，保留专项 Playwright</td></tr>
+                <tr><td>镜像构建未验证容器内真实入口</td><td><code>.github/workflows/build.yml</code></td><td>amd64 本地构建后检查首页与 /api/welcome</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section id="design">
+          <h2>4. 方案</h2>
+          <div class="callout"><strong>文档所有权：</strong>README 提供入口，document 提供使用与开发说明，CODE_WIKI 提供代码导航，spec 继续作为领域规则唯一来源，design/research 和带固定证据的评审记录保留时态。</div>
+          <ol>
+            <li>重写已失效的现行文档，删除没有引用且与 README 重复的旧功能清单。</li>
+            <li>对历史盘点和评审文档增加醒目的历史边界，当前路由和架构指向 Go 实现。</li>
+            <li>CI 增加权限、超时和并发取消，集中执行全量单测与 Python lint。</li>
+            <li>新增 Go 漏洞检查和 PR 依赖审查，扩展 Dependabot 到 npm、Go、Python、Docker 与 Actions。</li>
+            <li>构建 workflow 在不会发布的 amd64 本地镜像上运行容器，失败输出日志并始终清理。</li>
+          </ol>
+        </section>
+        <section id="impact">
+          <h2>5. 影响范围、风险与回滚</h2>
+          <p><strong>产品行为：</strong>不改变产品行为，因此无需修改 <code>spec/</code> 篇目。现有用户无关的 spec 改动保持原样。</p>
+          <p><strong>风险：</strong>全量单测或新增安全检查可能暴露已有问题；容器冒烟依赖镜像启动时序。CI 必须如实失败并输出日志，不能通过跳过或放宽断言制造绿色结果。</p>
+          <p><strong>回滚：</strong>文档和 workflow 均按文件回滚，无数据库或数据目录迁移。新增的依赖 PR 只影响后续更新，不直接修改生产依赖。</p>
+        </section>
+        <section id="tests">
+          <h2>6. 测试计划与结果</h2>
+          <div class="table-wrap" role="region" aria-label="测试计划与结果" tabindex="0">
+            <table>
+              <thead><tr><th>验证层</th><th>命令</th><th>预期</th><th>结果</th></tr></thead>
+              <tbody>
+                <tr><td>文档门禁</td><td><code>python scripts/check_spec.py</code>；相对 Markdown 链接扫描；<code>inspect_html</code> 当前方案检查</td><td>规格、链接与方案结构有效</td><td>通过：26 篇规格、29 篇文档链接、当前 WIP 路径/HTML/资源检查通过。完整 <code>check_design_docs.py</code> 仅因本方案及既有 OPDS 方案为 WIP 而按规则失败。</td></tr>
+                <tr><td>Python</td><td><code>python -m pytest tests -q --ignore=tests/test_application_upgrade.py</code>；Ruff check 与 format --check</td><td>可执行的脚本测试与 lint 通过</td><td>51 passed；Ruff 全部通过。完整 pytest 在 Windows 收集升级执行器时因无 <code>fcntl</code> 中止，Linux 全测未执行。</td></tr>
+                <tr><td>i18n</td><td><code>python scripts/check_i18n_translation_missing.py</code> 与 <code>check_i18n_translation_useless.py</code></td><td>JSON 与编译敏感字符门禁通过</td><td>通过：3 个 locale、2355 个默认 key；动态引用和回退翻译按报告项输出，没有伪称翻译覆盖率 100%。</td></tr>
+                <tr><td>Workflow 静态检查</td><td>PyYAML 解析 ci/build/Dependabot；Git Bash <code>-n</code> 检查全部 run 块</td><td>YAML 与 shell 语法有效</td><td>通过。首次检查发现 govulncheck run 标量 YAML 语法错误，改为块标量后复验通过。该检查不替代 act。</td></tr>
+                <tr><td>依赖安全</td><td>真实 govulncheck job；npm audit 全依赖树与生产审计</td><td>无高危/严重 npm 漏洞，无可达 Go 漏洞</td><td>Go 1.26.11 扫描为 0 项可达漏洞；npm 最终为 0 high / 0 critical，保留 12 项 moderate 报告。初版 71 项 Go 与 57 项 npm 公告通过工具链和依赖升级处理。</td></tr>
+                <tr><td>Go / 前端</td><td><code>make test-go lint-go</code>、npm lint、全量 Vitest、SPA/SSR build</td><td>现有及新增门禁通过</td><td>完整 CI 的 check-design、govulncheck、test-server、test-ui 已通过；test-ui 为 83 个文件、425 项测试全部通过且无跳过，SSR/SPA 构建成功。Ubuntu 24.04 浏览器 job 41 项全部通过。</td></tr>
+                <tr><td>真实 workflow</td><td><code>act 0.2.89</code> 逐一运行 check-design、test-server、test-ui、test-library-browser、dependency-review、govulncheck 及 build</td><td>所有本地可复现步骤通过</td><td>通过：check-design、test-server、test-ui、test-library-browser、govulncheck、build 和最终 integration-test 均为 success；integration-test 报告 All required CI checks passed。dependency-review 在手动事件下按设计 skipped。</td></tr>
+                <tr><td>容器</td><td>production-spa 真实容器，首页与 <code>/api/welcome</code></td><td>真实镜像启动且入口可用</td><td>通过：真实 build workflow 的 SPA/SSR/dev 镜像均构建成功，SPA 容器首页与 `/api/welcome` 健康检查通过。首次 CRLF 问题仅存在于 Windows 同步副本，远程转 LF 后验证。</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="callout warn">所有本地可复现 workflow 与容器验证已通过。dependency-review 使用一次性假 token 到达 GitHub API 并返回 Bad credentials；未使用生产凭据，真实 GitHub Actions 的 API 验证仍应在 PR 中确认，不能由 act 结果替代。</p>
+        </section>
+        <section id="decisions">
+          <h2>7. 决策记录</h2>
+          <ol>
+            <li><strong>2026-11-20：</strong>历史评审和路由盘点保留，但增加历史定位；现行指南必须无旧后端操作指令。</li>
+            <li><strong>2026-11-20：</strong>真实容器冒烟放入现有构建 workflow，避免在 CI workflow 重复完整镜像构建。</li>
+            <li><strong>2026-11-20：</strong>i18n 的 JSON 与编译敏感字符作为阻断门禁；动态 key、未静态引用 key 和回退翻译仅报告，避免把合法动态用法误判为失败。</li>
+            <li><strong>2026-11-20：</strong>leonFN 的真实 test-server 首次运行发现 Go 1.22 无法编译 `t.Context()`；为保持项目 Go 1.22 基线，将该测试改为 `context.Background()` 并重新执行完整 job。</li>
+            <li><strong>2026-11-20：</strong>leonFN 首次 test-ui 在新增 npm 生产依赖审计发现 57 项公告，尚未进入 lint/单测；第一轮非 force `npm audit fix` 将公告降至 15 项，剩余项仍可修复，继续用缓存执行第二轮收敛，不采用强制降级。</li>
+            <li><strong>2026-11-20：</strong>Go 漏洞扫描确认 71 项可达问题，其中 Go 1.22 标准库占主要部分；最新安全依赖要求 Go 1.26，因此构建与 CI 直接升级到 Go 1.26 并更新 `golang.org/x/*`，再重跑全量测试。此前的 1.22 测试兼容修复保留。</li>
+            <li><strong>2026-11-20：</strong>setup-go 不再从会被 tidy 写成精确补丁的 `go 1.26.0` 推导版本；两个 Go job 使用 `go-version: 1.26` 与 `check-latest: true`，确保采用最新安全补丁。</li>
+            <li><strong>2026-11-20：</strong>npm 通用修复未收敛后，显式升级 Nuxt 4.6.4、@nuxtjs/i18n 10.6.0；测试栈使用支持 Vitest 5 的 @nuxt/test-utils 4.4.0，并升级 Vitest 5.1.1 与 Happy DOM 21.0.4，避免强制内部覆盖。</li>
+            <li><strong>2026-11-20：</strong>Vitest 82 个 suite 的共同 `moduleType` 收集错误来自根 Vite 7 与 Nuxt/Vitest Vite 8 混用；显式对齐根 Vite 8.3.8 后样本 suite 25/25 通过。新版 i18n 模块的 vueI18n 相对路径改为 `../i18n.config.ts`，并添加 Nuxt 配置回归测试。</li>
+            <li><strong>2026-11-20：</strong>全量 Vitest 暴露的旧 Python 路径测试已改到 Go/resources；Go 插件使用的 11 个 MDI 名称已登记或映射。Nuxt 组件测试保留真实 Nuxt app 并注入后端 mock，避免初始化被全局 useNuxtApp mock 破坏；补齐 74 个俄文文案及插值。</li>
+            <li><strong>2026-11-20：</strong>本地 act 验证使用 Ubuntu 24.04 runner 匹配真实浏览器 job，并修正临时 Chromium 缓存执行权限。Windows 工作区 CRLF 启动脚本只在远程验证副本转 LF；Git 属性及 GitHub Linux checkout 本就会产生 LF，不把该环境差异改成产品补丁。</li>
+            <li><strong>2026-11-20：</strong>一次完整 CI 中 Upload 的 Nuxt 初始化超过默认 10 秒，单独复验通过 10/10；将 Vitest hookTimeout 提高到 30 秒，避免资源负载下把初始化超时误判为业务失败，然后再次运行完整聚合。</li>
+            <li><strong>2026-11-20：</strong>本地宿主缺少工具，按用户指定改用 leonFN 的 Linux/Docker 环境执行真实 act workflow；GitHub API 等无法由 act 完整模拟的边界单独记录，不把本地结果等同于云端结果。</li>
+          </ol>
+        </section>
+      </main>
+      <footer>BookHarbor internal design · project · ACTIVE · 2026-11-20</footer>
+    </div>
+  </body>
+</html>

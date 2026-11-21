@@ -1,101 +1,95 @@
-使用指南
-===========
+# BookHarbor 使用指南
 
 中文 | [English](README.en_US.md)
 
-本文主要介绍talebook程序的使用说明，以及常见问题。如需手动安装或者提交PR，请参阅[开发者指南](./Development.zh_CN.md)（[English](./Development.en_US.md)）。
+BookHarbor 是面向个人和家庭的自托管电子书库。本文介绍部署后的常用配置和排查方法；产品完整行为以 [领域规格](../spec/索引.md) 为准，开发环境见 [开发指南](Development.zh_CN.md)。
 
+## 安装与首次使用
 
-NAS用户，可以参阅网友们写的指南：
-[新手向NAS教程 篇十七：春节假期来搭建书库吧！免费开源有手就行！群晖Calibre部署教程！ ](https://post.smzdm.com/p/a3d7ox0k/)
+推荐使用 Docker Compose：
 
-常见配置指南
-===========
-本文主要介绍talebook程序的使用说明，以及常见问题。如需手动安装或者提交PR，请参阅[开发者指南](./Development.zh_CN.md)。
+```bash
+git clone https://github.com/leonzy/BookHarbor.git
+cd BookHarbor
+docker compose up -d
+```
 
-### 配置Kindle推送功能
-以使用QQ邮箱推送为例，进入[QQ邮箱网址](http://service.mail.qq.com/cgi-bin/help?subtype=1&&no=1001256&&id=28), 申请SMTP账号，然后在管理员界面中配置即可。
+打开 `http://localhost:8080`，按页面引导创建管理员。Compose 默认将 `./data` 挂载到容器 `/data`，其中包含书库、账号数据库、配置、日志和应用升级状态。
 
-请注意，用户名是必须包含邮箱后缀的（例如 `@qq.com`），例如 `demo@gmail.com`
+已有安装应继续复用原来的 `/data` 数据目录。升级前备份数据库与设置，不要同时启动两个容器写入同一份数据。镜像为 `ghcr.io/leonzy/bookharbor:main`；生产环境建议使用已验证的正式版本标签。
 
-### 配置用户登录功能
-本程序支持用户注册及社交网站登录功能，按照管理员配置界面的说明，可以配置出符合自己需求的用户能力。
+## 导入书籍
 
-这里重点说明下常见的社交网站的API账号申请地址：
- - [微博开发者网址](http://open.weibo.com/developers)
- - [QQ互联登录网址](https://connect.qq.com/)
- - [Github]() 待补充
+在管理员导入设置中配置容器内可访问的来源目录。宿主书籍目录需要显式挂载，例如：
 
-### 配置单账号演示模式
+```yaml
+services:
+  talebook:
+    volumes:
+      - "${TALEBOOK_DATA_DIR:-./data}:/data"
+      - "/srv/books:/books:ro"
+      - "/srv/more-books:/books1:ro"
+```
 
-公开演示站可以在 `/data/books/settings/auto.py` 中开启单账号只读模式，加入以下配置并重启 Talebook：
+随后在导入设置中填写 `/books`、`/books1`，而不是宿主路径。默认索引模式登记原文件，不复制源书；复制和移动导入是独立模式，使用前应理解文件去向并备份。
+
+扫描会校验文件和容器结构，失败或跳过记录会保留原因。来源目录掉线时不应根据不完整扫描结果删除书籍。站内删除与源目录删除是不同操作，回收站和来源同步规则见 [书库规格](../spec/书库.md)。
+
+## 用户、私藏与访问范围
+
+- 账号能力控制阅读、上传、编辑和管理等操作。
+- 私藏书仅收藏者和管理员可见；公开书仍受站点访客策略和目录访问范围约束。
+- 管理员可通过目录、权限分类、用户和用户组限定可浏览范围。
+- 封面、下载、在线阅读、OPDS 和 WebDAV 使用相同资源权限，不应通过分享内部文件路径绕过授权。
+
+修改权限后，建议分别使用管理员、普通用户和游客验证列表、详情与下载结果。
+
+## 在线阅读与设备
+
+可读格式由实际文件、内容形态和后端阅读能力共同决定。EPUB、MOBI/AZW/AZW3、PDF、TXT 和漫画容器按当前阅读器支持情况打开；同作品的多个版本和格式可在详情页选择。
+
+Kindle 或其他设备投递需要先在插件/设备设置中配置连接。使用 SMTP 时，用户名通常是完整邮箱地址，密码可能需要邮箱服务商提供的独立应用密码。转换和投递是后台任务，失败时查看任务详情和脱敏日志，不要重复提交大量任务。
+
+OPDS 默认入口为 `/opds/`，WebDAV 入口为 `/books/`。使用子路径部署时需加上对应前缀；外部访问仍受登录、账号能力和书籍访问范围限制。Agent 可通过内置 MCP 插件查书、推荐阅读，并在确认后推送或导入；启用、连接凭据与 stdio 配置见 [`document/MCP.md`](MCP.md)。
+
+## 演示模式
+
+在 `/data/books/settings/auto.py` 的既有 `settings` 数据中保留其他配置并设置：
 
 ```python
-settings = {
-    # 保留文件中已有的其他配置
-    "DEMO_MODE": True,
-    "DEMO_USERNAME": "demo",
-}
+"DEMO_MODE": True,
+"DEMO_USERNAME": "demo",
 ```
 
-开启后只有指定账号可以登录；该账号仍按原有角色展示页面，但注册、上传、编辑、删除、推送、后台配置和 WebDAV 写入等操作会由服务端拒绝。登录 IP、访问时间、阅读历史和访问计数不会写入。演示模式不能在管理后台关闭；需要手动将 `DEMO_MODE` 改为 `False` 并重启服务。
+重启后仅指定演示账号可登录，写操作由服务端拒绝。默认演示密码为 `talebook`，公开部署前应通过可用配置修改并限制入口。演示模式不能在管理后台关闭；关闭时需要改回配置并重启。
 
-不需要提前创建演示账号：首次以 `DEMO_USERNAME`（默认 `demo`）、密码 `talebook` 登录时会自动创建该账号。演示账号可以看到“管理员设置”页面，但内容是 `webserver/settings.py` 里的出厂默认参数，并非站点真实配置；点击保存会提示成功，但不会写入任何配置，仅用于演示交互流程。
+当前默认值由 Go 后端设置逻辑提供，不再读取旧 `webserver/settings.py`。
 
-### Logo (适用于v3.5.9及后续版本)
+## 站点名称和 Logo
 
-favicon和导航菜单中的二维码logo，放置在数据目录 ```/data/books/logo/```中，可直接使用新图片覆盖掉。
+管理员可在常规设置中修改网站标题、页头和侧栏 HTML。自定义侧栏图片放在持久化目录的 `books/logo/`，容器内为 `/data/books/logo/`，并在侧栏 HTML 中使用 `/logo/文件名`。
 
+不要按旧版本说明把图片挂载到 `/var/www/talebook/app/dist/img/`；该方式不是当前自定义 Logo 的持久化接口。
 
-### Logo (适用于v3.5.8及更旧版本)
+## 上传和反向代理
 
-favicon和导航菜单中的二维码logo，已经内置在了代码目录```/var/www/talebook/app/dist/img/```中。
- - favicon.ico: 网站图标文件
- - link.png: 二维码图片
+内置 Nginx 允许大文件上传，前端可按站点配置使用分块上传。如果收到 `413`，优先检查外层 Nginx、Caddy、CDN 或 WAF 的请求体限制和超时。
 
-如果需要定制修改这两个文件，请直接将使用新的文件覆盖即可。
+子路径部署需要在构建镜像时设置 `TALEBOOK_BASE_PATH`，不能只在运行时临时修改环境变量。完整配置见 [反向代理说明](reverse-proxy.md)。
 
-若使用docker启动，则需要在docker启动时挂载这两个目录。例如：
-```
-docker run -d --name talebook -p 80:80 -v /data/calibre:/data -v /data/logo:/var/www/talebook/app/dist/img/ talebook/talebook
-```
+## 元数据与外部服务
 
-### 上传文件的大小
-如果发现上传大文件时出现了失败，那么可能会有两种原因：
+元数据、网络书库、笔记和设备服务由内置插件提供。启用插件不等于连接已配置或健康；应按页面顺序完成启用、配置、测试连接，再执行正式任务。
 
-1. 如果是程序抛出异常（例如issue#61），那么是由于本项目中的tornado框架默认限制为100M。请进入管理员配置中修改调大对应的配置。
+豆瓣等需要外部代理的来源，由管理员自行部署并填写容器可访问的 URL。不要把上游服务地址、账号 Cookie 或密钥发布到 Issue。外部内容、评分和书籍文件的版权与使用条件不因插件接入而改变。
 
-1. 如果明确提示`413`错误码，那么一般是由于nginx限制了上传大小。本项目中自带的nginx已配置了`client_max_body_size 0`，即不限制上传大小；
-因此建议使用者排查下是否在本项目之外配置有其他的nginx代理转发，调整其中的配置。
+## 故障排查
 
-### 如何配置豆瓣插件?
-需自行部署 [cxfksword/douban-api-rs](https://github.com/cxfksword/douban-api-rs) 服务，然后将 Talebook 容器可访问的 URL 地址（例如 `http://10.0.0.1:8080` ）填写到高级配置项中。
+1. 打开 `/status_page.html` 或读取 `/status.json`，确认启动阶段和失败步骤。
+2. 检查 `/data` 挂载、磁盘空间、PUID/PGID 和目录写权限。
+3. 查看 `docker compose logs` 及 `/data/log/talebook.log`，当前应用进程为 Go `booksvr`，不是旧 `talebook:tornado-8000`。
+4. 如果页面可打开但接口返回 502，结合启动状态判断后端是否尚未就绪，不要只反复刷新。
+5. 阅读器无法加载时，先检查书籍格式、权限和浏览器控制台，再尝试禁用可能拦截同源脚本或资源的浏览器扩展。
+6. 提交 Issue 时提供版本/完整提交、部署方式、复现步骤和脱敏日志；不要上传真实数据库、密码、Cookie、密钥或私人书籍。
 
-本项目自带的 `docker-compose.yml` 不再内置该服务。如果自行将豆瓣代理加入同一个 Compose 网络，可以使用自定义的服务名和端口作为 URL；否则请填写 Talebook 容器实际可达的代理地址。
-
-常见问题排查
-===============
-### supervisord启动失败
-
-如果有调整过supervisord里面的配置（例如端口、目录），一定要执行```sudo supervisorctl reload all```重新读取配置，不然是不会生效的，可能会导致启动失败。
-
-如果提示```talebook:tornado-8000: ERROR(spawn error)```，那么说明环境没配置正确。
-请打开日志文件```/data/log/talebook.log```查看原因，重点查看最后一次出现Traceback报错，关注其中```Traceback (most recent call last)```提示的错误原因。
-
-### 网站能打开，但是提示```500: internal server error```
-
-这种情况，一般是服务运行时出现异常，常见原因有目录权限没有配置正常、数据库没创建好、或者触发了某个代码BUG。
-
-** 一般都是因为data目录权限设置不正确，导致启动异常 **，可以多排查下用户名、UID、目录权限等。
-
-请打开日志文件```/data/log/talebook.log```查看原因，重点查看最后一次出现Traceback报错，关注其中```Traceback (most recent call last)```提示的错误原因，并提issue联系开发者排查。
-
-### 「静读天下」APP里访问书库会失败，怎么办？
-
-这是因为静读天下APP不支持Cookie，导致登录会失败。在最新版系统中(v2.0.0-87-gf6d8f06)已经调整程序逻辑，可以无需登录就正常浏览，仅在下载时检测权限。为了避免弹出登录提示，请配置：
- - 关闭「私人图书馆」模式。
- - 打开「允许任意下载」（访客无需注册或登录）
-
-### 阅读器的页面卡住了，不加载书籍，怎么办？
-
- 这是因为浏览器的广告拦截插件屏蔽了一些JS，导致页面加载异常。请关闭相关插件后再重试，例如 uBlock Origin
+应用内签名升级的持久化、回滚和信任配置见 [应用升级说明](application-upgrade.md)。

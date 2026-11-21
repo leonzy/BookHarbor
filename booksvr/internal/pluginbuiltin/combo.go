@@ -39,18 +39,20 @@ func comboCapsWeread() pluginiface.CapabilitySet {
 	}
 }
 
-// registerComboProviders 注册 2 个组合插件。
-//
-// 顺序与 Python register.py 的 COMBO_PROVIDERS 一致（weread 在前）。
+// registerComboProviders 注册组合插件；MCP 默认停用，需管理员显式启用。
 func registerComboProviders(reg *pluginruntime.PluginRegistry) error {
 	providers := []pluginiface.Provider{
 		newWereadProvider(),
 		newOpenLibraryProvider(),
+		newMCPProvider(),
 	}
 	for _, p := range providers {
 		caps := comboCapsOpenLibrary()
 		if _, ok := p.(*WereadProvider); ok {
 			caps = comboCapsWeread()
+		}
+		if _, ok := p.(*MCPProvider); ok {
+			caps = pluginiface.CapabilitySet{Interfaces: map[string]bool{"MCPProvider": true}, HasSelfCheck: true}
 		}
 		if _, err := reg.Register(p, caps); err != nil {
 			return err

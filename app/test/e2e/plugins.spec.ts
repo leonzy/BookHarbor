@@ -191,6 +191,48 @@ test.describe('Plugin management', () => {
         await expect(row.getByRole('button', { name: '启用' })).toBeVisible();
     });
 
+    test('generates personal MCP config without asking for a reader number', async ({ page }) => {
+        test.slow();
+        let enabled = false;
+        let configured = false;
+        await page.route('**/api/plugins/talebook.combo.mcp?personal_token=1', async route => {
+            const reveal = route.request().method() === 'POST';
+            if (reveal) configured = true;
+            await route.fulfill({ json: {
+                err: 'ok', username: 'reader-a', enabled, configured, allow_write: false,
+                ...(reveal ? { access_token: 'e2e-generated-token' } : {}),
+            } });
+        });
+        await page.goto('/admin/plugins');
+        const row = page.locator('.management-row').filter({ hasText: 'BookHarbor MCP' });
+        const configure = row.getByRole('button', { name: '个人 MCP 配置' });
+        await configure.click();
+        const dialog = page.getByRole('dialog', { name: 'BookHarbor MCP 配置指南' });
+        await expect(dialog.getByText('当前账号：reader-a')).toBeVisible();
+        await expect(dialog.getByRole('button', { name: '生成我的令牌' })).toHaveCount(0);
+        await dialog.getByRole('tab', { name: 'stdio' }).click();
+        await expect(dialog.getByTestId('mcp-stdio-example')).toContainText('--user');
+        await dialog.getByRole('button', { name: '关闭' }).click();
+
+        await row.getByRole('button', { name: '启用' }).click();
+        enabled = true;
+        await expect(row.getByRole('button', { name: '全局配置' })).toHaveCount(0);
+        await configure.click();
+        await dialog.getByRole('button', { name: '生成我的令牌' }).click();
+        await expect(dialog.getByTestId('mcp-http-example')).toContainText(`${new URL(page.url()).origin}/mcp`);
+        await expect(dialog.getByTestId('mcp-http-example')).toContainText('Bearer e2e-generated-token');
+        await expect(dialog.getByLabel('实例连接代表的读者编号')).toHaveCount(0);
+        await page.setViewportSize({ width: 390, height: 844 });
+        expect(await dialog.evaluate(element => element.scrollWidth <= window.innerWidth)).toBe(true);
+        await dialog.getByRole('button', { name: '关闭' }).click();
+
+        await page.goto('/me/plugins');
+        const personalRow = page.locator('.personal-row').filter({ hasText: 'BookHarbor MCP' });
+        await personalRow.getByRole('button', { name: '个人设置' }).click();
+        await expect(dialog.getByRole('button', { name: '显示我的令牌' })).toBeVisible();
+        await expect(dialog.getByTestId('mcp-http-example')).toHaveCount(0);
+    });
+
     test('logs into BRS directly and saves the verified personal connection', async ({ page }) => {
         let remoteForm = '';
         await page.route('https://brs.example/api/user/sign_in', async (route) => {

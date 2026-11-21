@@ -1,186 +1,135 @@
-本文主要面向开发者，介绍如何搭建 talebook 本地开发环境并修改代码。
+# BookHarbor 开发指南
+
+中文 | [English](Development.en_US.md)
+
+本文说明当前 Go + Nuxt 代码库的开发方式。旧 `webserver/` Python/Tornado HTTP 服务已删除；如果本地仍存在该目录，它只是旧运行留下的空目录或缓存，不是后端代码入口，也不要向其中添加新后端代码。
 
 ## 项目结构
 
+```text
+BookHarbor/
+  app/          # Nuxt 4 + Vue 3 + Vuetify + Pinia
+  booksvr/      # 唯一 Go HTTP 后端及维护 CLI
+  tests/        # 镜像管理、启动和签名升级脚本测试
+  conf/         # Nginx、Supervisor 与升级信任配置
+  docker/       # 容器启动、自检和状态页
+  resources/    # 阅读模板、内置书源与运行时资源
+  scripts/      # 工程检查、部署、迁移和阅读器工具
+  spec/         # 当前领域规则
+  design/       # 内部方案与历史决策
+  document/     # 使用和开发文档
 ```
-talebook/
-  app/          # 前端：Nuxt 4 + Vue 3 + Vuetify 3
-  webserver/    # 后端：Tornado + Calibre（Python）
-  tests/        # 后端单元测试
-  conf/         # Nginx / Supervisor 配置模板
-  docker/       # 容器启动脚本和预置书籍
-```
 
----
+代码导航见 [CODE_WIKI](../CODE_WIKI.md)，贡献和发布约定见 [CONTRIBUTING](../CONTRIBUTING.md)。
 
-## 本地开发（推荐方式）
+## 推荐开发环境
 
-### 架构说明
+- Linux 或可用的 Docker Desktop 环境；
+- Docker Compose；
+- Node.js 24；
+- Go 版本以 `booksvr/go.mod` 为准；
+- Python 3.11+，仅用于镜像与工程脚本。
 
-推荐的本地开发方式：
+### 1. 启动真实后端
 
-- **后端**：`make dev` —— 用 Docker 容器运行后端，同时将 `webserver/` 目录挂载进容器，修改 Python 代码后服务自动重启。
-- **前端**：`cd app && npm run dev` —— 本地启动 Nuxt 开发服务器（默认 `http://localhost:3000`），`nuxt.config.ts` 中的 `routeRules` 已配置将 `/api/**`、`/get/**`、`/read/**`、`/read-comic/**` 反向代理到后端容器（默认 `http://127.0.0.1:8080`）。
-
-这种组合：前端热重载、后端自动重启，无需手动配置 Nginx。
-
-### 启动步骤
-
-**第一步：启动后端容器**
+在仓库根目录执行：
 
 ```bash
 make dev
+curl --fail --silent http://127.0.0.1:8080/api/welcome
 ```
 
-容器会监听 `8080` 端口，日志写到 `/tmp/demo/log/talebook.log`：
+`make dev` 构建并启动开发镜像。开发 Compose 将前端目录挂载到容器，但 Go 源码不会自动热重载；修改 `booksvr/` 后需重新构建开发镜像并重启容器。不要按旧文档期待 Python 自动重启。
 
-```bash
-tail -f /tmp/demo/log/talebook.log
-```
+开发数据默认位于 `/tmp/talebook-dev`。它是隔离开发目录，不应指向唯一生产书库。
 
-**第二步：启动前端开发服务器**
-
-```bash
-cd app
-npm install   # 首次运行需安装依赖
-npm run dev
-```
-
-访问 `http://localhost:3000` 即可，API 请求会自动代理到后端容器。
-
-### 修改代码
-
-- **修改 Python 后端**：直接编辑 `webserver/` 下的文件，容器内的 Tornado 会自动检测并重启，无需重新 `make dev`。
-- **修改前端**：直接编辑 `app/` 下的文件，Nuxt 开发服务器会热更新。
-
-### 后端测试与检查
-
-```bash
-make lint-py-fix  # black + isort 自动格式化（开发完后必须执行）
-make lint-py      # flake8 检查（必须通过才能提交）
-make pytest       # 运行后端单元测试
-```
-
-### 前端测试与检查
+### 2. 启动 Nuxt
 
 ```bash
 cd app
-npm run lint            # eslint 检查
-npm run lint:fix        # eslint 自动修复
-npx vitest run test/components/   # 组件单元测试
-npx playwright test               # E2E 测试（需先启动 mock server）
+npm ci
+API_URL=http://127.0.0.1:8080 npm run dev -- --port 3000 --host 127.0.0.1
 ```
 
----
+访问 `http://127.0.0.1:3000/`。必须确认后端 `/api/welcome` 可用后再启动前端，不得把 mock API 地址作为本地真实体验环境。
 
-## 手动搭建（不使用 Docker）
+如果热更新异常，停止服务并排查原生文件事件；禁止通过 `CHOKIDAR_USEPOLLING=true` 规避。
 
-如果希望完全脱离 Docker 运行，以下是完整的手动搭建步骤。**推荐在 Linux 环境下进行**，Mac / Windows 未经完整测试。
+## 不启动前端开发服务的后端开发
 
-随着版本更新，部分命令可能不及时更新；遇到问题可参考 [独立基础镜像仓库](https://github.com/talebook/talebook-base) 和 [本仓库 Dockerfile](../Dockerfile)。
-
-### 准备目录
+Go 后端可直接构建和测试：
 
 ```bash
-mkdir -p /data/log/nginx/
-mkdir -p /var/www/talebook/
-mkdir -p /data/books/{library,extract,upload,convert,progress,settings}
+make build-go
+make test-go
+make lint-go
 ```
 
-### 拉取代码
+生成的二进制位于 `booksvr/bin/booksvr`。直接运行 `serve` 需要现有 Calibre `metadata.db`、业务库和 Cookie 密钥等参数，完整生产装配以 `Dockerfile`、`docker/start.sh` 和 Supervisor 配置为准。不要用旧 `server.py --syncdb` 或 `webserver/main.py` 命令初始化当前系统。
+
+## 测试与质量门禁
+
+### Go
 
 ```bash
-cd /var/www/
-git clone https://github.com/talebook/talebook.git
-cd talebook
+make test-go
+make lint-go
 ```
 
-### 安装 Calibre 基础环境
+后端新增或修改行为时，在对应 `booksvr/internal/<package>/` 添加 `_test.go`。
 
-参考 [talebook-base 的 Dockerfile](https://github.com/talebook/talebook-base/blob/master/Dockerfile)：
+### Python 镜像脚本
 
 ```bash
-apt-get install -y tzdata
-apt-get install -y --no-install-recommends python3-pip unzip supervisor sqlite3 git nginx python-setuptools curl
-apt-get install -y calibre
+python3 -m pytest tests -q
+make lint-py
 ```
 
-### 安装 Python 依赖
+签名升级执行器要求信任配置由 root 持有，完整测试应在 Linux root 或项目 CI 环境执行。Windows 上缺少 `fcntl` 导致的收集失败不代表 Linux 测试通过。
+
+### 前端
 
 ```bash
-# 国内镜像（可选）
-# pip3 config set global.index-url https://mirrors.tencent.com/pypi/simple/
-
-pip3 install -r /var/www/talebook/requirements.txt
-pip3 install flake8 pytest
+cd app
+npm ci
+npm run lint
+npx vitest run test/components test/composables test/plugins test/stores test/utils
+npx vitest run -c test/upgrade.vitest.config.ts
+npm run build
+npx playwright install chromium
+npx playwright test -c playwright.library.config.ts
 ```
 
-### 安装 Node.js
+专项 Playwright 配置用于有声书、封面和其他页面。它们大多使用短生命周期 mock API，只用于隔离界面回归；真实登录、文件、权限和阅读链路还需 Docker 验收。
 
-建议安装 LTS 版本：
+### 文档
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
-apt-get install -y nodejs
+make check-spec
+make check-design
+make check-i18n
 ```
 
-### 编译前端
+产品行为变化必须同步 `spec/`。重要改动先建立唯一的 WIP 单文件 HTML 方案，验证完成后回写真实结果并转 ACTIVE。历史方案、调研和固定提交的验收记录不应当被改成“当前指南”。
+
+## 常用开发边界
+
+- 前端 API 调用统一经过 `app/plugins/talebook.js`。
+- Go 代码区分 Calibre 书目库与 BookHarbor 业务库，不能混用句柄。
+- 任何书籍、封面、下载、媒体、OPDS 或 WebDAV 新入口都要执行资源可见性校验。
+- Python 配置 `auto.py` / `manual.py` 按数据解析，不作为 Python 服务代码执行。
+- 保留 `/data`、旧 API、Go module、Cookie、`TALEBOOK_*` 和插件协议标识的兼容性。
+- 第三方静态资源和阅读器产物需要保留来源、固定版本、许可证和同步记录。
+
+## 故障排查
+
+容器启动状态由 `/status.json` 和状态页展示。常见检查：
 
 ```bash
-# 国内镜像（可选）
-# npm config set registry http://mirrors.tencent.com/npm/
-
-cd /var/www/talebook/app/
-npm install
-npm run generate   # 输出静态文件到 dist/
+docker compose -f docker-compose.dev.yml logs
+docker compose -f docker-compose.dev.yml ps
 ```
 
-### 初始化书库与数据库
+重点检查 `/data` 权限、PUID/PGID、Nginx 配置、数据库初始化/迁移和 `booksvr` 日志 `/data/log/talebook.log`。不要根据旧文档查找 `talebook:tornado-8000` 进程；当前应用进程为 Go `booksvr` 及明确的辅助 worker。
 
-```bash
-# 使用预置书籍创建书库
-calibredb add --library-path=/data/books/library/ -r /var/www/talebook/docker/book/
-
-# 创建程序 DB
-python /var/www/talebook/server.py --syncdb
-
-touch /data/books/settings/auto.py
-```
-
-### 配置并启动服务
-
-```bash
-cp conf/nginx/talebook.conf /etc/nginx/conf.d/
-cp conf/supervisor/talebook.conf /etc/supervisor/conf.d/
-
-service nginx restart
-service supervisor restart
-```
-
-访问 `http://127.0.0.1/` 验证是否正常。
-
----
-
-## 问题排查
-
-### supervisord 启动失败
-
-调整配置后必须执行 `sudo supervisorctl reload all` 使配置生效。
-
-若提示 `talebook:tornado-8000: ERROR(spawn error)`，说明环境未配置正确，查看日志：
-
-```bash
-tail -100 /data/log/talebook.log
-```
-
-重点关注 `Traceback (most recent call last)` 后的错误信息。
-
-### 网站能打开，但提示 `500: internal server error`
-
-常见原因：目录权限不正确、数据库未创建、代码 BUG。
-
-```bash
-tail -100 /data/log/talebook.log
-```
-
-查看最近的 Traceback，确认错误原因后提 issue 联系开发者。
+仍无法定位时，提交 Issue 应包含版本/提交、部署方式、相关启动状态和脱敏日志，不要上传真实数据库、密钥或私人书籍。

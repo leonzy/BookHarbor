@@ -172,8 +172,10 @@ jobs:
         run: |
           if [[ "$PUBLISH" == "true" ]]; then
             echo "value=type=image,name=${GHCR_REGISTRY}/${IMAGE_NAME},push-by-digest=true,name-canonical=true,push=true" >> "$GITHUB_OUTPUT"
+            echo "tag=" >> "$GITHUB_OUTPUT"
           else
             echo "value=type=docker" >> "$GITHUB_OUTPUT"
+            echo "tag=bookharbor:ci-${{ steps.pname.outputs.name }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build SPA
@@ -184,10 +186,73 @@ jobs:
           target: production-spa
           platforms: ${{ matrix.platform }}
           provenance: false
+          tags: ${{ steps.out.outputs.tag }}
           outputs: ${{ steps.out.outputs.value }}
           build-args: ${{ needs.prepare.outputs.build_args }}
           cache-from: type=gha,scope=spa-${{ steps.pname.outputs.name }}
           cache-to: type=gha,scope=spa-${{ steps.pname.outputs.name }},mode=max
+
+      - name: Smoke test the real SPA container
+        if: matrix.platform == 'linux/amd64' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.publish == false))
+        timeout-minutes: 8
+        env:
+          IMAGE: ${{ steps.out.outputs.tag }}
+        run: |
+          set -eu
+          work_dir=$(mktemp -d)
+          mkdir -p "$work_dir/data"
+          container_id=""
+          cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ] && [ -n "$container_id" ]; then
+              docker logs "$container_id" >&2 || true
+            fi
+            if [ -n "$container_id" ]; then
+              docker rm -f "$container_id" >/dev/null 2>&1 || true
+            fi
+            rm -rf "$work_dir"
+            exit "$status"
+          }
+          trap cleanup EXIT
+          container_id=$(docker run -d \
+            -e PUID=0 -e PGID=0 -e TZ=UTC \
+            -v "$work_dir/data:/data" \
+            -p 127.0.0.1::80 \
+            "$IMAGE")
+          published=$(docker port "$container_id" 80/tcp)
+          port=${published##*:}
+          ready=false
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error \
+              "http://127.0.0.1:$port/api/welcome" \
+              --output "$work_dir/welcome.json" 2>/dev/null; then
+              ready=true
+              break
+            fi
+            running=$(docker inspect --format '{{.State.Running}}' "$container_id" 2>/dev/null || true)
+            if [ "$running" = "false" ]; then
+              break
+            fi
+            sleep 5
+          done
+          if [ "$ready" != "true" ]; then
+            echo "BookHarbor did not become ready on /api/welcome" >&2
+            exit 1
+          fi
+          curl --fail --silent --show-error \
+            "http://127.0.0.1:$port/" --output "$work_dir/index.html"
+          python3 - "$work_dir/welcome.json" "$work_dir/index.html" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          welcome = json.loads(Path(sys.argv[1]).read_text())
+          if welcome.get("err") != "free":
+              raise SystemExit(f"Unexpected /api/welcome response: {welcome!r}")
+          html = Path(sys.argv[2]).read_text().lower()
+          if "<html" not in html:
+              raise SystemExit("The SPA root did not return an HTML document")
+          PY
 
       - name: Build SSR
         id: ssr

@@ -115,6 +115,7 @@
             </section>
         </div>
 
+        <McpGuideDialog v-model="mcpOpen" />
         <v-dialog
             v-model="dialogOpen"
             max-width="640"
@@ -215,7 +216,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 
 type Schema = {
@@ -253,6 +255,7 @@ type SchemaField = { key: string; schema: Schema; required: boolean };
 
 const props = withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false });
 const embedded = computed(() => props.embedded);
+const route = useRoute();
 const { t } = useI18n();
 const { $backend, $alert } = useNuxtApp();
 
@@ -261,6 +264,7 @@ const search = ref('');
 const loading = ref(true);
 const loadError = ref(false);
 const dialogOpen = ref(false);
+const mcpOpen = ref(false);
 const selectedPlugin = ref<PersonalPlugin | null>(null);
 const configValues = ref<Record<string, string | boolean>>({});
 const credentialValues = ref<Record<string, string>>({});
@@ -294,7 +298,8 @@ const groupedPlugins = computed(() => {
 });
 
 const selectedConnection = computed(() => selectedPlugin.value?.connections?.[0] || null);
-const configFields = computed(() => schemaFields(selectedPlugin.value?.config_schema));
+const configFields = computed(() => schemaFields(selectedPlugin.value?.config_schema)
+    .filter(field => selectedPlugin.value?.plugin_key !== 'talebook.combo.mcp' || field.key !== 'user_id'));
 const credentialFields = computed(() => schemaFields(selectedPlugin.value?.auth_schema));
 
 function schemaFields(schema?: Schema): SchemaField[] {
@@ -330,6 +335,10 @@ function fieldLabel(field: SchemaField) {
 }
 
 function manage(plugin: PersonalPlugin) {
+    if (plugin.plugin_key === 'talebook.combo.mcp') {
+        mcpOpen.value = true;
+        return;
+    }
     if (plugin.ui?.manage_route) {
         navigateTo(plugin.ui.manage_route);
         return;
@@ -416,6 +425,9 @@ async function load() {
 }
 
 onMounted(load);
+watch(() => route.query.configure, value => {
+    if (value === 'mcp') mcpOpen.value = true;
+}, { immediate: true });
 </script>
 
 <style scoped>

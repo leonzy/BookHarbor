@@ -111,6 +111,7 @@ stdout_logfile_backups=2
 """
         opds_route = """    # Bounded OPDS queries beside the uninterrupted importer.
     location ^~ /opds/ {
+        expires -1s;
         proxy_set_header Host $http_host;
         proxy_pass http://127.0.0.1:8004;
     }
@@ -163,6 +164,12 @@ if 'location ^~ /_i18n/' not in new:
 if 'location = /get/pcover {' not in new:new=new.replace(marker,COVER_ROUTE+marker)
 if 'location ^~ /opds/ {' not in new:new=new.replace(marker,OPDS_ROUTE+marker)
 if 'location = /opds {' not in new:new=new.replace(marker,OPDS_ROOT+marker)
+opds_start=new.index('    location ^~ /opds/ {')
+opds_end=new.index(chr(10)+'    }',opds_start)
+opds_block=new[opds_start:opds_end]
+if 'expires -1s;' not in opds_block:opds_block=opds_block.replace('{','{'+chr(10)+'        expires -1s;',1)
+if 'proxy_set_header X-Scheme ' not in opds_block:opds_block=opds_block.replace('proxy_set_header Host $http_host;','proxy_set_header Host $http_host;'+chr(10)+'        proxy_set_header X-Scheme $req_scheme;')
+new=new[:opds_start]+opds_block+new[opds_end:]
 if new!=old:p.write_text(new)
 # The production Nginx master runs as talebook, unlike this root installer.
 p.chmod(0o644)

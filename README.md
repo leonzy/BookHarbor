@@ -15,6 +15,7 @@ BookHarbor 是面向个人和家庭的自托管电子书库，采用 **Go 后端
 - 书库、分类、目录树浏览；按文件大小排序，筛选和页码跳转。
 - 在线阅读、格式转换、书架、阅读记录、私有书目与多用户权限。
 - OPDS、元数据插件及 BOOX、Kindle、WebDAV 等设备或服务连接。
+- 内置 MCP 插件供授权 Agent 查书、推荐、读取记录、管理设备及确认后编辑、推送或导入。
 - 中文、英文、俄文界面，浅色和深色主题。
 
 ## Docker 部署
@@ -44,6 +45,15 @@ git log --oneline main..upstream/master
 ```
 
 `origin` 指向 BookHarbor；Talebook 为 `upstream`，按需选择性吸收改动。前端改动可以按依赖评估后迁入；后端行为适配到 Go，保留本项目已有修复，不重新引入 Python HTTP 服务。完整开发、发布及兼容约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 文档
+
+- [使用指南](document/README.zh_CN.md)：导入、权限、阅读、设备和故障排查。
+- [MCP 使用指南](document/MCP.md)：个人令牌、Agent 客户端配置、stdio 与写入确认。
+- [开发指南](document/Development.zh_CN.md)：真实 Docker 后端、Nuxt、测试与质量门禁。
+- [代码架构](CODE_WIKI.md)：当前 Go/Nuxt 代码导航。
+- [领域规格](spec/索引.md)：当前产品规则的唯一权威说明。
+- [安全策略](SECURITY.md)：支持范围与私密漏洞报告。
 
 ## 项目与致谢
 

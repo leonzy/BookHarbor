@@ -9,18 +9,19 @@ Nuxt 4 + Vue 3 + Vuetify 3 + Pinia + @nuxtjs/i18n，使用 TypeScript。
 ## 常用命令
 
 ```bash
-npm install
-npm run dev          # 开发服务器，http://localhost:3000
-npm run build        # SSR 生产构建
-npm run generate     # SPA/静态构建，输出到 dist/
+npm ci
+npm run dev          # 开发服务器，需连接真实 Docker 后端
+npm run build        # SSR 生产构建，输出 .output/
+npm run generate     # SPA/静态构建，输出 .output/public/
 npm run lint         # eslint 检查
 npm run lint:fix     # eslint 自动修复
 
-# 单元测试（vitest + happy-dom）
-npx vitest run test/components/
+# 常规单元和组件测试（vitest + happy-dom）
+npx vitest run test/components test/composables test/plugins test/stores test/utils
+npx vitest run -c test/upgrade.vitest.config.ts
 
-# E2E 测试（Playwright，需先启动 mock server：node test/mock-server.js）
-npx playwright test
+# 构建后浏览器回归；配置自动管理 mock 后端和 SSR 服务
+npx playwright test -c playwright.library.config.ts
 ```
 
 ## 架构
@@ -55,12 +56,12 @@ Pinia 按领域拆分 store。`stores/main.ts`（`useMainStore`）承载站点�
 
 使用 `@nuxtjs/i18n` 懒加载，语言文件在 `i18n/locales/zh-CN.json` 、`en-US.json` 和 `ru-RU.json`。默认及回退语言均为 `zh-CN`。
 
-**注意**：执行 `npm run generate`（SPA 静态构建）时，`_i18n/` 语言文件不会自动输出到 `dist/`，需额外处理，否则 i18n key 会在页面上直接显示为原始字符串。
+**注意**：SPA 静态构建时，`nuxt.config.ts` 的 `prerender:done` hook 会把三种语言补写到带构建哈希的 `_i18n/` 输出目录。修改构建流程时必须保留并验证该逻辑，否则页面会显示原始 i18n key。
 
 ### 测试
 
-- **单元测试**：`test/components/`，使用 vitest + `@nuxt/test-utils`，运行环境为 `happy-dom`
-- **E2E 测试**：`test/e2e/`，使用 Playwright，依赖 `test/mock-server.js` 模拟后端（需先启动 `node test/mock-server.js`）；测试数据在 `test/e2e/mocks/` 下的 JSON 文件中
+- **单元测试**：`test/components/`、`test/composables/`、`test/plugins/`、`test/stores/`、`test/utils/`，使用 Vitest + `@nuxt/test-utils`，运行环境为 `happy-dom`
+- **E2E 测试**：`test/e2e/`，使用 Playwright 和 `test/mock-server.js`；`playwright.library.config.ts` 自动管理 mock 后端和构建后的 SSR 服务，其他专项配置按文件说明启动依赖
 
 ## 测试要求
 
@@ -95,7 +96,7 @@ describe('MyComponent.vue', () => {
 
 ### E2E 页面测试（`test/e2e/`）
 
-适用于新增或修改 `pages/` 下的页面。使用 Playwright，测试前需启动 mock server（`node test/mock-server.js`），如需新的接口数据，在 `test/e2e/mocks/` 下添加对应 JSON 文件：
+适用于新增或修改 `pages/` 下的页面。优先在具有自动服务生命周期的 Playwright 配置中加入用例；`playwright.library.config.ts` 会启动 mock server 和 SSR 服务，并按需重置 mock 状态。测试数据在 `test/e2e/mocks/` 下的 JSON 文件中：
 
 ```typescript
 import { test, expect } from '@playwright/test';
@@ -115,4 +116,4 @@ test.describe('My Page', () => {
 });
 ```
 
-运行：`npx playwright test`
+运行：`npx playwright test -c playwright.library.config.ts`。该配置要求先执行 `npm run build`，并自动管理 mock 与 SSR 服务；其他专项页面使用对应的 `playwright.*.config.ts`。

@@ -17,9 +17,9 @@ import datetime
 import json
 import os
 import socket
-import time
 import subprocess
 import sys
+import time
 
 
 DATA_DIR = os.environ.get("TALEBOOK_DATA_DIR", "/data")
@@ -116,9 +116,14 @@ def check_syncdb():
     if not os.path.isfile(os.path.join(library, "metadata.db")):
         if not run(["gosu", "%s:%s" % (RUN_USER, RUN_USER), "calibredb", "list", "--library-path=" + library, "--limit=0"]):
             return False, "syncdb_failed"
-    cmd = ["gosu", "%s:%s" % (RUN_USER, RUN_USER), "/usr/local/bin/booksvr", "bootstrap",
-           "-user-db=" + os.path.join(DATA_DIR, "books", "calibre-webserver.db"),
-           "-settings-file=" + os.path.join(DATA_DIR, "books", "settings", "auto.py")]
+    cmd = [
+        "gosu",
+        "%s:%s" % (RUN_USER, RUN_USER),
+        "/usr/local/bin/booksvr",
+        "bootstrap",
+        "-user-db=" + os.path.join(DATA_DIR, "books", "calibre-webserver.db"),
+        "-settings-file=" + os.path.join(DATA_DIR, "books", "settings", "auto.py"),
+    ]
     return (True, None) if run(cmd) else (False, "syncdb_failed")
 
 
@@ -182,8 +187,9 @@ def start_booksvr(secret=None):
             with socket.create_connection(("127.0.0.1", 8000), timeout=1):
                 return True
         except OSError:
-            status = subprocess.run(["supervisorctl", "status", "talebook:booksvr"],
-                                    capture_output=True, text=True).stdout.split()
+            status = subprocess.run(
+                ["supervisorctl", "status", "talebook:booksvr"], capture_output=True, text=True
+            ).stdout.split()
             if len(status) < 2 or status[1] not in ("STARTING", "RUNNING", "BACKOFF"):
                 return False
             time.sleep(1)

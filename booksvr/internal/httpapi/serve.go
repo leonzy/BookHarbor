@@ -734,6 +734,7 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 	convertSvc.Converter = convert.NewCalibreConverter(ebookConvertPath())
 	bookWiring.convert = convertSvc
 	bookCfg := bookWiring.Config(opts.CDNURL)
+	mcpService := newMCPService(opts, userDB, db)
 
 	// 漫画路由需要 bookWiring 的 recordHistory（阅读历史）。
 	comicCfg.RecordHistory = bookWiring.recordHistory
@@ -758,6 +759,7 @@ func newServeDispatcher(opts ServeOptions, db, userDB *sql.DB) (*Dispatcher, err
 	specs = append(specs, OpdsRouteSpecs(newOpdsConfig(db, userDB, opts))...)
 
 	specs = append(specs, AdminRouteSpecs(newAdminConfig(opts, userDB, db))...)
+	specs = append(specs, MCPRouteSpecs(MCPConfig{Service: mcpService})...)
 
 	specs = append(specs, BookRouteSpecs(bookCfg)...)
 	specs = append(specs, RouteSpec{Pattern: "/api/admin/metadata/enrichment", Methods: []string{"GET"}, Auth: true, Admin: true, Handler: MetadataEnrichmentStatus(db, opts, userDB)})

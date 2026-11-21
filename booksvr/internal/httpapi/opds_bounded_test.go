@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"fmt"
 	"net/http"
@@ -74,7 +75,7 @@ func TestOpdsTitlePageUsesExistingIndexAndStableTies(t *testing.T) {
 	for i, title := range []string{"a", "A", "A", "中文"} {
 		opdsSeedBook(t, fx.DB, int64(i+1), title, 1)
 	}
-	ids, total, err := library.BrowseBooks(t.Context(), fx.DB, library.BrowseQuery{TitleSort: true, Start: 0, Size: 2})
+	ids, total, err := library.BrowseBooks(context.Background(), fx.DB, library.BrowseQuery{TitleSort: true, Start: 0, Size: 2})
 	if err != nil || total != 4 || len(ids) != 2 || ids[0] != 3 || ids[1] != 2 {
 		t.Fatal(ids, total, err)
 	}

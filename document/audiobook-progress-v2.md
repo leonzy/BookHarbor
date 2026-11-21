@@ -1,12 +1,14 @@
 # 有声书真实进度与并发配置
 
+当前产品行为见 [有声书规格](../spec/有声书.md)。本文记录 `voicebook-progress.v2` 的运行参数和固定依赖；下文旧 PR、QA 和截图属于历史验收证据，不代表当前版本已重新执行相同验证。
+
 Talebook 固定使用 Voicebook 提交 `3316bae6a7372e82d7037d31b9ffb32633ef2aa4`，显式选择 `voicebook-progress.v2`。此提交的版本字符串是 0.8.0，尚无发布标签。重新安装 `requirements.txt` 或重建镜像后生效。
 
 生成侧与接入侧的独立 QA 复审及离线功能验收已通过。实际被审版本为 Talebook `9cb3633be8fd1bb8f7b9ef782ceabd11a84a05a3` / Voicebook `3316bae6a7372e82d7037d31b9ffb32633ef2aa4`；交付收尾仅更新文档。验收范围、失败记录和未验证限制见 [独立 QA 验收与交付收尾](audiobook-progress-v2-review/qa-acceptance/README.md)。离线供应商夹具的验收不保证真实供应商或生产部署行为。
 
 页面显示章节标题和可朗读正文的语音片段完成量，不估算整书剩余时间。解析、人工审阅、音频合成、写入和发布各自显示阶段；生成侧完成也不会提前把 Talebook 任务标为完成。
 
-在站点的持久配置中设置以下参数，所有 Tornado worker 和有声书 worker 使用同一配置。参数由宿主在每次 `generate` 调用中显式传入，供应商重试仍由 Voicebook 调度。
+在站点的持久配置中设置以下参数，所有 Go `booksvr` 进程和有声书 worker 使用同一配置。参数由宿主在每次 `generate` 调用中显式传入，供应商重试仍由 Voicebook 调度。
 
 | 配置 | 默认 | 含义 |
 | --- | --- | --- |
@@ -38,11 +40,14 @@ Talebook 固定使用 Voicebook 提交 `3316bae6a7372e82d7037d31b9ffb32633ef2aa4
 
 本轮接入预审修复的前后证据、QA 探针适配说明及复现命令见 [复核记录](audiobook-progress-v2-review/README.md)。生成侧 v2 契约和当前固定依赖未改变。
 
-离线验证使用真实 Voicebook 生成管线和可控 WAV 模拟引擎，不调用语音供应商。页面核心自动化使用短生命周期 mock API；QA 最终贯通使用构建后的 Nuxt SSR、真实 Talebook API / 数据库 / 调度器和固定生成侧 CLI，仅输入书、登录及供应商是夹具。快捷模式自动发布，高级候选经页面确认和发布后播放，页面取消贯通至生成侧。详情首次 SSR 的连续请求保持当前请求上下文。开发模式加载稳定性与首次失败根因仍未闭合，真实 TXT 转换未做完整贯通。截图来自隔离夹具。运行：
+离线验证使用真实 Voicebook 生成管线和可控 WAV 模拟引擎，不调用语音供应商。`audiobook-progress-v2-review/` 中的旧 PR、Python 探针和 QA 截图是固定提交的历史证据，不是当前后端测试命令。当前实现回归使用 Go 测试与现有前端配置：
 
 ```bash
-pytest tests/test_audiobook_progress_v2.py tests/test_audiobook_reliability.py tests/test_audiobook.py tests/test_audiobook_media_type.py tests/test_audiobook_transactions.py
-cd app
+cd booksvr
+go test ./internal/httpapi ./internal/userdb
+cd ../app
 npx vitest run test/components/AudiobookGenerationProgress.spec.ts
 npx playwright test --config playwright.audiobook-progress.config.ts
 ```
+
+页面 mock 自动化只验证隔离界面行为。真实供应商、实际多容器共享预算、完整 TXT 转换和生产部署仍需单独验收，不得沿用旧 QA 结论作为当前版本的通过证明。

@@ -1,8 +1,6 @@
 # 213 条路由键依赖盘点（实施项 1）
 
-> 产出时间：2026-10-09
-> 对应方案：`design/booksvr/20261007-calibre-go-rewrite.wip.html`
-> 计划文件：`plans/2026-10-07-calibre-go-rewrite.md` 实施项 1
+> **历史盘点（2026-10-09）：** 本文记录 Go 重写实施项 1 当时对旧 Python 路由的统计，不是当前后端代码结构或开发指南。当前路由注册以 `booksvr/internal/httpapi/routes.go` 为准，架构导航见 `CODE_WIKI.md`。以下旧路径和停止条件仅作为迁移决策证据保留。
 
 ## 1. 结论摘要
 

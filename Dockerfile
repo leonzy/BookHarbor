@@ -31,7 +31,7 @@ RUN cp -r dist package* /app-static/
 # ----------------------------------------
 # 第一阶段之二，编译 Go 存储层（booksvr）
 # 纯静态二进制，不依赖 libc，可直接拷进运行镜像。
-FROM golang:1.22-alpine AS go-builder
+FROM golang:1.26-alpine AS go-builder
 ARG BUILD_COUNTRY=""
 ARG TARGETARCH
 ARG TARGETVARIANT
