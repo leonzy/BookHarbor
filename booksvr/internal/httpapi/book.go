@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -37,6 +38,8 @@ type BookConfig struct {
 	PrivateBookIDs func(ctx *Context) (map[int64]bool, error)
 	// Search 执行 Calibre 全文检索，返回匹配的书籍 id。
 	Search func(ctx *Context, keyword string) ([]int64, error)
+	// SearchCatalog resolves the visible and grouped page in SQLite.
+	SearchCatalog func(context.Context, library.CatalogSearchQuery) ([]int64, int, error)
 	// BrowsePage performs SQL filtering and paging in the production wiring.
 	BrowsePage func(ctx *Context, q library.BrowseQuery) ([]int64, int, error)
 	// SearchField 按字段检索（publisher/author/tag）。
@@ -851,6 +854,9 @@ func BookSearchHandler(cfg BookConfig) HandlerFunc {
 		if strings.TrimSpace(name) == "" {
 			return map[string]any{"err": "params.invalid", "msg": "请输入搜索关键字"}, nil
 		}
+		if cfg.SearchCatalog != nil {
+			return bookCatalogSearch(cfg, ctx, name)
+		}
 		if ctx.Access != nil && !ctx.Access.Unrestricted() {
 			q := library.AccessBrowseQuery{Search: name, BrowseQuery: library.BrowseQuery{GroupWorks: true, SizeSort: bookSizeSort(ctx), Start: bookArgumentStart(ctx), Size: bookPageDelta(ctx, bookMaxPageSize(cfg))}}
 			q.SearchRelevance = true
@@ -924,6 +930,38 @@ func BookSearchHandler(cfg BookConfig) HandlerFunc {
 		ids = bookSortByTitleRelevance(sortCfg, ids, name, titleAliasIDs)
 		return bookRenderList(cfg, ctx, ids, fmt.Sprintf("搜索：%s", name), false)
 	}
+}
+
+func bookCatalogSearch(cfg BookConfig, ctx *Context, name string) (map[string]any, error) {
+	q := library.CatalogSearchQuery{Keyword: name, Scope: ctx.Access, BrowseQuery: library.BrowseQuery{
+		Start: bookArgumentStart(ctx), Size: bookPageDelta(ctx, bookMaxPageSize(cfg)), SizeSort: bookSizeSort(ctx),
+	}}
+	var err error
+	if cfg.AliasBookIDs != nil {
+		q.Aliases, err = cfg.AliasBookIDs(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if cfg.AliasAuthorNames != nil {
+		q.Authors, err = cfg.AliasAuthorNames(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if (q.Scope == nil || q.Scope.Unrestricted()) && cfg.PrivateBookIDs != nil {
+		q.Excluded, err = cfg.PrivateBookIDs(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	searchCtx, cancel := context.WithTimeout(ctx.Request.Context(), 8*time.Second)
+	defer cancel()
+	ids, total, err := cfg.SearchCatalog(searchCtx, q)
+	if err != nil {
+		return nil, err
+	}
+	return bookRenderResolvedPage(cfg, ctx, ids, fmt.Sprintf("搜索：%s", name), total, false)
 }
 
 // bookSortByTitleRelevance 复刻 sort_ids_by_title_relevance：书名命中优先，同级按 id 降序。

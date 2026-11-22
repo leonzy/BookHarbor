@@ -125,6 +125,9 @@ func Migrate(db *sql.DB) error {
 	if err := migrateBookDirectoryIndex(db); err != nil {
 		return err
 	}
+	if err := migrateTitleIndex(db); err != nil {
+		return err
+	}
 	return EnsureIdentitySchema(db)
 }
 

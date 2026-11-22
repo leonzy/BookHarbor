@@ -280,6 +280,8 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 		defer stopCovers()
 		stopDirectories := attachDirectoryWorker(ctx, db, opts.LibraryRoot, opts.Out)
 		defer stopDirectories()
+		stopTitleIndex := attachTitleIndexWorker(ctx, db, opts.DBPath, opts.Out)
+		defer stopTitleIndex()
 		stopIdentity := attachIdentityWorker(ctx, db, opts.Out)
 		defer stopIdentity()
 		if opts.ScanService != nil {
@@ -570,7 +572,7 @@ func openLibraryDB(path string) (*sql.DB, error) {
 	// `no such function: title_sort`。必须在 sql.Open 之前注册。
 	registerCalibreFunctions()
 
-	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(30000)"
+	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(30000)&_pragma=journal_size_limit(67108864)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("httpapi: 打开数据库失败: %w", err)

@@ -98,6 +98,10 @@ var knownFields = map[string]bool{
 
 // lex 把查询串切成 token。
 func lex(s string) ([]token, error) {
+	return lexSearch(s, "search")
+}
+
+func lexSearch(s, bareField string) ([]token, error) {
 	var out []token
 	i := 0
 	for i < len(s) {
@@ -110,7 +114,7 @@ func lex(s string) ([]token, error) {
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, token{kind: tokField, text: "search"}, token{kind: tokOp, text: ":"}, token{kind: tokValue, text: val})
+			out = append(out, token{kind: tokField, text: bareField}, token{kind: tokOp, text: ":"}, token{kind: tokValue, text: val})
 			i = next
 		case c == '(':
 			out = append(out, token{kind: tokLParen, text: "("})
@@ -161,8 +165,7 @@ func lex(s string) ([]token, error) {
 				continue
 			}
 
-			// 裸词：视为全文搜索。
-			out = append(out, token{kind: tokField, text: "search"}, token{kind: tokOp, text: ":"}, token{kind: tokValue, text: word})
+			out = append(out, token{kind: tokField, text: bareField}, token{kind: tokOp, text: ":"}, token{kind: tokValue, text: word})
 		}
 	}
 	return out, nil

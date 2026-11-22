@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -114,6 +115,9 @@ func (w *bookWiring) Config(cdnURL string) BookConfig {
 
 		Search: func(ctx *Context, keyword string) ([]int64, error) {
 			return library.Search(w.libraryDB, keyword)
+		},
+		SearchCatalog: func(ctx context.Context, q library.CatalogSearchQuery) ([]int64, int, error) {
+			return library.CatalogSearchPage(ctx, w.libraryDB, q)
 		},
 		SearchField: func(ctx *Context, field, value string) ([]int64, error) {
 			return library.Search(w.libraryDB, field+":'"+value+"'")
