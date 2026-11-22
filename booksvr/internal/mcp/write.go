@@ -313,7 +313,7 @@ func (s *Service) performSend(ctx context.Context, principal Principal, args map
 	}
 	_, err = push.Push(path, target, map[string]any{
 		"platform":    map[string]any{"user_id": principal.UserID, "site_url": settingString(s.Settings, "site_url"), "book": map[string]any{"title": book.Title, "fmt_" + strings.ToLower(format): path}},
-		"device_type": deviceType, "format": strings.ToLower(format), "title": book.Title,
+		"device_type": deviceType, "book_id": book.ID, "format": strings.ToLower(format), "title": book.Title,
 	})
 	if err != nil {
 		return err

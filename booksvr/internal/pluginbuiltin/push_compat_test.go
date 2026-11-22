@@ -97,6 +97,33 @@ func TestBOOXUploadCompatibility(t *testing.T) {
 	}
 }
 
+func TestBOOXRejectionDoesNotAssertDuplicate(t *testing.T) {
+	for _, storage := range []bool{false, true} {
+		payload := map[string]any{"code": float64(300001)}
+		err := booxCheckResult(payload, storage)
+		if err == nil || !strings.Contains(err.Error(), "业务码 300001") || strings.Contains(err.Error(), "已存在") {
+			t.Fatalf("storage=%t: %v", storage, err)
+		}
+		payload["isTokenInvalid"] = true
+		if err := booxCheckResult(payload, storage); err == nil || !strings.Contains(err.Error(), "授权无效") {
+			t.Fatalf("storage=%t: %v", storage, err)
+		}
+	}
+}
+
+func TestBOOXArchiveFilename(t *testing.T) {
+	path := filepath.Join(os.TempDir(), "talebook-archive-work", fmt.Sprint(os.Getpid()), "member-test", "member.txt")
+	if got := booxUploadFilename(path, "崇祯八年", 24823); got != "崇祯八年 [24823].txt" {
+		t.Fatal(got)
+	}
+	if got := booxUploadFilename(path, "书/名\n续", 24824); got != "书_名_续 [24824].txt" {
+		t.Fatal(got)
+	}
+	if got := booxUploadFilename(filepath.Join(t.TempDir(), "member.txt"), "另一本", 99); got != "member.txt" {
+		t.Fatal(got)
+	}
+}
+
 func TestBOOXNoRetryOnAmbiguousFailure(t *testing.T) {
 	for _, mode := range []string{"disconnect", "timeout", "business"} {
 		t.Run(mode, func(t *testing.T) {

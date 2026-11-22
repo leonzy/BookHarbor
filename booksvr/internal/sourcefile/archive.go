@@ -106,6 +106,18 @@ var initOnce sync.Once
 var initErr error
 var workRoot string
 
+func archiveWorkRoot() string {
+	return filepath.Join(os.TempDir(), "talebook-archive-work", strconv.Itoa(os.Getpid()))
+}
+
+// IsTemporaryMember identifies the neutral local filename used by Acquire.
+func IsTemporaryMember(path string) bool {
+	parent := filepath.Dir(path)
+	name := filepath.Base(path)
+	return filepath.Dir(parent) == archiveWorkRoot() && strings.HasPrefix(filepath.Base(parent), "member-") &&
+		strings.TrimSuffix(name, filepath.Ext(name)) == "member"
+}
+
 // One server owns this root. The process starts before accepting HTTP requests.
 // Remove files abandoned by the previous server after a crash or restart.
 func Init() error {
@@ -132,7 +144,7 @@ func Init() error {
 				}
 			}
 		}
-		workRoot = filepath.Join(base, strconv.Itoa(os.Getpid()))
+		workRoot = archiveWorkRoot()
 		if e := os.RemoveAll(workRoot); e != nil {
 			initErr = e
 			return

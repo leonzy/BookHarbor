@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/textproto"
 	"net/url"
@@ -14,12 +15,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"talebook/booksvr/internal/plugindomain"
 	"talebook/booksvr/internal/pluginiface"
 	"talebook/booksvr/internal/pluginproto"
 	"talebook/booksvr/internal/pluginruntime"
 	"talebook/booksvr/internal/safehttp"
+	"talebook/booksvr/internal/sourcefile"
 )
 
 // pushCapability 复刻 PUSH_CAPABILITY。
@@ -177,6 +180,11 @@ func (p *DevicePushProvider) Push(bookFile any, target any, context any) (any, e
 	if err != nil {
 		return nil, err
 	}
+	if p.ManifestDict["id"] == "talebook.push.boox" && fileName == filepath.Base(filePath) {
+		if bookID, ok := ctx["book_id"].(int64); ok && bookID > 0 {
+			fileName = booxUploadFilename(filePath, stringOr(ctx["title"], ""), bookID)
+		}
+	}
 	timeout, err := pushNetworkTimeout(ctx)
 	if err != nil {
 		return nil, err
@@ -196,6 +204,27 @@ func (p *DevicePushProvider) Push(bookFile any, target any, context any) (any, e
 		return nil, pluginproto.NewUpstreamError(message, errorType, statusCode)
 	}
 	return result, nil
+}
+
+func booxUploadFilename(path, title string, bookID int64) string {
+	if !sourcefile.IsTemporaryMember(path) {
+		return filepath.Base(path)
+	}
+	var stem strings.Builder
+	for _, r := range strings.TrimSpace(title) {
+		if unicode.IsControl(r) || strings.ContainsRune(`/\:*?"<>|`, r) {
+			r = '_'
+		}
+		if stem.Len()+len(string(r)) > 180 {
+			break
+		}
+		stem.WriteRune(r)
+	}
+	name := strings.Trim(stem.String(), ". ")
+	if name == "" {
+		name = "book"
+	}
+	return fmt.Sprintf("%s [%d]%s", name, bookID, filepath.Ext(path))
 }
 
 // SelfCheck 复刻 self_check。
@@ -421,14 +450,29 @@ func booxUpload(client *safehttp.SafeHttpClient, serverURL, filePath, filename,
 	if err != nil {
 		return pushFailure("other", nil, "Upload failed: "+err.Error(), "")
 	}
-	target := strings.TrimRight(serverURL, "/") + "/api/library/upload"
+	legacyPath := "/api/library/upload"
+	storagePath := "/api/storage/upload"
+	device := ""
+	if u, err := url.Parse(serverURL); err == nil {
+		device = u.Host
+	}
+	check := func(endpoint string) func(map[string]any) error {
+		return func(payload map[string]any) error {
+			err := booxCheckResult(payload, endpoint == storagePath)
+			if err != nil {
+				code, hasCode := payload["code"].(float64)
+				slog.Warn("BOOX 设备拒绝上传", "device", device, "interface", endpoint, "filename", filename,
+					"has_code", hasCode, "code", code, "token_invalid", payload["isTokenInvalid"] == true)
+			}
+			return err
+		}
+	}
+	target := strings.TrimRight(serverURL, "/") + legacyPath
 	result := pushPost(serverURL, target, []pushFormField{
 		{Name: "parent", Value: "null"},
 		{Name: "sender", Value: "web"},
 		{Name: "file", Filename: filename, Content: content, ContentType: contentType},
-	}, timeout, func(payload map[string]any) error {
-		return booxCheckResult(payload, false)
-	})
+	}, timeout, check(legacyPath))
 	// A rejected legacy endpoint is safe to fall back from. Never resend after
 	// an ambiguous transport failure or a device-side business error.
 	status, _ := result["status_code"].(int)
@@ -439,12 +483,10 @@ func booxUpload(client *safehttp.SafeHttpClient, serverURL, filePath, filename,
 	if remaining <= 0 {
 		return pushFailure("timeout", nil, "Upload timeout before BOOX compatibility fallback", "")
 	}
-	fallback := pushPost(serverURL, strings.TrimRight(serverURL, "/")+"/api/storage/upload", []pushFormField{
+	fallback := pushPost(serverURL, strings.TrimRight(serverURL, "/")+storagePath, []pushFormField{
 		{Name: "path", Value: "/Download"},
 		{Name: "file", Filename: filename, Content: content, ContentType: contentType},
-	}, remaining, func(payload map[string]any) error {
-		return booxCheckResult(payload, true)
-	})
+	}, remaining, check(storagePath))
 	if ok, _ := fallback["success"].(bool); !ok {
 		fallback["message"] = fmt.Sprintf("BOOX 旧接口返回 HTTP %d；存储接口：%s", status, stringOr(fallback["message"], "上传失败"))
 	}
@@ -459,17 +501,18 @@ func booxCheckResult(payload map[string]any, storage bool) error {
 		label = "BOOX 存储接口"
 	}
 	code, hasCode := payload["code"].(float64)
+	tokenState, tokenReported := payload["isTokenInvalid"]
+	if tokenReported && tokenState != false {
+		return fmt.Errorf("%s报告授权无效，请重新开启文石互传并检查授权", label)
+	}
 	if !hasCode {
 		return fmt.Errorf("%s未返回有效的成功结果", label)
 	}
 	if code == 300001 {
-		return fmt.Errorf("BOOX 设备已存在同名文件，请先在设备上检查")
+		return fmt.Errorf("%s报告同名冲突（业务码 300001），请核对所选设备和下载目录", label)
 	}
 	if code != 0 {
 		return fmt.Errorf("%s拒绝上传（业务码 %g）", label, code)
-	}
-	if value, present := payload["isTokenInvalid"]; present && value != false {
-		return fmt.Errorf("BOOX 设备拒绝访问，请重新开启文石互传并检查授权")
 	}
 	hasSuccess := false
 	for _, key := range []string{"successful", "isSuccessful"} {

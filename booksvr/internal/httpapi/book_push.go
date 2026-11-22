@@ -73,6 +73,7 @@ func (w *bookWiring) bookSendToDevice(ctx *Context, bookID int64, args map[strin
 		"platform": map[string]any{"user_id": ctx.Identity.UserID, "site_url": settingString(w.settings, "site_url"),
 			"book": map[string]any{"title": book.Title, "fmt_" + format: path}},
 		"device_type": deviceType,
+		"book_id":     bookID,
 		"format":      format,
 		"title":       book.Title,
 	}); err != nil {
