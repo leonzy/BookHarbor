@@ -99,7 +99,7 @@ jobs:
               raise SystemExit('Configure UPGRADE_SIGNING_KEY and UPGRADE_KEY_ID in the application-upgrade environment first')
           PY
       - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build candidate and export application
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
