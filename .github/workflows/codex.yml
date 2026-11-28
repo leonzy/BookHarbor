@@ -1067,7 +1067,7 @@ jobs:
 
       - name: Upload Codex patch
         if: always() && steps.diff.outputs.has_patch == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: codex-patch-${{ github.run_id }}
           path: .codex/tmp/codex.patch
