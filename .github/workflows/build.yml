@@ -180,7 +180,7 @@ jobs:
 
       - name: Build SPA
         id: spa
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: production-spa
@@ -256,7 +256,7 @@ jobs:
 
       - name: Build SSR
         id: ssr
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: production-ssr
@@ -269,7 +269,7 @@ jobs:
 
       - name: Build development image
         if: matrix.platform == 'linux/amd64' && (github.event_name == 'pull_request' || github.ref == 'refs/heads/main')
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: dev
