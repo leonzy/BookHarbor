@@ -6,7 +6,7 @@ require (
 	github.com/PaesslerAG/jsonpath v0.1.1
 	github.com/antchfx/htmlquery v1.3.7
 	github.com/dop251/goja v0.0.0-20240220182346-e401ed450204
-	github.com/go-sql-driver/mysql v1.8.1
+	github.com/go-sql-driver/mysql v1.10.2
 	golang.org/x/crypto v0.59.0
 	golang.org/x/image v0.48.0
 	golang.org/x/net v0.63.0
@@ -16,7 +16,7 @@ require (
 )
 
 require (
-	filippo.io/edwards25519 v1.1.0 // indirect
+	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/PaesslerAG/gval v1.0.0 // indirect
 	github.com/antchfx/xpath v1.3.9 // indirect
 	github.com/dlclark/regexp2 v1.7.0 // indirect
